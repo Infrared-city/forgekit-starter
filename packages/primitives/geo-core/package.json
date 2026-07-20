@@ -1,0 +1,38 @@
+{
+  "name": "@forge-kit/geo-core",
+  "version": "0.1.0",
+  "description": "Dependency-free lng/lat <-> local-meters projection \u2014 the single shared geo util for METER_OFFSETS map geometry (buildings, trees, surfaces)",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrared-city/forge-kit.git",
+    "directory": "packages/primitives/geo-core"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "index.ts"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@turf/bbox": "^7.3.4"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "vitest": "^2.1.8"
+  }
+}

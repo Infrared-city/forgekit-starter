@@ -1,0 +1,35 @@
+{
+  "name": "@forge-kit/map-interface",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@forge-kit/buildings": "workspace:*",
+    "@forge-kit/geo-core": "workspace:*",
+    "ui": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@deck.gl/core": "^9.2.6",
+    "@deck.gl/react": "^9.2.6",
+    "@tanstack/react-query": "^5.90.20",
+    "@tanstack/react-router": "^1.157.16",
+    "deck.gl": "^9.2.6",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.0",
+    "react-map-gl": "^7.1.0",
+    "zustand": "^5.0.10"
+  }
+}

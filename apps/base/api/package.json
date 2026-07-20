@@ -1,0 +1,21 @@
+{
+  "name": "@infrared/forge-api",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:dev": "wrangler deploy --env dev",
+    "deploy:preview": "wrangler deploy --env preview",
+    "deploy:production": "wrangler deploy --env production",
+    "test:run": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "hono": "^4",
+    "fflate": "^0.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "typescript": "^5",
+    "wrangler": "^4",
+    "vitest": "^2"
+  }
+}

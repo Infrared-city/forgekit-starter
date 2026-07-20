@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    // geo-core is dependency-free (only @turf/bbox + geojson types); no
+    // forge-kit path mappings needed. Inherit baseUrl from root -- DO NOT
+    // override it here (a local baseUrl would shadow bare specifiers).
+    "types": []
+  },
+  // include/exclude are relative to this tsconfig file's location.
+  "include": ["**/*.ts"],
+  "exclude": ["__tests__", "dist", "node_modules"]
+}

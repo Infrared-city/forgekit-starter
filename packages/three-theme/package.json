@@ -1,0 +1,29 @@
+{
+  "name": "@infrared/three-theme",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Three.js theme and materials for Infrared architectural visualization",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./materials": "./src/materials.ts",
+    "./lighting": "./src/lighting.ts",
+    "./effects": "./src/effects.ts",
+    "./camera": "./src/camera.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "three.js",
+    "threejs",
+    "materials",
+    "lighting",
+    "visualization",
+    "architecture"
+  ],
+  "peerDependencies": {
+    "three": ">=0.150.0"
+  }
+}

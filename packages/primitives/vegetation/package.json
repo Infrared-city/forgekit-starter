@@ -1,0 +1,88 @@
+{
+  "name": "@forge-kit/vegetation",
+  "version": "0.1.0",
+  "description": "Vegetation primitive - tree GeoJSON fetch, DotBim mesh conversion, deck.gl 3D tree layers",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrared-city/forge-kit.git",
+    "directory": "packages/primitives/vegetation"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "development": "./core/index.ts",
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
+    },
+    "./react": {
+      "development": "./react/index.ts",
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist",
+    "core",
+    "react",
+    "index.ts",
+    "plugin.tsx"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@forge-kit/geo-core": "workspace:*",
+    "@turf/boolean-valid": "^7.3.4",
+    "@turf/kinks": "^7.3.4",
+    "zod": "^4.3.6",
+    "@infrared-city/infrared-sdk-ts": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "zustand": ">=4",
+    "@tanstack/react-query": ">=5",
+    "deck.gl": ">=9",
+    "@deck.gl/core": ">=9",
+    "@deck.gl/layers": ">=9",
+    "@deck.gl/mesh-layers": ">=9",
+    "lucide-react": "^0.563.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "zustand": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "deck.gl": {
+      "optional": true
+    },
+    "@deck.gl/core": {
+      "optional": true
+    },
+    "@deck.gl/layers": {
+      "optional": true
+    },
+    "@deck.gl/mesh-layers": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "vitest": "^2.1.8"
+  }
+}

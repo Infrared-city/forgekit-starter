@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+/* Class-based dark mode. The theme store toggles `.dark` (and `.space`) on
+ * `<html>` — without this custom variant, `dark:foo` Tailwind utilities only
+ * fire on `prefers-color-scheme: dark` and ignore the runtime theme switch.
+ * Most theming should still flow through semantic tokens (bg-surface etc.),
+ * but `dark:` is occasionally needed for chrome surfaces (top bar, modal
+ * scrims) that don't map cleanly to the surface scale. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Scan extracted workspace packages for Tailwind utility classes.
+   The @tailwindcss/vite plugin auto-detects files in the module graph but
+   excludes paths resolved through node_modules (workspace symlinks).
+   Explicit @source directives ensure these packages are scanned. */
+@source "../../primitives/buildings";
+@source "../../primitives/analysis";
+@source "../../primitives/ground-materials";
+@source "../../primitives/indoor-analysis";
+@source "../../primitives/ai-workflows";
+@source "../../primitives/vegetation";
+@source "../../interfaces/map";
+@source "../../interfaces/interior";
+@source "../../interfaces/shared";
+@source "../../../apps/platform/client/src";
+@source "./components";
+
+/* Infrared Design System - CSS Custom Properties */
+/* All colors use HSL format exclusively */
+
+@theme {
+  /* Primary Colors */
+  --color-primary: hsl(186 51% 35%);
+  --color-primary-foreground: hsl(2.1 40% 98%);
+  --color-primary-green-dark: hsl(180 73% 13%);
+  --color-primary-purple: hsl(231 66% 23%);
+
+  /* Secondary Colors */
+  --color-secondary: hsl(210 40% 96.1%);
+  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --color-secondary-blue: hsl(198 87% 91%);
+  --color-secondary-blue-light: hsl(180 26% 84%);
+  --color-secondary-blue-dark: hsl(198 67% 27%);
+  --color-secondary-green: hsl(154 35% 50%);
+  --color-teal-light: hsl(186 42% 94%);
+
+  /* Semantic Colors */
+  --color-tertiary-fuchsia: hsl(180 79% 52%);
+  --color-alert: hsl(14 67% 76%);
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-disabled: hsl(240 3% 69%);
+
+  /* Neutral Colors */
+  --color-background: hsl(2.5 2.5% 92.5%);
+  --color-foreground: hsl(222.2 84% 4.9%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222.2 84% 4.9%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(222.2 84% 4.9%);
+  --color-muted: hsl(210 40% 96.1%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-accent: hsl(210 40% 96.1%);
+  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-ring: hsl(222.2 84% 4.9%);
+
+  /* Chart Colors */
+  --color-chart-1: hsl(12 76% 61%);
+  --color-chart-2: hsl(173 58% 39%);
+  --color-chart-3: hsl(197 37% 24%);
+  --color-chart-4: hsl(43 74% 66%);
+  --color-chart-5: hsl(27 87% 67%);
+
+  /* Border Radius */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.5rem;
+}
+
+.dark {
+  --color-background: hsl(222.2 84% 4.9%);
+  --color-foreground: hsl(210 40% 98%);
+  --color-card: hsl(222.2 84% 4.9%);
+  --color-card-foreground: hsl(210 40% 98%);
+  --color-popover: hsl(222.2 84% 4.9%);
+  --color-popover-foreground: hsl(210 40% 98%);
+  --color-primary: hsl(210 40% 98%);
+  --color-primary-foreground: hsl(222.2 47.4% 11.2%);
+  --color-secondary: hsl(217.2 32.6% 17.5%);
+  --color-secondary-foreground: hsl(210 40% 98%);
+  --color-muted: hsl(217.2 32.6% 17.5%);
+  --color-muted-foreground: hsl(215 20.2% 65.1%);
+  --color-accent: hsl(217.2 32.6% 17.5%);
+  --color-accent-foreground: hsl(210 40% 98%);
+  --color-destructive: hsl(0 62.8% 30.6%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-border: hsl(217.2 32.6% 17.5%);
+  --color-input: hsl(217.2 32.6% 17.5%);
+  --color-ring: hsl(212.7 26.8% 83.9%);
+
+  /* Dark mode chart colors */
+  --color-chart-1: hsl(220 70% 50%);
+  --color-chart-2: hsl(160 60% 45%);
+  --color-chart-3: hsl(30 80% 55%);
+  --color-chart-4: hsl(280 65% 60%);
+  --color-chart-5: hsl(340 75% 55%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Scrollbar Styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(186 51% 35%) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: hsl(0 0% 100%);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(0 0% 0%);
+    border-radius: 8px;
+  }
+}
+
+/* Loading Dot Animation */
+@keyframes dot {
+  0% {
+    background: var(--color-background);
+    transform: scale(1);
+  }
+  50% {
+    background: var(--color-primary-purple);
+    transform: scale(1.3);
+  }
+  100% {
+    background: var(--color-secondary-blue);
+    transform: scale(1);
+  }
+}
+
+.loading-dot {
+  animation: dot ease-in-out 1s infinite;
+}
+.loading-dot:nth-of-type(2) {
+  animation-delay: 0.2s;
+}
+.loading-dot:nth-of-type(3) {
+  animation-delay: 0.3s;
+}
+
+/* Slide Animations */
+@keyframes animate-slide-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.slide-in-from-right {
+  animation: animate-slide-in-from-right 0.5s ease-out;
+}
+
+@keyframes animate-slide-out-to-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.slide-out-to-right {
+  animation: animate-slide-out-to-right 0.5s ease-out;
+}
+
+/* Spin Animation for Loaders */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Shimmer Animation for Loading States */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, currentColor 25%, var(--color-primary) 50%, currentColor 75%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 1.5s ease-in-out infinite;
+}

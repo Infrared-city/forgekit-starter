@@ -1,0 +1,5 @@
+name = "my-climate-app"
+# account_id is read from CLOUDFLARE_ACCOUNT_ID env var (set in .env or CI)
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"

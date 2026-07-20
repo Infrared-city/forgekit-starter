@@ -1,0 +1,36 @@
+name = "my-climate-app-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "dev"
+INFRARED_BASE_URL = "https://api.infrared.city/v2"
+INFRARED_AUTH_BASE_URL = "https://api.infrared.city"
+
+[env.dev]
+name = "my-climate-app-api-dev"
+[env.dev.vars]
+ENVIRONMENT = "dev"
+INFRARED_BASE_URL = "https://api.infrared.city/v2"
+INFRARED_AUTH_BASE_URL = "https://api.infrared.city"
+
+[env.preview]
+name = "my-climate-app-api-preview"
+[env.preview.vars]
+ENVIRONMENT = "preview"
+INFRARED_BASE_URL = "https://api.infrared.city/v2"
+INFRARED_AUTH_BASE_URL = "https://api.infrared.city"
+
+[env.production]
+name = "my-climate-app-api"
+[env.production.vars]
+ENVIRONMENT = "production"
+INFRARED_BASE_URL = "https://api.infrared.city/v2"
+INFRARED_AUTH_BASE_URL = "https://api.infrared.city"
+
+# GOOGLE_MAPS_API_KEY is a runtime secret, not a [vars] entry — never commit it.
+# Set it per environment with:
+#   wrangler secret put GOOGLE_MAPS_API_KEY --env production
+# For local dev, place it in apps/base/api/.dev.vars (gitignored):
+#   GOOGLE_MAPS_API_KEY=your-key-here

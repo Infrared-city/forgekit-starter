@@ -1,0 +1,12 @@
+<svg width="8" height="8" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="diagonalHatch" patternUnits="userSpaceOnUse" width="8" height="8">
+      <path d="M0,8 l8,-8 M-2,2 l4,-4 M6,10 l4,-4" 
+            stroke="#212121" 
+            stroke-width="1" 
+            stroke-linecap="round"
+            stroke-dasharray="1.5,1.5"/>
+    </pattern>
+  </defs>
+  <rect width="8" height="8" fill="url(#diagonalHatch)"/>
+</svg>

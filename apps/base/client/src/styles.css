@@ -1,0 +1,13 @@
+/*
+ * Client-specific style overrides
+ * Base styles (Tailwind, design tokens, fonts) are imported from ui/styles.css in main.tsx
+ */
+
+/* App-specific component overrides */
+@layer components {
+  /* Map container needs to fill available space */
+  .mapboxgl-map {
+    position: absolute;
+    inset: 0;
+  }
+}

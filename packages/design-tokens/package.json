@@ -1,0 +1,26 @@
+{
+  "name": "@infrared/design-tokens",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Infrared Design System tokens - colors, spacing, typography, animations",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./colors": "./src/colors.ts",
+    "./spacing": "./src/spacing.ts",
+    "./typography": "./src/typography.ts",
+    "./animations": "./src/animations.ts",
+    "./shadows": "./src/shadows.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "design-tokens",
+    "design-system",
+    "colors",
+    "spacing",
+    "tailwind"
+  ]
+}

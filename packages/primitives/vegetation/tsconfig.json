@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "paths": {
+      "@forge-kit/plugin-contracts": ["./packages/interfaces/shared/index.ts"],
+      "@forge-kit/plugin-contracts/*": ["./packages/interfaces/shared/*"],
+      "@forge-kit/geo-core": ["./packages/primitives/geo-core/index.ts"],
+      "@forge-kit/geo-core/*": ["./packages/primitives/geo-core/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["__tests__"]
+}

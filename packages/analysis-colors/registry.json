@@ -1,0 +1,793 @@
+{
+  "_id": {
+    "$oid": "6968c6b26918f8de8c51e067"
+  },
+  "uuid": "b2954dc3-4424-4d7f-ad31-d648cf6980a6",
+  "version": "1.5.2",
+  "global": {
+    "wind-comfort": {
+      "version": "v3",
+      "name": "global-cfd",
+      "batching": true,
+      "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+      "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+    },
+    "wind-speed": {
+      "version": "v3",
+      "name": "wind-speed",
+      "batching": true
+    },
+    "annual-wind-comfort": {
+      "batching": false,
+      "version": "v3",
+      "name": "global-annual-wind-comfort",
+      "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+      "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+    },
+    "pedestrian-wind-comfort": {
+      "batching": false,
+      "version": "v1",
+      "name": "pedestrian-wind-comfort"
+    },
+    "thermal-comfort-index": {
+      "batching": false,
+      "name": "thermal-comfort-index",
+      "version": "v1"
+    },
+    "thermal-comfort-statistics": {
+      "batching": false,
+      "version": "v1",
+      "name": "thermal-comfort-statistics"
+    },
+    "daylight-availability": {
+      "batching": false,
+      "version": "v1",
+      "name": "daylight-availability"
+    },
+    "direct-sun-hours": {
+      "batching": false,
+      "version": "v1",
+      "name": "direct-sun-hours"
+    },
+    "sky-view-factors": {
+      "batching": false,
+      "version": "v1",
+      "name": "sky-view-factors"
+    },
+    "solar-radiation": {
+      "batching": false,
+      "version": "v1",
+      "name": "solar-radiation"
+    }
+  },
+  "local": {
+    "66ea9936ee83b0531396cb3e": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66ea9936ee83b0531396cb3e-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [2, 8]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v3",
+        "name": "66ea9936ee83b0531396cb3e-cold-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [53, 66]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66ea9936ee83b0531396cb3e-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [32, 39]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      }
+    },
+    "66eab2e7ee83b0531396df85": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66eab2e7ee83b0531396df85-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [0, 2],
+          "resultSubdivisionFactor": 3
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-30T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v3",
+        "name": "66eab2e7ee83b0531396df85-cold-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [69, 80],
+          "resultSubdivisionFactor": 5
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66eab2e7ee83b0531396df85-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [18, 30],
+          "resultSubdivisionFactor": 5
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      }
+    },
+    "66eaac3dee83b0531396d962": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66eaac3dee83b0531396d962-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [0, 2],
+          "resultSubdivisionFactor": 3
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v3",
+        "name": "66eaac3dee83b0531396d962-cold-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [75, 90],
+          "resultSubdivisionFactor": 3
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66eaac3dee83b0531396d962-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [10, 21],
+          "resultSubdivisionFactor": 3
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      }
+    },
+    "66eacda25f828b59e7f67a01": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66eacda25f828b59e7f67a01-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [92, 100]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v2",
+        "name": "all-zero-model",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [0, 1]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66eacda25f828b59e7f67a01-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [0, 8]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      }
+    },
+    "66ea9fd61714ea9b12d975e0": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66ea9fd61714ea9b12d975e0-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [50, 67],
+          "resultSubdivisionFactor": 3
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v3",
+        "name": "all-zero-model",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [0, 1]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66ea9fd61714ea9b12d975e0-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [30, 49],
+          "resultSubdivisionFactor": 5
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      }
+    },
+    "66eacd9d5f828b59e7f679fb": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66eacd9d5f828b59e7f679fb-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [51, 63]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v2",
+        "name": "all-zero-model",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [0, 1]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66eacd9d5f828b59e7f679fb-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [37, 49]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      }
+    },
+    "66eacda05f828b59e7f679fd": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66eacda05f828b59e7f679fd-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [46, 54]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v3",
+        "name": "66eacda05f828b59e7f679fd-cold-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [4, 10]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66eacda05f828b59e7f679fd-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [42, 44]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-20T12:01:52.099Z"
+      }
+    },
+    "66eaad04ee83b0531396da23": {
+      "heat-stress": {
+        "version": "v3",
+        "name": "66eaad04ee83b0531396da23-heat-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [14, 28],
+          "resultSubdivisionFactor": 3
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      },
+      "cold-stress": {
+        "version": "v3",
+        "name": "66eaad04ee83b0531396da23-cold-stress",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [23, 45]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      },
+      "thermal-comfort": {
+        "version": "v3",
+        "name": "66eaad04ee83b0531396da23-thermal-comfort",
+        "batching": true,
+        "visualConfigurations": {
+          "steps": [43, 51]
+        },
+        "depreciationCreateDate": "2025-03-10T12:01:52.099Z",
+        "depreciationRunDate": "2025-03-10T12:01:52.099Z"
+      }
+    }
+  },
+  "visualConfigurations": {
+    "wind-comfort": {
+      "colors": [
+        [56, 70, 114],
+        [56, 174, 173],
+        [105, 173, 56],
+        [222, 226, 105],
+        [194, 134, 62],
+        [240, 0, 0]
+      ],
+      "resultSubdivisionFactor": 1,
+      "barsSubdivisionFactor": 1,
+      "legendSubdivisionFactor": 1,
+      "steps": [0, 1],
+      "colorInterpolation": "binned",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed"
+    },
+    "wind-speed": {
+      "colors": [
+        [6, 55, 252],
+        [57, 155, 243],
+        [100, 238, 154],
+        [174, 242, 124],
+        [235, 100, 59],
+        [230, 0, 11],
+        [172, 0, 0]
+      ],
+      "resultSubdivisionFactor": 1,
+      "barsSubdivisionFactor": 1,
+      "legendSubdivisionFactor": 1,
+      "steps": [0, 15],
+      "colorInterpolation": "linear",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "open",
+      "legendMinHandling": "closed",
+      "unit": "m/s",
+      "info": "The study displays airflow patterns and velocity distribution, considering inputs of wind speed and direction to assess wind behavior and its potential impacts."
+    },
+    "heat-stress": {
+      "colors": [[255, 245, 245], [252, 189, 159], [250, 100, 37], [219, 31, 10], [104, 3, 16]],
+      "resultSubdivisionFactor": 3,
+      "barsSubdivisionFactor": 2,
+      "legendSubdivisionFactor": 2,
+      "steps": [14, 28],
+      "colorInterpolation": "binned",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "unit": "% of time",
+      "info": "The study visualizes the percentage of time during which the UTCI (Universal Thermal Climate Index) temperature exceeds 26 degrees Celsius, indicating periods of heat stress."
+    },
+    "cold-stress": {
+      "colors": [[240, 244, 255], [209, 232, 255], [181, 218, 255], [128, 169, 217], [28, 62, 140]],
+      "resultSubdivisionFactor": 3,
+      "barsSubdivisionFactor": 2,
+      "legendSubdivisionFactor": 2,
+      "steps": [23, 45],
+      "colorInterpolation": "binned",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "unit": "% of time",
+      "info": "The study visualizes the percentage of time during which the UTCI (Universal Thermal Climate Index) temperature falls below 9 degrees Celsius, indicating periods of cold stress."
+    },
+    "thermal-comfort": {
+      "colors": [[28, 62, 140], [128, 169, 217], [255, 255, 255], [250, 100, 37], [156, 25, 5]],
+      "resultSubdivisionFactor": 5,
+      "barsSubdivisionFactor": 2,
+      "legendSubdivisionFactor": 2,
+      "steps": [43, 51],
+      "colorInterpolation": "binned",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "unit": "% of time",
+      "info": "The study visualizes the percentage of time during which the UTCI (Universal Thermal Climate Index) temperature falls within the comfortable range of 9 to 26 degrees Celsius, indicating periods of thermal comfort."
+    },
+    "annual-wind-comfort": {
+      "lawson-1970": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [[0, 0, 255], [0, 255, 255], [0, 255, 0], [255, 255, 0], [255, 0, 0]],
+        "steps": ["A", "B", "C", "D", "E"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "General Lawson"
+      },
+      "lawson-2001": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [
+          [0, 0, 255],
+          [0, 185, 255],
+          [0, 255, 255],
+          [0, 255, 0],
+          [255, 255, 0],
+          [255, 185, 0],
+          [255, 0, 0]
+        ],
+        "steps": ["A", "B", "C", "D", "E", "S15", "S20"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "Lawson 2001"
+      },
+      "lawson-lddc": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [
+          [0, 0, 255],
+          [0, 185, 255],
+          [0, 255, 255],
+          [0, 255, 0],
+          [255, 185, 0],
+          [255, 0, 0]
+        ],
+        "steps": ["A", "B", "C", "D", "E", "S"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "Lawson LDDC"
+      }
+    },
+    "pedestrian-wind-comfort": {
+      "lawson-1970": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [[0, 0, 255], [0, 255, 255], [0, 255, 0], [255, 255, 0], [255, 0, 0]],
+        "steps": ["A", "B", "C", "D", "E"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "General Lawson",
+        "stepsNames": [
+          "Sitting Long",
+          "Sitting Short",
+          "Walking Leisurely",
+          "Walking Fast",
+          "Uncomfortable"
+        ]
+      },
+      "lawson-2001": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [
+          [0, 0, 255],
+          [0, 185, 255],
+          [0, 255, 255],
+          [0, 255, 0],
+          [255, 255, 0],
+          [255, 185, 0],
+          [255, 0, 0]
+        ],
+        "steps": ["A", "B", "C", "D", "E", "S15", "S20"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "Lawson 2001",
+        "stepsNames": [
+          "Sitting",
+          "Standing",
+          "Strolling",
+          "Business Walking",
+          "Uncomfortable",
+          "Unsafe frail",
+          "Unsafe all"
+        ]
+      },
+      "lawson-lddc": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [
+          [0, 0, 255],
+          [0, 185, 255],
+          [0, 255, 255],
+          [0, 255, 0],
+          [255, 185, 0],
+          [255, 0, 0]
+        ],
+        "steps": ["A", "B", "C", "D", "E", "S"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "Lawson LDDC",
+        "stepsNames": [
+          "Frequent Sitting",
+          "Occasional Sitting",
+          "Standing",
+          "Walking",
+          "Uncomfortable",
+          "Unsafe"
+        ]
+      },
+      "davenport": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [
+          [0, 0, 255],
+          [0, 185, 255],
+          [0, 255, 255],
+          [0, 255, 0],
+          [255, 185, 0],
+          [255, 0, 0]
+        ],
+        "steps": ["A", "B", "C", "D", "E", "S"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "Davenport",
+        "stepsNames": [
+          "Sitting Long",
+          "Sitting Short",
+          "Walking Leisurely",
+          "Walking Fast",
+          "Uncomfortable",
+          "Dangerous"
+        ]
+      },
+      "nen-8100-comfort": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [[0, 0, 255], [0, 255, 255], [0, 255, 0], [255, 255, 0], [255, 0, 0]],
+        "steps": ["A", "B", "C", "D", "E"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "NEN 8100 Comfort",
+        "stepsNames": [
+          "Sitting Long",
+          "Sitting Short",
+          "Walking Leisurely",
+          "Walking Fast",
+          "Uncomfortable"
+        ]
+      },
+      "nen-8100-safety": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [[0, 0, 255], [0, 255, 0], [255, 0, 0]],
+        "steps": ["A", "B", "C"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "NEN 8100 Safety",
+        "stepsNames": ["No Risk", "Limited Risk", "Dangerous"]
+      },
+      "vdi-387": {
+        "barsSubdivisionFactor": 1,
+        "colorInterpolation": "binned",
+        "legendSubdivisionFactor": 1,
+        "legendType": "equal_ranges",
+        "resultSubdivisionFactor": 1,
+        "colors": [[0, 80, 0], [0, 255, 0], [255, 255, 0], [255, 153, 0], [255, 0, 0]],
+        "steps": ["A", "B", "C", "D", "E"],
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "info": "The study assesses annual wind comfort using Lawson criteria by analyzing the airflow patterns and wind speed distribution of the location throughout the year.",
+        "unit": "VDI 3787",
+        "stepsNames": [
+          "Prolonged sitting or standing",
+          "Brief sitting or standing",
+          "Slow strolling",
+          "Brisk walking",
+          "Dangerous"
+        ]
+      }
+    },
+    "thermal-comfort-statistics": {
+      "heat-stress": {
+        "colors": [[255, 245, 245], [252, 189, 159], [250, 100, 37], [219, 31, 10], [104, 3, 16]],
+        "steps": [0, 100],
+        "resultSubdivisionFactor": 3,
+        "barsSubdivisionFactor": 2,
+        "legendSubdivisionFactor": 2,
+        "colorInterpolation": "binned",
+        "legendType": "equal_ranges",
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "unit": "% of time",
+        "info": "The study visualizes the percentage of time during which the UTCI (Universal Thermal Climate Index) temperature exceeds 26 degrees Celsius, indicating periods of heat stress."
+      },
+      "cold-stress": {
+        "colors": [
+          [240, 244, 255],
+          [209, 232, 255],
+          [181, 218, 255],
+          [128, 169, 217],
+          [28, 62, 140]
+        ],
+        "steps": [0, 100],
+        "resultSubdivisionFactor": 3,
+        "barsSubdivisionFactor": 2,
+        "legendSubdivisionFactor": 2,
+        "colorInterpolation": "binned",
+        "legendType": "equal_ranges",
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "unit": "% of time",
+        "info": "The study visualizes the percentage of time during which the UTCI (Universal Thermal Climate Index) temperature falls below 9 degrees Celsius, indicating periods of cold stress."
+      },
+      "thermal-comfort": {
+        "colors": [[28, 62, 140], [128, 169, 217], [255, 255, 255], [250, 100, 37], [156, 25, 5]],
+        "steps": [0, 100],
+        "resultSubdivisionFactor": 5,
+        "barsSubdivisionFactor": 2,
+        "legendSubdivisionFactor": 2,
+        "colorInterpolation": "binned",
+        "legendType": "equal_ranges",
+        "legendMaxHandling": "closed",
+        "legendMinHandling": "closed",
+        "unit": "% of time",
+        "info": "The study visualizes the percentage of time during which the UTCI (Universal Thermal Climate Index) temperature falls within the comfortable range of 9 to 26 degrees Celsius, indicating periods of thermal comfort."
+      }
+    },
+    "thermal-comfort-index": {
+      "colors": [
+        [0, 0, 3],
+        [43, 17, 94],
+        [113, 31, 129],
+        [182, 54, 121],
+        [240, 96, 93],
+        [254, 175, 120],
+        [251, 252, 191]
+      ],
+      "steps": [-40, 46],
+      "resultSubdivisionFactor": 3,
+      "barsSubdivisionFactor": 2,
+      "legendSubdivisionFactor": 2,
+      "colorInterpolation": "binned",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "unit": "ºC",
+      "info": "The study displays a spatial analysis of perceived outdoor temperature using the Universal Thermal Climate Index (UTCI), taking into account climatic input data, solar radiation, and variations in surface materials."
+    },
+    "daylight-availability": {
+      "barsSubdivisionFactor": 2,
+      "colorInterpolation": "binned",
+      "colors": [[0, 0, 0], [110, 0, 153], [255, 0, 0], [255, 255, 102], [255, 255, 230]],
+      "steps": [0, 100],
+      "info": "The study maps daylight availability by measuring the percentage of each area receiving direct sunlight for more than half of the time.",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "legendSubdivisionFactor": 2,
+      "resultSubdivisionFactor": 1,
+      "unit": "%",
+      "legendType": "equal_ranges"
+    },
+    "direct-sun-hours": {
+      "barsSubdivisionFactor": 2,
+      "colorInterpolation": "binned",
+      "colors": [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]],
+      "steps": [0, 12],
+      "info": "The study analyzes the spatial distribution of direct sun hours, identifying temporal and seasonal variations in solar exposure across urban spaces.",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "legendSubdivisionFactor": 2,
+      "legendType": "equal_ranges",
+      "resultSubdivisionFactor": 5,
+      "unit": "hours"
+    },
+    "sky-view-factors": {
+      "colors": [[8, 64, 129], [43, 140, 190], [124, 204, 196], [204, 235, 198], [247, 252, 240]],
+      "steps": [0, 100],
+      "resultSubdivisionFactor": 3,
+      "barsSubdivisionFactor": 2,
+      "legendSubdivisionFactor": 2,
+      "colorInterpolation": "binned",
+      "legendType": "equal_ranges",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "unit": "%",
+      "info": "The study presents a spatial analysis of sky view factors, quantifying the degree of sky obstruction within the urban environment."
+    },
+    "solar-radiation": {
+      "barsSubdivisionFactor": 2,
+      "colorInterpolation": "binned",
+      "colors": [[75, 107, 169], [170, 200, 247], [245, 239, 103], [239, 156, 21], [234, 38, 0]],
+      "steps": [0, 1000],
+      "info": "The study provides a spatial analysis of incident solar radiation, integrating geometric and climatic parameters to evaluate the distribution of shortwave energy across different urban surfaces.",
+      "legendMaxHandling": "closed",
+      "legendMinHandling": "closed",
+      "legendSubdivisionFactor": 2,
+      "legendType": "equal_ranges",
+      "resultSubdivisionFactor": 3,
+      "unit": "kWh/m2"
+    }
+  },
+  "validations": {
+    "wind-comfort": [
+      {
+        "key": "wind-speed",
+        "op": "exists"
+      },
+      {
+        "key": "wind-direction",
+        "op": "exists"
+      }
+    ],
+    "wind-speed": [
+      {
+        "key": "wind-speed",
+        "op": "exists"
+      },
+      {
+        "key": "wind-direction",
+        "op": "exists"
+      }
+    ],
+    "heat-stress": [],
+    "cold-stress": [],
+    "thermal-comfort": [],
+    "annual-wind-comfort": [
+      {
+        "key": "wind-data",
+        "op": "exists"
+      }
+    ],
+    "thermal-comfort-statistics": [],
+    "pedestrian-wind-comfort": [
+      {
+        "key": "wind-data",
+        "op": "exists"
+      }
+    ],
+    "thermal-comfort-index": [],
+    "daylight-availability": [],
+    "direct-sun-hours": [],
+    "sky-view-factors": [],
+    "solar-radiation": []
+  },
+  "env": "prod",
+  "sagemakerEndpoint": "multimodel-test-env19"
+}

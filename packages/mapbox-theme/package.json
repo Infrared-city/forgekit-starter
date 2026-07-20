@@ -1,0 +1,27 @@
+{
+  "name": "@infrared/mapbox-theme",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Mapbox GL JS theme and styling configurations",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./layers": "./src/layers.ts",
+    "./markers": "./src/markers.ts",
+    "./cursors": "./src/cursors.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "mapbox",
+    "mapbox-gl",
+    "map-styling",
+    "markers",
+    "layers"
+  ],
+  "peerDependencies": {
+    "mapbox-gl": ">=2.0.0"
+  }
+}

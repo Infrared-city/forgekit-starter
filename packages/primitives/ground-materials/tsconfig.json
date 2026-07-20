@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    // Inherit baseUrl from root (monorepo root). DO NOT override baseUrl here --
+    // a local baseUrl of "." would cause the `react/` sub-directory to shadow
+    // the real `react` npm package when TypeScript resolves bare specifiers.
+    //
+    // paths values are relative to the inherited baseUrl (monorepo root).
+    "paths": {
+      "@forge-kit/plugin-contracts": ["./packages/interfaces/shared/index.ts"],
+      "@forge-kit/plugin-contracts/*": ["./packages/interfaces/shared/*"],
+      "@forge-kit/geo-core": ["./packages/primitives/geo-core/index.ts"],
+      "@forge-kit/geo-core/*": ["./packages/primitives/geo-core/*"]
+    }
+  },
+  // include/exclude are relative to this tsconfig file's location.
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["__tests__"]
+}

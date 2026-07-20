@@ -1,0 +1,57 @@
+{
+  "name": "@infrared/analysis-colors",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Color scales and utilities for analysis visualization",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrared-city/forge-kit.git",
+    "directory": "packages/analysis-colors"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./utci": {
+      "types": "./dist/utci.d.ts",
+      "development": "./src/utci.ts",
+      "default": "./dist/utci.js"
+    },
+    "./heatmap": {
+      "types": "./dist/heatmap.d.ts",
+      "development": "./src/heatmap.ts",
+      "default": "./dist/heatmap.js"
+    },
+    "./wind": {
+      "types": "./dist/wind.d.ts",
+      "development": "./src/wind.ts",
+      "default": "./dist/wind.js"
+    },
+    "./helpers": {
+      "types": "./dist/helpers.d.ts",
+      "development": "./src/helpers.ts",
+      "default": "./dist/helpers.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "keywords": [
+    "color-scales",
+    "data-visualization",
+    "analysis",
+    "utci",
+    "heatmap",
+    "climate"
+  ]
+}

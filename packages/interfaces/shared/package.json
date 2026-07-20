@@ -1,0 +1,44 @@
+{
+  "name": "@forge-kit/plugin-contracts",
+  "version": "0.1.0",
+  "description": "Plugin contract types and validators for forge-kit plugin architecture",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrared-city/forge-kit.git",
+    "directory": "packages/interfaces/shared"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "index.ts",
+    "plugin-types.ts",
+    "plugin-utils.ts"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.90.20",
+    "@thatopen/fragments": "^3.3.5",
+    "deck.gl": "^9.2.6",
+    "mapbox-gl": "^3.0.0",
+    "react": "^19.2.0",
+    "three": "^0.182.0"
+  }
+}

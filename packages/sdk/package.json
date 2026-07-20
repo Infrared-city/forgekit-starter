@@ -1,0 +1,62 @@
+{
+  "name": "@infrared-city/infrared-sdk-ts",
+  "version": "0.12.3",
+  "infraredPyVersion": "0.4.10",
+  "description": "TypeScript SDK for the Infrared City API (vendored build — see README.md at repo root for provenance)",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./analyses": {
+      "types": "./dist/analyses.d.ts",
+      "import": "./dist/analyses.js",
+      "require": "./dist/analyses.cjs"
+    },
+    "./tiling": {
+      "types": "./dist/tiling.d.ts",
+      "import": "./dist/tiling.js",
+      "require": "./dist/tiling.cjs"
+    },
+    "./utilities": {
+      "types": "./dist/utilities.d.ts",
+      "import": "./dist/utilities.js",
+      "require": "./dist/utilities.cjs"
+    },
+    "./jobs": {
+      "types": "./dist/jobs.d.ts",
+      "import": "./dist/jobs.js",
+      "require": "./dist/jobs.cjs"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks.d.ts",
+      "import": "./dist/webhooks.js",
+      "require": "./dist/webhooks.cjs"
+    },
+    "./billing": {
+      "types": "./dist/billing.d.ts",
+      "import": "./dist/billing.js",
+      "require": "./dist/billing.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "mitt": "^3.0.1",
+    "p-limit": "^7.3.0",
+    "polygon-clipping": "^0.15.7",
+    "uuid": "^14.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://infrared.city/docs/sdk"
+}

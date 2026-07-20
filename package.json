@@ -1,0 +1,19 @@
+{
+  "name": "forgekit-starter",
+  "private": true,
+  "packageManager": "bun@1.3.8",
+  "scripts": {
+    "dev:client": "bun run --cwd apps/base/client dev",
+    "dev:api": "bun run --cwd apps/base/api dev",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "check": "biome check --write .",
+    "build": "bun run --cwd apps/base/client build",
+    "typecheck": "bun run --cwd apps/base/client typecheck",
+    "test": "bun run --filter './apps/*' --filter './packages/*' test:run"
+  },
+  "workspaces": ["apps/base/*", "packages/*", "packages/primitives/*", "packages/interfaces/*"],
+  "devDependencies": {
+    "@biomejs/biome": "2.4.2"
+  }
+}

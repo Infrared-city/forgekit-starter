@@ -1,0 +1,92 @@
+{
+  "name": "@forge-kit/buildings",
+  "version": "0.1.0",
+  "description": "Buildings geometry processing - mesh transforms, coordinate math, DeckGL layers",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrared-city/forge-kit.git",
+    "directory": "packages/primitives/buildings"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "development": "./core/index.ts",
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
+    },
+    "./react": {
+      "development": "./react/index.ts",
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist",
+    "core",
+    "react",
+    "index.ts",
+    "plugin.tsx"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@forge-kit/geo-core": "workspace:*",
+    "@turf/boolean-point-in-polygon": "^7.3.4",
+    "@turf/boolean-valid": "^7.3.4",
+    "@turf/kinks": "^7.3.4"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "zustand": ">=4",
+    "@tanstack/react-query": ">=5",
+    "deck.gl": ">=9",
+    "@deck.gl/core": ">=9",
+    "@deck.gl/layers": ">=9",
+    "@deck.gl/mesh-layers": ">=9",
+    "@deck.gl/react": "^9.2.6",
+    "@luma.gl/engine": "^9.2.6",
+    "@luma.gl/shadertools": "^9.2.6",
+    "lucide-react": "^0.563.0",
+    "mjolnir.js": "^3.0.1",
+    "three": "^0.182.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "zustand": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "deck.gl": {
+      "optional": true
+    },
+    "@deck.gl/core": {
+      "optional": true
+    },
+    "@deck.gl/layers": {
+      "optional": true
+    },
+    "@deck.gl/mesh-layers": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "vitest": "^2.1.8"
+  }
+}
