@@ -72,6 +72,159 @@ If you're deploying with an AI coding agent driving Wrangler for you
 step-by-step account/wrangler-login/deploy sequence — this skill only adds
 the two-Worker split and secret above.
 
+## Beyond the key-hiding Worker: Cloudflare's toolbox
+
+The Worker in this template does one job: hide `INFRARED_API_KEY`. But the
+same Worker can do much more — if your app idea needs to *remember* things
+(saved sites, user accounts, uploaded files), Cloudflare has a piece for
+each. The whole toolbox in one picture:
+
+| Restaurant | Your app | Cloudflare | Reach for it when… |
+|---|---|---|---|
+| dining room | the page users see | Pages (`apps/base/client`) | always — it's your UI |
+| kitchen | server logic + the API key | Workers (`apps/base/api`) | always — already here |
+| recipe book | a real database | **D1** (SQLite) | you have rows: saved sites, users, comments |
+| walk-in fridge | files & images | **R2** (object storage) | users upload/download files; you store result exports |
+| sticky notes | quick key→value cache | **KV** | sessions, config, cache — small, fast, expires |
+| lock on the door | user accounts | **Better Auth** (you add it) | users log into *your* app — not the same as Infrared sign-in, see below |
+
+> Two one-liners worth keeping: *"serverless" doesn't mean no servers — it
+> means you don't think about them.* And *"edge"* = your code runs near the
+> user (someone in Tokyo hits a Tokyo machine).
+
+### D1 — a database for your app
+
+SQLite that Cloudflare runs for you; scales to zero — free when idle (free
+tier: 5 GB, 5M row-reads + 100k row-writes a day). Reach for it the moment
+your app has *rows* — saved analyses, a list of sites, user notes.
+
+```toml
+# apps/base/api/wrangler.toml
+[[d1_databases]]
+binding = "DB"
+database_name = "my-climate-app-db"
+database_id = "..."            # from: wrangler d1 create my-climate-app-db
+migrations_dir = "drizzle"
+```
+
+Then from any Worker route, `c.env.DB` is your database:
+
+```ts
+await c.env.DB.prepare("INSERT INTO sites (name, geojson) VALUES (?, ?)").bind(name, geojson).run()
+const { results } = await c.env.DB.prepare("SELECT * FROM sites").all()
+```
+
+Schema lives in migration files; apply them with
+`wrangler d1 migrations apply my-climate-app-db --local` (then `--remote`
+for production). Tell your agent "add a D1 database to save drawn sites" and
+it will wire the binding, a migration, and the routes.
+
+### R2 & KV — files vs. quick values
+
+- **R2** = files: images, GeoJSON, PDF exports, an uploaded IFC model.
+  Killer feature: **zero egress fees** (S3 charges for downloads; R2 doesn't).
+- **KV** = tiny key→value pairs that can expire: a cached result, a session,
+  a setting. Not for anything needing exact/instant consistency.
+
+```ts
+// R2 — store & fetch a file
+await c.env.BUCKET.put('exports/site-42.pdf', pdfBytes)
+const obj = await c.env.BUCKET.get('exports/site-42.pdf')
+
+// KV — cache a value for an hour
+await c.env.CACHE.put('last-result:42', JSON.stringify(data), { expirationTtl: 3600 })
+const cached = await c.env.CACHE.get('last-result:42', 'json')
+```
+
+### Auth — user accounts for YOUR app
+
+**Important distinction, or you'll build two login systems by accident:**
+
+- This template *already* signs users into **Infrared** (so it can run
+  simulations on their account) — that's the sign-in on the client, handled
+  by the Worker. Leave it alone.
+- **Cloudflare has no built-in user auth.** If *your* app needs its own
+  accounts (so a user saves *their* sites and sees them next visit), you add
+  it — **Better Auth** (free, open-source) is the standard choice, and it
+  stores users right in your D1 database.
+
+Two beginner traps, both real, both cost an afternoon:
+
+- Add `compatibility_flags = ["nodejs_compat"]` to `wrangler.toml` — Better
+  Auth needs it.
+- Don't use bcrypt — it blows the Workers 10 ms CPU limit (Error 1102). Use
+  a Web Crypto PBKDF2 hasher instead (the general `cloudflare` skill has the
+  ~25-line snippet).
+
+### Wrangler CLI cheat-sheet
+
+Wrangler is the terminal tool that talks to Cloudflare. Your agent runs these
+for you — the ones worth recognising (all verified against current docs):
+
+```bash
+wrangler login                         # sign in (opens a browser)
+wrangler whoami                        # which account am I on?
+wrangler dev                           # run locally  (http://localhost:8787)
+wrangler types                         # regenerate Env types after adding a binding
+wrangler deploy                        # deploy the Worker (apps/base/api)
+wrangler pages deploy dist             # deploy the static client (apps/base/client)
+wrangler secret put INFRARED_API_KEY   # set a production secret (local: .dev.vars)
+wrangler tail                          # stream live production logs
+
+# D1 (database)
+wrangler d1 create my-climate-app-db
+wrangler d1 migrations create my-climate-app-db add_sites
+wrangler d1 migrations apply my-climate-app-db --local     # then --remote for prod
+wrangler d1 execute my-climate-app-db --command "SELECT * FROM sites"
+
+# storage
+wrangler r2 bucket create my-files
+wrangler kv namespace create CACHE     # v4 syntax: "kv namespace", not "kv:namespace"
+```
+
+> **The one v4 trap:** commands touching data (`d1`, `kv`, `r2`) now default
+> to your *local* copy. Add `--remote` to read/write the real production
+> resource — forget it and you'll swear "the data isn't saving" while it sits
+> in a local file.
+
+Our client's deploy script uses `wrangler pages deploy`; Cloudflare now steers
+brand-new projects to `wrangler deploy` with a static-assets directory
+instead. Both work — the template stays on Pages, no action needed.
+
+### What you must do in the dashboard (the CLI can't)
+
+A few things have no `wrangler` command — you (a human) click them once at
+[dash.cloudflare.com](https://dash.cloudflare.com):
+
+- **Turn on R2 before using it.** Storage & databases → R2 → Overview →
+  complete the checkout flow. Until you do, `wrangler r2` fails with
+  `10042 NotEntitled`. (No charge on the free tier — it just has to be enabled.)
+- **API token for auto-deploy from GitHub.** My Profile → API Tokens →
+  Create Token (permissions: Workers Scripts Edit + Cloudflare Pages Edit).
+  Only needed if you wire up CI — plain `wrangler deploy` from your laptop uses
+  your login.
+- **Connect a repo for auto-deploy.** Workers & Pages → Create application →
+  import a repository; first time, GitHub asks you to authorise the
+  "Cloudflare Workers and Pages" app. There's no CLI for this git link.
+- **Upgrade to Workers Paid ($5/mo).** Workers & Pages → Plans. You're only
+  forced here past real usage — Workers AI over 10k neurons/day, any Durable
+  Objects, or a client with 20k+ files.
+
+### Gotchas & free-tier limits that bite
+
+- **KV:** expiry under 60 s isn't supported, and you can only write the *same
+  key* once per second (429 if you hammer a counter). Free: 1,000 writes/day.
+- **D1:** 100k row-*writes*/day on free — a chatty app hits the write cap long
+  before the read cap.
+- **Workers CPU is 10 ms/request on free** — that's why bcrypt fails
+  (Error 1102) and you use the PBKDF2 hasher instead.
+- **Upload size:** request bodies cap at 100 MB on Free/Pro accounts (a big
+  IFC model → 413).
+
+For the full step-by-step (account setup, `wrangler login`, a complete
+todo-app build with D1 + auth), use the general **`cloudflare`** skill — this
+section is just the map.
+
 ## Preset workshop challenges
 
 Each of these is a self-contained prompt you can hand to your coding agent.
