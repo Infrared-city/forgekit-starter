@@ -1,9 +1,9 @@
----
-name: climate-app-cloudflare
-description: Use when building or deploying a climate-aware app from this forgekit-starter template — adding a new analysis (wind, UTCI, solar, flood, tree canopy), wiring the Infrared SDK, or deploying to Cloudflare Pages/Workers. Triggers on "deploy my climate app", "add an analysis", "wire up wind comfort", "climate workshop challenge", "deploy to cloudflare" in this repo.
----
-
 # Building climate-aware apps on forgekit-starter + Cloudflare
+
+> **For your AI coding agent (and you).** Deploying this app to Cloudflare, or
+> adding an analysis, database, or storage? Point your agent at this file —
+> "read docs/cloudflare.md". It covers the deploy path, the D1/R2/KV toolbox,
+> Wrangler commands, and the dashboard steps.
 
 This repo is a trimmed fork of Infrared's internal app template: a React +
 Vite client, a Hono Cloudflare Worker that hides your Infrared API key, and
@@ -12,8 +12,9 @@ microclimate simulations (wind comfort, thermal comfort/UTCI, solar,
 daylight, sky view factor, ground materials, vegetation).
 
 For general Cloudflare mechanics (Wrangler basics, Pages vs Workers, D1, R2,
-secrets, "what should I build on Cloudflare") **use the general `cloudflare`
-skill first** — this skill only covers what's specific to this template.
+secrets, "what should I build on Cloudflare") the official docs at
+**developers.cloudflare.com** are the reference — this guide only covers what's
+specific to this template.
 
 ## Architecture in 30 seconds
 
@@ -68,9 +69,9 @@ Rename the `name` fields in both `wrangler.toml` files (currently
 project names must be unique per account.
 
 If you're deploying with an AI coding agent driving Wrangler for you
-(the workshop's intended flow), the general `cloudflare` skill has the
-step-by-step account/wrangler-login/deploy sequence — this skill only adds
-the two-Worker split and secret above.
+(the workshop's intended flow), the Wrangler cheat-sheet below plus
+developers.cloudflare.com cover the account/login/deploy sequence — this
+guide adds the two-Worker split and secret above.
 
 ## Beyond the key-hiding Worker: Cloudflare's toolbox
 
@@ -153,8 +154,8 @@ Two beginner traps, both real, both cost an afternoon:
 - Add `compatibility_flags = ["nodejs_compat"]` to `wrangler.toml` — Better
   Auth needs it.
 - Don't use bcrypt — it blows the Workers 10 ms CPU limit (Error 1102). Use
-  a Web Crypto PBKDF2 hasher instead (the general `cloudflare` skill has the
-  ~25-line snippet).
+  a Web Crypto PBKDF2 hasher instead (ask your agent for the ~25-line
+  Web Crypto version).
 
 ### Wrangler CLI cheat-sheet
 
@@ -222,8 +223,8 @@ A few things have no `wrangler` command — you (a human) click them once at
   IFC model → 413).
 
 For the full step-by-step (account setup, `wrangler login`, a complete
-todo-app build with D1 + auth), use the general **`cloudflare`** skill — this
-section is just the map.
+build with D1 + auth), see **developers.cloudflare.com** — this section is
+just the map.
 
 ## Preset workshop challenges
 

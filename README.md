@@ -50,11 +50,11 @@ account/token your workshop provided). **Mapbox token:** free at mapbox.com.
 
 ## Deploying to Cloudflare
 
-See the bundled `.claude/skills/climate-app-cloudflare/SKILL.md` — it covers
-the two-Worker deploy (Pages for the client, a Worker for the API proxy),
-required secrets, and gives you copy-paste prompts for the workshop's preset
-challenges. It builds on the general-purpose `cloudflare` skill for
-Wrangler/Pages/D1/R2 mechanics.
+See **[`docs/cloudflare.md`](./docs/cloudflare.md)** — it covers the
+two-Worker deploy (Pages for the client, a Worker for the API proxy),
+required secrets, the D1 / R2 / KV storage toolbox, a Wrangler cheat-sheet,
+and copy-paste prompts for the workshop's preset challenges. Point your AI
+coding agent at it: "read docs/cloudflare.md".
 
 Quick version:
 ```bash

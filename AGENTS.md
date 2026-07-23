@@ -80,9 +80,10 @@ bun run --cwd apps/base/client dev   # Vite on :3001, proxies /api -> :8787
 
 ## Deploying
 
-See `.claude/skills/climate-app-cloudflare/SKILL.md` for the full Cloudflare
-deploy sequence (two independent deploys: Pages for the client, a Worker for
-the API) and ready-to-use workshop challenge prompts.
+See **`docs/cloudflare.md`** for the full Cloudflare deploy sequence (two
+independent deploys: Pages for the client, a Worker for the API), the
+D1 / R2 / KV toolbox, a Wrangler cheat-sheet, and ready-to-use workshop
+challenge prompts.
 
 ## Where deeper docs live
 
@@ -91,4 +92,4 @@ the API) and ready-to-use workshop challenge prompts.
 | `README.md` | What's here, what was removed from the original forge-kit `apps/base`, known follow-ups |
 | `apps/base/client/docs/DOMAIN_TEMPLATE.md` | File-by-file pattern for adding a new analysis domain |
 | `apps/base/client/README-INFRARED.md` | Data-flow architecture: pure-function layers, cross-domain query invalidation |
-| `.claude/skills/climate-app-cloudflare/SKILL.md` | Cloudflare deploy steps + preset workshop challenges |
+| `docs/cloudflare.md` | Cloudflare deploy steps, D1/R2/KV, Wrangler cheat-sheet, workshop challenges |
