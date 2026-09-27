@@ -249,8 +249,10 @@ letting the agent make small implementation choices along the way.
 
 1. **Wind comfort dashboard** — for a drawn site, run a wind comfort (PWC)
    analysis for summer vs. winter and show both side by side.
-   *SDK call: `client.wind` / the `analysis` primitive's `runArea` with a PWC
-   payload — see `packages/primitives/analysis/react/analysis.area-run-api.ts`.*
+   *SDK call: `client.runAreaAndWait` with `analysisType:
+   'pedestrian-wind-comfort'`, `criteria` and station `weatherData` for each
+   season — see `apps/examples/src/examples/WindAround.tsx` and AGENTS.md
+   "SDK reference".*
 
 2. **Thermal comfort (UTCI) heat-check** — run UTCI for a site at a hot
    summer afternoon time period and flag the fraction of the area above a
@@ -266,8 +268,9 @@ letting the agent make small implementation choices along the way.
 
 5. **Ground-material heat contribution** — use the ground-materials
    primitive to swap a site's paving/grass mix and compare the resulting
-   UTCI or wind result — a before/after "what if we added more grass"
-   story.
+   UTCI result — a before/after "what if we added more grass" story. (Only
+   the two thermal analyses read ground materials; wind reads buildings
+   only.)
 
 Encourage students to change ONE thing about a challenge (a different city,
 a different time of year, a different material mix) rather than starting

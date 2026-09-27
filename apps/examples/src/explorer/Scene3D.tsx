@@ -79,7 +79,10 @@ function facadeMesh(result: FacadeResult, scale: ColorScale): THREE.Mesh {
         const v = s.values[j * s.nu + i]
         if (v === null || v === undefined) continue
         const c = colorOf(scale, v).map((x) => x / 255)
-        const p = (a: number, b: number) => {
+        // `origin` is the centre of cell (0, 0): a corner is half a cell back.
+        const p = (ci: number, cj: number) => {
+          const a = ci - 0.5
+          const b = cj - 0.5
           const x = s.origin[0] + (a * s.uAxis[0] + b * s.vAxis[0]) * g
           const y = s.origin[1] + (a * s.uAxis[1] + b * s.vAxis[1]) * g
           const z = s.origin[2] + (a * s.uAxis[2] + b * s.vAxis[2]) * g
