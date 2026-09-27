@@ -4,11 +4,13 @@ import { FacadeView } from './examples/FacadeView'
 import { HeatMap } from './examples/HeatMap'
 import { SunHours } from './examples/SunHours'
 import { WindAround } from './examples/WindAround'
+import { Explorer } from './explorer/Explorer'
 import { getAppPassword, setAppPassword } from './lib/infrared'
 import './styles.css'
 
 // Add your own page here: one entry, one component.
 const PAGES = {
+  demo: { label: 'Demo explorer', Page: Explorer },
   sun: { label: 'Sun hours', Page: SunHours },
   wind: { label: 'Wind', Page: WindAround },
   heat: { label: 'UTCI heat', Page: HeatMap },
@@ -17,8 +19,9 @@ const PAGES = {
 type PageId = keyof typeof PAGES
 
 function currentPage(): PageId {
-  const id = window.location.hash.replace('#', '')
-  return id in PAGES ? (id as PageId) : 'sun'
+  // "#demo?a=utci" -> "demo": the part after "?" belongs to the page.
+  const id = window.location.hash.replace('#', '').split('?')[0]
+  return id in PAGES ? (id as PageId) : 'demo'
 }
 
 /** Only needed when your deployed Worker has an APP_PASSWORD secret. */
