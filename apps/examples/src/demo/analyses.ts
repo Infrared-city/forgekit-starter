@@ -10,11 +10,24 @@ export type AnalysisId =
   | 'utci'
   | 'solar'
   | 'sun-hours'
+  | 'sun-hours-winter'
   | 'svf'
   | 'daylight'
+  | 'daylight-winter'
   | 'wind'
   | 'wind-comfort'
   | 'facade-sun'
+
+/**
+ * Pairs an analysis with its winter (leaf-off) twin, same geometry, same
+ * kind of period, computed after staging turned deciduous leaf-off on
+ * ("Leaf-off for DA/DSH", lambda-models #418). See `WINTER_OF` in
+ * `Explorer.tsx` for the summer/winter toggle.
+ */
+export const WINTER_OF: Partial<Record<AnalysisId, AnalysisId>> = {
+  daylight: 'daylight-winter',
+  'sun-hours': 'sun-hours-winter',
+}
 
 type Period = {
   start: { month: number; day: number; hour: number }
@@ -61,6 +74,12 @@ const EQUINOX_DAY: Period = {
 const DECEMBER_DAYS: Period = {
   start: { month: 12, day: 1, hour: 9 },
   end: { month: 12, day: 31, hour: 15 },
+}
+// Same day and hours as EQUINOX_DAY, shifted to the winter solstice: DSH's
+// winter twin (leaf-off on staging changes the trees, not the geometry).
+const WINTER_SOLSTICE_DAY: Period = {
+  start: { month: 12, day: 21, hour: 8 },
+  end: { month: 12, day: 21, hour: 17 },
 }
 const WHOLE_YEAR: Period = {
   start: { month: 1, day: 1, hour: 0 },
@@ -119,6 +138,22 @@ export const ANALYSES: readonly DemoAnalysis[] = [
       'How many hours of direct sun a spot gets on one day. The sun is low in March, so long shadows show where courtyards, the narrow canyon and north sides of blocks stay in the shade.',
   },
   {
+    id: 'sun-hours-winter',
+    label: 'Sun hours (winter)',
+    analysisType: 'direct-sun-hours',
+    unit: 'hours',
+    min: 0,
+    max: 10,
+    diff: 6,
+    ramp: 'sun',
+    period: WINTER_SOLSTICE_DAY,
+    needsWeather: false,
+    uses: ALL,
+    when: '21 December (winter solstice), 08:00-17:00',
+    explain:
+      "The same sun-hours question at the darkest time of year, with staging's deciduous leaf-off model on. The sun is even lower than at the equinox, and bare tree crowns let far more of it through than a leafy summer crown would.",
+  },
+  {
     id: 'svf',
     label: 'Sky view factor',
     analysisType: 'sky-view-factors',
@@ -148,6 +183,22 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     when: 'December, 09:00-15:00 (the darkest month)',
     explain:
       'The share of daytime hours with enough daylight on the ground, in December. Deep canyons, courtyards and the north side of tall blocks get too little; open squares and the park are bright.',
+  },
+  {
+    id: 'daylight-winter',
+    label: 'Daylight (leaf-off)',
+    analysisType: 'daylight-availability',
+    unit: '% of hours',
+    min: 0,
+    max: 100,
+    diff: 50,
+    ramp: 'sky',
+    period: DECEMBER_DAYS,
+    needsWeather: false,
+    uses: ALL,
+    when: "December, 09:00-15:00, with staging's deciduous leaf-off model on",
+    explain:
+      'The same December daylight question, recomputed after staging turned on deciduous leaf-off: bare tree crowns let much more daylight through than a leafy crown would, so the park reads brighter under the trees.',
   },
   {
     id: 'wind',
