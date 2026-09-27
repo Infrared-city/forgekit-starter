@@ -45,12 +45,14 @@ if (!version) {
 registry = registry.replace(/\/+$/, '')
 const token = process.env.NPM_TOKEN || process.env.NODE_AUTH_TOKEN || process.env.GITHUB_TOKEN
 const headers = token ? { Authorization: `Bearer ${token}` } : {}
-if (!token && registry.includes('npm.pkg.github.com')) {
+const registryHost = new URL(registry).host
+if (!token && registryHost === 'npm.pkg.github.com') {
   console.error('Set NPM_TOKEN to a GitHub token with read:packages (GitHub Packages needs one).')
   process.exit(1)
 }
 
-const docRes = await fetch(`${registry}/${PKG.replace('/', '%2f')}`, { headers })
+// Scoped name in a registry URL: @scope%2fname
+const docRes = await fetch(`${registry}/@${encodeURIComponent(PKG.slice(1))}`, { headers })
 if (!docRes.ok) throw new Error(`package document: HTTP ${docRes.status}`)
 const doc = await docRes.json()
 const meta = doc.versions?.[version]
@@ -64,7 +66,12 @@ if (meta.license !== 'Apache-2.0') {
   throw new Error(`license is "${meta.license}", not Apache-2.0 — stop and ask before vendoring`)
 }
 
-const tgzRes = await fetch(meta.dist.tarball, { headers })
+// Send the token only to the registry's own host.
+const tarballUrl = new URL(meta.dist.tarball)
+if (tarballUrl.protocol !== 'https:') throw new Error('tarball URL must be https')
+const tgzRes = await fetch(tarballUrl, {
+  headers: tarballUrl.host === registryHost ? headers : {},
+})
 if (!tgzRes.ok) throw new Error(`tarball: HTTP ${tgzRes.status}`)
 const tgz = Buffer.from(await tgzRes.arrayBuffer())
 const [algo, expected] = meta.dist.integrity.split('-')
