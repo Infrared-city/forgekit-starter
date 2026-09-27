@@ -224,7 +224,7 @@ mutation.mutate({
 ## Development
 
 ```bash
-bun run --cwd packages/primitives/vegetation build
-bun run --cwd packages/primitives/vegetation typecheck
-bun run --cwd packages/primitives/vegetation test:run
+npm run build --workspace packages/primitives/vegetation
+npm run typecheck --workspace packages/primitives/vegetation
+npm run test:run --workspace packages/primitives/vegetation
 ```

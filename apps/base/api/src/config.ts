@@ -15,4 +15,7 @@ export interface Env {
   // exposed to the bundle. Set with `wrangler secret put GOOGLE_MAPS_API_KEY`;
   // local dev: drop into apps/base/api/.dev.vars.
   GOOGLE_MAPS_API_KEY: string
+  // Optional, comma-separated browser origins allowed to call this Worker
+  // (for example "https://my-app.pages.dev"). Unset = the list in index.ts.
+  ALLOWED_ORIGINS?: string
 }

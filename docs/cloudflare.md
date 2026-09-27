@@ -19,17 +19,22 @@ specific to this template.
 ## Architecture in 30 seconds
 
 ```
-apps/base/client   (Cloudflare Pages)  --/api/*-->  apps/base/api  (Cloudflare Worker)
-                                                            |
-                                                    @infrared-city/infrared-sdk-ts
-                                                            |
-                                                  api.infrared.city (real Infrared API key)
+apps/examples or apps/base/client  (Cloudflare Pages, runs the SDK in the browser)
+        |  /api/infrared/*            (presign, submit, status, results link)
+        |  /api/infrared/s3-proxy/*   (S3 uploads + result downloads)
+        v
+apps/base/api  (Cloudflare Worker: adds INFRARED_API_KEY, relays S3)
+        |
+        v
+api.infrared.city/v2 + Infrared's S3 buckets
 ```
 
-The client never holds `INFRARED_API_KEY` — only the Worker does. If you add
-a new SDK call, put it behind a Worker route in
-`apps/base/api/src/domains/infrared-proxy/routes.ts`, not directly in
-client code with the key inlined.
+The SDK (`@infrared-city/infrared-sdk-ts`) runs in the browser, but the
+browser never holds `INFRARED_API_KEY` — only the Worker does. The browser
+client uses `baseUrl = <worker>/infrared` and a placeholder key; the Worker
+replaces it. Public open data (buildings, trees, ground, weather) is read by
+the SDK straight from `geo.infrared.city` and the Overture bucket, with no
+key.
 
 New feature = new "domain": follow `apps/base/client/docs/DOMAIN_TEMPLATE.md`
 for the file layout (store + api hooks + layer + panel component), and
@@ -39,13 +44,12 @@ plugs into the map via `@forge-kit/plugin-contracts`' `MapPlugin` shape.
 ## Local dev loop
 
 ```bash
-bun run --cwd apps/base/api dev       # :8787
-bun run --cwd apps/base/client dev    # :3001, proxies /api -> :8787
+npm run dev                                 # Worker :8787 + examples :3002
+npm run dev --workspace apps/base/client    # the full map app, :3001
 ```
 
-Vite dev already proxies both `/api` (your Worker) and `/infrared-api`
-(direct-to-Infrared, CORS workaround for quick iteration) — see the `server.proxy`
-block in `apps/base/client/vite.config.ts` if you need to adjust targets.
+Vite dev proxies `/api` to your Worker. All SDK traffic (including S3) goes
+through it, in dev and in production.
 
 ## Deploying
 
@@ -56,13 +60,21 @@ Cloudflare Worker (API):
 # 1. API Worker — set the secret ONCE per environment, then deploy
 cd apps/base/api
 wrangler secret put INFRARED_API_KEY --env production
-bun run deploy:production          # or deploy:preview / deploy:dev
+npm run deploy:production          # or deploy:preview / deploy:dev
 
-# 2. Client — point it at the deployed Worker, then deploy
-cd apps/base/client
-# set VITE_API_URL=https://<your-worker>.<subdomain>.workers.dev in .env or CI
-bun run deploy                     # wrangler pages deploy
+# 2. Let your Pages site call the Worker (CORS): in wrangler.toml [vars]
+#    ALLOWED_ORIGINS = "https://<your-app>.pages.dev"
+
+# 3. Client — point it at the deployed Worker, then deploy
+cd apps/examples                   # or apps/base/client
+# set VITE_API_URL=https://<your-worker>.<subdomain>.workers.dev in the root .env
+npm run deploy                     # wrangler pages deploy
 ```
+
+**Warning: a deployed Worker spends YOUR tokens for anyone who can reach
+it.** The `/infrared/*` proxy has no login. CORS stops other web pages, not
+scripts. Before you share the URL, protect the Worker (for example with
+Cloudflare Access), or keep it for local use only.
 
 Rename the `name` fields in both `wrangler.toml` files (currently
 `my-climate-app` / `my-climate-app-api`) before your first deploy — Cloudflare

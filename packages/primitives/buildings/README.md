@@ -133,7 +133,7 @@ const layers = createBuildingMeshLayers(meshes, options)
 ## Development
 
 ```bash
-bun run --cwd packages/primitives/buildings build
-bun run --cwd packages/primitives/buildings typecheck
-bun run --cwd packages/primitives/buildings test:run
+npm run build --workspace packages/primitives/buildings
+npm run typecheck --workspace packages/primitives/buildings
+npm run test:run --workspace packages/primitives/buildings
 ```

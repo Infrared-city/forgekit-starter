@@ -121,7 +121,7 @@ out
 .nuxt
 dist
 # The vendored SDK ships as a prebuilt dist/ — it MUST be tracked, or clones
-# get an empty packages/sdk and `bun install` produces a broken workspace.
+# get an empty packages/sdk and `npm install` produces a broken workspace.
 !packages/sdk/dist/
 
 # Gatsby files

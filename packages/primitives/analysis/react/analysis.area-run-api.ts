@@ -1,9 +1,7 @@
 import {
-  AreaRunError,
   type AreaState,
   AreaTimeoutError,
   type InfraredClient,
-  TiledRunError,
 } from '@infrared-city/infrared-sdk-ts'
 import type { Polygon as GeoJSONPolygon } from 'geojson'
 import { useCallback, useEffect, useRef } from 'react'
@@ -101,7 +99,7 @@ export function computeGridBounds(
  * Convert Float64Array merged grid to nested list with NaN → null.
  */
 export function gridToNestedList(
-  grid: Float64Array,
+  grid: ArrayLike<number>,
   rows: number,
   cols: number,
 ): (number | null)[][] {
@@ -121,7 +119,9 @@ export function gridToNestedList(
  * Compute (min, max) of a Float64Array, ignoring NaN cells. Returns
  * `[undefined, undefined]` when the grid is empty or all-NaN.
  */
-export function computeLegendBounds(grid: Float64Array): [number | undefined, number | undefined] {
+export function computeLegendBounds(
+  grid: ArrayLike<number>,
+): [number | undefined, number | undefined] {
   let min = Number.POSITIVE_INFINITY
   let max = Number.NEGATIVE_INFINITY
   for (let i = 0; i < grid.length; i++) {
@@ -351,9 +351,18 @@ export function createUseRunArea(client: InfraredClient) {
           return
         }
 
-        const result = await client.runAreaAndWait(sdkInput as never, polygon, runOpts)
+        const result = await client.runAreaAndWait(
+          sdkInput as never,
+          polygon as never,
+          {
+            ...runOpts,
+            signal: controller.signal,
+          } as never,
+        )
 
         if (controller.signal.aborted) return
+        // Facade (surface) runs return another shape; this hook draws ground grids only.
+        if (!('mergedGrid' in result)) throw new Error('Expected a ground grid result')
 
         if (result.failedJobs.length > 0) {
           console.warn(
@@ -363,7 +372,15 @@ export function createUseRunArea(client: InfraredClient) {
         }
 
         const [gridRows, gridCols] = result.gridShape
-        const gridBounds = computeGridBounds(polygon, gridRows, gridCols)
+        // Prefer the SDK's own grid extent (it can be padded to the NE).
+        const gridBounds = result.bounds
+          ? {
+              west: result.bounds[0],
+              south: result.bounds[1],
+              east: result.bounds[2],
+              north: result.bounds[3],
+            }
+          : computeGridBounds(polygon, gridRows, gridCols)
         const [minLegend, maxLegend] = computeLegendBounds(result.mergedGrid)
         const totalJobs = lastState?.totalCount ?? 0
         const succeededJobs = Math.max(
@@ -398,8 +415,6 @@ export function createUseRunArea(client: InfraredClient) {
         let message: string
         if (err instanceof AreaTimeoutError) {
           message = `Area analysis timed out after ${AREA_RUN_TIMEOUT_MS / 60_000} min`
-        } else if (err instanceof TiledRunError || err instanceof AreaRunError) {
-          message = err.message
         } else {
           message = err instanceof Error && err.message ? err.message : 'Area analysis failed'
         }

@@ -75,7 +75,7 @@ onSuccess: () => {
 
 ```bash
 cd apps/base/client
-bun install
+npm install
 ```
 
 ### 2. Environment Variables
@@ -102,7 +102,7 @@ INFRARED_BASE_URL=https://api.infrared.dev
 ### 3. Run Development Server
 
 ```bash
-bun run dev
+npm run dev
 ```
 
 Navigate to `/map` to see the integration in action.

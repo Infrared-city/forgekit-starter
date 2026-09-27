@@ -17,12 +17,12 @@ works against the local Python FastAPI backend after the TypeScript Hono cutover
 Evidence captured at task close on 2026-04-07 by running the Python API locally
 on `:9000` and exercising the smoke contract suite + a couple of curl probes:
 
-- ✅ `bun run test` — full monorepo green
-- ✅ `bun run --cwd apps/base/client test` — 23 passing (api/auth/envelope tests)
-- ✅ `bun run --cwd packages/primitives/indoor-analysis test:run` — 71 passing
-- ✅ `bun run --cwd packages/primitives/ground-materials test:run` — 58 passing
-- ✅ `bun run build` — client + workspaces build clean (no `@api/*` imports)
-- ✅ `SMOKE=1 bun run --cwd apps/base/client test:smoke` — 2 passed, 2 skipped
+- ✅ `npm run test` — full monorepo green
+- ✅ `npm run test --workspace apps/base/client` — 23 passing (api/auth/envelope tests)
+- ✅ `npm run test:run --workspace packages/primitives/indoor-analysis` — 71 passing
+- ✅ `npm run test:run --workspace packages/primitives/ground-materials` — 58 passing
+- ✅ `npm run build` — client + workspaces build clean (no `@api/*` imports)
+- ✅ `SMOKE=1 npm run test:smoke --workspace apps/base/client` — 2 passed, 2 skipped
   (skipped probes need a real Bearer; covered by the manual gate below)
   - `GET /` returns `{"status":"ok"}`
   - `GET /openapi.json` returns FastAPI spec with `paths` field
@@ -42,7 +42,7 @@ on `:9000` and exercising the smoke contract suite + a couple of curl probes:
 cd apps/base/api-python && uvicorn src.main:app --reload --port 9000
 
 # Terminal 2 — client (Vite proxy will forward /api/* → http://127.0.0.1:9000)
-bun run dev
+npm run dev
 ```
 
 ## Manual flows (pre-merge user gate)
@@ -74,19 +74,19 @@ autonomous agent can drive end-to-end.
 ## Reproducing the automated validation locally
 
 ```bash
-bun run test                              # whole monorepo — all packages green
-bun run --cwd apps/base/client test       # 23 passing (api/auth/envelope tests)
-bun run --cwd packages/primitives/indoor-analysis test:run    # 71 passing
-bun run --cwd packages/primitives/ground-materials test:run   # 58 passing
-bun run --cwd apps/base/client test:smoke # default: 4 skipped (no SMOKE=1)
-bun run build                             # client + workspaces build clean
+npm run test                              # whole monorepo — all packages green
+npm run test --workspace apps/base/client       # 23 passing (api/auth/envelope tests)
+npm run test:run --workspace packages/primitives/indoor-analysis    # 71 passing
+npm run test:run --workspace packages/primitives/ground-materials   # 58 passing
+npm run test:smoke --workspace apps/base/client # default: 4 skipped (no SMOKE=1)
+npm run build                             # client + workspaces build clean
 ```
 
 ## Smoke contract suite (opt-in, requires API running)
 
 ```bash
 # In a third terminal, with the Python API up on :9000:
-SMOKE=1 SMOKE_BEARER=<id-token> bun run --cwd apps/base/client test:smoke
+SMOKE=1 SMOKE_BEARER=<id-token> npm run test:smoke --workspace apps/base/client
 ```
 
 See `apps/base/client/README.md` for details on `SMOKE_BEARER` and

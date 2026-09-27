@@ -14,15 +14,15 @@
     "test:run": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "deploy": "bun run build && wrangler pages deploy dist --project-name=my-climate-app",
-    "deploy:preview": "bun run build && wrangler pages deploy dist --project-name=my-climate-app --branch=preview"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=my-climate-app",
+    "deploy:preview": "npm run build && wrangler pages deploy dist --project-name=my-climate-app --branch=preview"
   },
   "dependencies": {
-    "@infrared-city/infrared-sdk-ts": "workspace:*",
-    "@infrared/analysis-colors": "workspace:*",
-    "@infrared/design-tokens": "workspace:*",
-    "@infrared/mapbox-theme": "workspace:*",
-    "@infrared/three-theme": "workspace:*",
+    "@infrared-city/infrared-sdk-ts": "*",
+    "@infrared/analysis-colors": "*",
+    "@infrared/design-tokens": "*",
+    "@infrared/mapbox-theme": "*",
+    "@infrared/three-theme": "*",
     "@luma.gl/engine": "^9.2.6",
     "@luma.gl/shadertools": "^9.2.6",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
@@ -56,7 +56,7 @@
     "sonner": "^2.0.7",
     "tailwindcss": "^4.1.18",
     "three": "^0.182.0",
-    "ui": "workspace:*",
+    "ui": "*",
     "web-ifc": "^0.0.75",
     "zustand": "^5.0.10"
   },

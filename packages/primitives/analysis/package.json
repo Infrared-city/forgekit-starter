@@ -49,7 +49,7 @@
   "dependencies": {
     "@turf/boolean-valid": "^7.3.4",
     "@turf/kinks": "^7.3.4",
-    "@infrared-city/infrared-sdk-ts": "workspace:*"
+    "@infrared-city/infrared-sdk-ts": "*"
   },
   "peerDependencies": {
     "react": ">=18",

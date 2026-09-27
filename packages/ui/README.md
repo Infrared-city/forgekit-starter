@@ -44,9 +44,9 @@ import 'ui/styles.css'  // Include styles in your app entry
 ## Development
 
 ```bash
-bun run dev       # Start Vite dev server
-bun run build     # Type-check and build
-bun run lint      # Lint with Biome
+npm run dev       # Start Vite dev server
+npm run build     # Type-check and build
+npm run lint      # Lint with Biome
 ```
 
 ## Package Exports

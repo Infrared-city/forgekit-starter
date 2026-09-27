@@ -1,14 +1,8 @@
-import {
-  WeatherLocationSchema,
-  WeatherService
-} from "./chunk-7IYUPNX4.js";
-import "./chunk-ZYK3RM7N.js";
-import "./chunk-HHRINQ6B.js";
-import "./chunk-MKJTIAHD.js";
-import "./chunk-4RPI3KBZ.js";
-import "./chunk-GOADVAJS.js";
-export {
-  WeatherLocationSchema,
-  WeatherService
-};
-//# sourceMappingURL=utilities.js.map
+/**
+ * The weather entry point.
+ *
+ * The subpath is still named `utilities` because it is a published export
+ * name; nothing behind it calls the utilities service any more. See
+ * `src/weather-static.ts`.
+ */
+export { CATALOG_TTL_MS, clearWeatherCatalogCache, DEFAULT_STATIC_BASE_URL, MAX_STATIC_BYTES, StaticWeatherReader, WeatherService, WeatherServiceError, } from "./weather.js";

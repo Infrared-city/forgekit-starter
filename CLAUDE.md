@@ -1,8 +1,11 @@
 # CLAUDE.md
 
-See [AGENTS.md](./AGENTS.md) — the repo intro, the three-tier structure
-(Core / Optional layer / Reference example), architecture rules, dev
-commands, and deploy steps all live there. Read it before making structural
-changes, especially before adding a dependency to `apps/base/api` or
-`packages/sdk` (Core — keep minimal) versus `packages/primitives/*` or
-`packages/interfaces/*` (Optional layer — fine to extend).
+The full guide for AI coding tools is in AGENTS.md (the same text serves
+Claude Code, Codex, Cursor and others):
+
+@AGENTS.md
+
+Short version: start in `apps/examples`; the API key lives only in
+`apps/base/api/.dev.vars`; all SDK traffic goes through the Worker proxy
+(`/infrared/*` and `/infrared/s3-proxy/*`); every run costs AItokens, so
+check the cost first; pass buildings / trees / ground to the run explicitly.

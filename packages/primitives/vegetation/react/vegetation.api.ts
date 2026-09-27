@@ -116,7 +116,7 @@ export function useVegetationMeshesMutation(sdkClient: VegetationSdkClient) {
         (Math.max(...lons) - Math.min(...lons)) * M_PER_DEG * Math.cos((centerLat * Math.PI) / 180)
       const distanceM = Math.max(Math.sqrt(latSpanM ** 2 + lonSpanM ** 2) / 2, 363)
 
-      const fc = await sdkClient.vegetation.getGeoJson(centerLat, centerLon, distanceM, 'fgb')
+      const fc = await sdkClient.vegetation.getGeoJson(centerLat, centerLon, distanceM)
       const rawArr = (fc?.features ?? []) as Array<Record<string, unknown>>
       const areaFeatures: Record<string, Record<string, unknown>> = {}
       rawArr.forEach((f, i) => {

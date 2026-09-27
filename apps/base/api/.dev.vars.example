@@ -1,9 +1,13 @@
-# Copy to apps/base/api/.dev.vars (gitignored) for local `wrangler dev`.
-# For deployed environments use `wrangler secret put <NAME> --env <env>` instead.
+# Copy this file to apps/base/api/.dev.vars (git ignores .dev.vars) and fill it in.
+# For a deployed Worker use `npx wrangler secret put INFRARED_API_KEY --env production`.
 
-# Your Infrared API key — get one at https://infrared.city (see the workshop
-# signup instructions if this is a course-provided account). Never commit this.
+# Your Infrared API key. Create one in your Infrared account
+# (https://platform.infrared.city) or use the key your workshop gave you.
+# Never commit it, never put it in browser code.
 INFRARED_API_KEY=
 
-# Optional — only needed for the /places autocomplete + geocoding proxy.
+# Optional. Maintainers only: another API base URL (for example staging).
+# INFRARED_BASE_URL=
+
+# Optional. Only for the reference app's /places search (Google Maps Platform key).
 GOOGLE_MAPS_API_KEY=
