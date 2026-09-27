@@ -19,10 +19,9 @@ export type AnalysisId =
   | 'facade-sun'
 
 /**
- * Pairs an analysis with its winter (leaf-off) twin, same geometry, same
- * kind of period, computed after staging turned deciduous leaf-off on
- * ("Leaf-off for DA/DSH", lambda-models #418). See `WINTER_OF` in
- * `Explorer.tsx` for the summer/winter toggle.
+ * Pairs an analysis with its leaf-off twin: same geometry, the week after
+ * leaf fall instead of the week before (see LEAVES_ON_WEEK). See `WINTER_OF`
+ * in `Explorer.tsx` for the "Leaves on / Leaves off" toggle.
  */
 export const WINTER_OF: Partial<Record<AnalysisId, AnalysisId>> = {
   daylight: 'daylight-winter',
@@ -49,10 +48,15 @@ export interface DemoAnalysis {
   /** When the period needs weather rows from the nearest station. */
   period?: Period
   needsWeather: boolean
-  /** Result on building walls (3D) instead of the ground. */
+  /** Result on building walls and roofs (3D) instead of the ground. */
   facades?: boolean
   /** Wind models see buildings only, so the variant cannot change them. */
   buildingsOnly?: boolean
+  /**
+   * The period has this many days: the explorer divides the stored totals by it
+   * and shows a mean per day (a month smooths the hour-by-hour shadow steps).
+   */
+  perDay?: number
   /** Which scene parts the model reads. */
   uses: { trees: boolean; ground: boolean; terrain: boolean }
   when: string
@@ -71,15 +75,18 @@ const EQUINOX_DAY: Period = {
   start: { month: 3, day: 21, hour: 8 },
   end: { month: 3, day: 21, hour: 17 },
 }
-const DECEMBER_DAYS: Period = {
-  start: { month: 12, day: 1, hour: 9 },
-  end: { month: 12, day: 31, hour: 15 },
+// The leaf-fall pair for daylight and sun hours: the model makes deciduous
+// trees bare from November to March (northern hemisphere, from the period's
+// month; lambda-models `season.rs`). The last week of October and the first
+// week of November have almost the same sun, so the difference is the leaves.
+// Seven days also blur the hourly shadow snapshots into smooth edges.
+const LEAVES_ON_WEEK: Period = {
+  start: { month: 10, day: 25, hour: 9 },
+  end: { month: 10, day: 31, hour: 15 },
 }
-// Same day and hours as EQUINOX_DAY, shifted to the winter solstice: DSH's
-// winter twin (leaf-off on staging changes the trees, not the geometry).
-const WINTER_SOLSTICE_DAY: Period = {
-  start: { month: 12, day: 21, hour: 8 },
-  end: { month: 12, day: 21, hour: 17 },
+const LEAVES_OFF_WEEK: Period = {
+  start: { month: 11, day: 1, hour: 9 },
+  end: { month: 11, day: 7, hour: 15 },
 }
 const WHOLE_YEAR: Period = {
   start: { month: 1, day: 1, hour: 0 },
@@ -125,33 +132,35 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     id: 'sun-hours',
     label: 'Sun hours',
     analysisType: 'direct-sun-hours',
-    unit: 'hours',
+    unit: 'h/day',
     min: 0,
-    max: 10,
-    diff: 6,
+    max: 7,
+    diff: 4,
     ramp: 'sun',
-    period: EQUINOX_DAY,
+    period: LEAVES_ON_WEEK,
+    perDay: 7,
     needsWeather: false,
     uses: ALL,
-    when: '21 March (equinox), 08:00-17:00',
+    when: '25-31 October, 09:00-15:00, leaves on: mean hours of direct sun per day (7 at most)',
     explain:
-      'How many hours of direct sun a spot gets on one day. The sun is low in March, so long shadows show where courtyards, the narrow canyon and north sides of blocks stay in the shade.',
+      'How many hours of direct sun a spot gets on a late-October day, while the trees still have their leaves. The autumn sun is low, so long shadows show where the narrow canyon, the north sides of blocks and the ground behind the hill tower stay in the shade.',
   },
   {
     id: 'sun-hours-winter',
-    label: 'Sun hours (winter)',
+    label: 'Sun hours (leaf-off)',
     analysisType: 'direct-sun-hours',
-    unit: 'hours',
+    unit: 'h/day',
     min: 0,
-    max: 10,
-    diff: 6,
+    max: 7,
+    diff: 4,
     ramp: 'sun',
-    period: WINTER_SOLSTICE_DAY,
+    period: LEAVES_OFF_WEEK,
+    perDay: 7,
     needsWeather: false,
     uses: ALL,
-    when: '21 December (winter solstice), 08:00-17:00',
+    when: '1-7 November, 09:00-15:00, deciduous trees bare (7 h/day at most)',
     explain:
-      "The same sun-hours question at the darkest time of year, with staging's deciduous leaf-off model on. The sun is even lower than at the equinox, and bare tree crowns let far more of it through than a leafy summer crown would.",
+      'One week later, after leaf fall. The sun path is almost the same, but bare deciduous crowns let most of the sun through, so their shadows fade. Pines keep their needles and still cast full shadows.',
   },
   {
     id: 'svf',
@@ -177,12 +186,12 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     max: 100,
     diff: 50,
     ramp: 'sky',
-    period: DECEMBER_DAYS,
+    period: LEAVES_ON_WEEK,
     needsWeather: false,
     uses: ALL,
-    when: 'December, 09:00-15:00 (the darkest month)',
+    when: '25-31 October, 09:00-15:00, leaves on',
     explain:
-      'The share of daytime hours with enough daylight on the ground, in December. Deep canyons, courtyards and the north side of tall blocks get too little; open squares and the park are bright.',
+      'The share of daytime hours with enough daylight on the ground in late October, with leafy trees. Deep canyons, courtyards and the north side of tall blocks get too little; open lawns are bright.',
   },
   {
     id: 'daylight-winter',
@@ -193,12 +202,12 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     max: 100,
     diff: 50,
     ramp: 'sky',
-    period: DECEMBER_DAYS,
+    period: LEAVES_OFF_WEEK,
     needsWeather: false,
     uses: ALL,
-    when: "December, 09:00-15:00, with staging's deciduous leaf-off model on",
+    when: '1-7 November, 09:00-15:00, deciduous trees bare',
     explain:
-      'The same December daylight question, recomputed after staging turned on deciduous leaf-off: bare tree crowns let much more daylight through than a leafy crown would, so the park reads brighter under the trees.',
+      'One week later, after leaf fall: the sun is almost the same, but bare deciduous crowns let much more daylight through, so the ground under oaks, limes and maples gets brighter. Pines keep their needles and stay dark.',
   },
   {
     id: 'wind',
@@ -235,7 +244,7 @@ export const ANALYSES: readonly DemoAnalysis[] = [
   },
   {
     id: 'facade-sun',
-    label: 'Facade sun hours',
+    label: 'Facade and roof sun hours',
     analysisType: 'direct-sun-hours',
     unit: 'hours',
     min: 0,
@@ -246,9 +255,9 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     needsWeather: false,
     facades: true,
     uses: ALL,
-    when: '21 March (equinox), 08:00-17:00, on every wall',
+    when: '21 March (equinox), 08:00-17:00, on every wall and roof',
     explain:
-      'Direct sun hours on the building walls, not on the ground. Low walls in the canyon get little sun; street trees shade the lower floors on Linden Street. Look at it in the 3D view.',
+      'Direct sun hours on the building walls and roofs, not on the ground. Roofs get sun almost all day, except where a taller neighbour shades them; low walls in the canyon get little sun. In March the street trees are still bare, so they shade the lower floors on Linden Street only a little. Look at it in the 3D view.',
   },
 ]
 
@@ -275,7 +284,8 @@ export function buildRequest(a: DemoAnalysis, scene: DemoScene, weatherData?: un
     if (!weatherData) throw new Error(`${a.label} needs weather rows`)
     input.weatherData = weatherData
   }
-  if (a.facades) input.analysisSurfaces = 'facades'
+  // 'all' = walls and roofs ('facades' would be walls only, 'roofs' roofs only).
+  if (a.facades) input.analysisSurfaces = 'all'
   if (a.uses.terrain) {
     // The hill. `auto-align` seats buildings and trees on the terrain.
     input.groundGeometry = scene.groundGeometry

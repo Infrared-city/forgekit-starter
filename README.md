@@ -14,17 +14,27 @@ keeps your API key secret.
 
 The first page, **Demo explorer**, shows every analysis on one made-up 512 m
 x 512 m site: city blocks with a narrow street canyon and a courtyard on the
-left, a park with tree groups, paths, a lake and a 20 m hill on the right. All
+left, a park with tree groups, paths, a lake, a 20 m hill with a 45 m tower
+at its foot, and a bare asphalt car park on the right. All
 results are **pre-computed** and stored in this repo
 (`apps/examples/public/demo-results/`, about 0.9 MB), so the page works offline,
 with no key and no cost.
 
-Pick an analysis, then **Baseline**, **Greener street** or **Difference**. The
-greener street keeps 7 m of asphalt instead of 18 m on Linden Street (the main
-street), adds grass strips and 88 lime trees, and changes nothing else. In
-July afternoons it lowers the "feels like" temperature (UTCI) on the street by
-**1.2 °C on average and by up to 3.3 °C** under the trees; the solar
-radiation on the street drops by 29 kWh/m² on average in July.
+Pick an analysis, then **Baseline**, **Greener** or **Difference**. The
+greener variant keeps 7 m of asphalt instead of 18 m on Linden Street (the main
+street) with grass strips and 88 lime trees, and gives the car park a grass
+border and a middle strip with 35 maples. Nothing else changes. In July
+afternoons it lowers the "feels like" temperature (UTCI) on the street by
+**1.2 °C on average and by up to 3.3 °C** under the trees, and in the car park
+by **2.5 °C on average and by up to 7.2 °C**. The solar radiation on the
+street drops by 29 kWh/m² on average in July.
+
+Daylight and Sun hours have a **Leaves on / Leaves off** switch: the last
+week of October against the first week of November. The sun is almost the
+same, but the model makes deciduous trees bare from November to March, so
+oaks, limes and maples let the light through and the pines stay dark. Pins on
+the map mark the highest and lowest area and explain the interesting spots;
+click the map to pin your own probes.
 
 Hover (or tap) the map to read a value, switch to **3D** to see the scene and
 the facade results, and press **Run it yourself** to send the same scene to
@@ -48,7 +58,7 @@ Open **http://localhost:3002**. You see the demo explorer and four example apps:
 
 | Page | What it shows | Analysis | Cost (512 m square) |
 |---|---|---|---|
-| Demo explorer | All analyses on a demo site, baseline vs. a greener street, difference maps | all eight below | free (pre-computed) |
+| Demo explorer | All analyses on a demo site, baseline vs. a greener variant, difference maps | all eight below | free (pre-computed) |
 | Sun hours | Hours of direct sun at an address on one day | `direct-sun-hours` | 10 AItokens |
 | Wind | Wind speed, or wind comfort from a local wind rose | `wind-speed` / `pedestrian-wind-comfort` | 40 / 200 AItokens (256 m square: 10 / 50) |
 | UTCI heat | "Feels like" temperature on summer afternoons | `thermal-comfort-index` | 10 AItokens |
@@ -101,12 +111,12 @@ Every picture is the demo explorer with the pre-computed results
 | | |
 |---|---|
 | ![UTCI baseline](docs/images/demo/utci.jpg) **Heat stress (UTCI)**, July afternoons. Asphalt and open lawns are hot; tree shade, the lake and the shaded canyon are cool. | ![UTCI difference in 3D](docs/images/demo/utci-3d.jpg) **UTCI difference in 3D**: the cooling follows the new street trees. |
-| ![Solar radiation difference](docs/images/demo/solar-diff.jpg) **Solar radiation, difference**: the street trees block up to 85 kWh/m² in July. | ![Sun hours](docs/images/demo/sun-hours.jpg) **Sun hours** on 21 March: long shadows in the canyon, the courtyard and east of the tall blocks. |
-| ![Sky view factor](docs/images/demo/svf.jpg) **Sky view factor**: low in the 8 m canyon and under tree crowns. | ![Daylight](docs/images/demo/daylight.jpg) **Daylight** in December: north sides of the tall blocks stay dark. |
+| ![Solar radiation difference](docs/images/demo/solar-diff.jpg) **Solar radiation, difference**: the new trees block up to 85 kWh/m² on the street and up to 173 kWh/m² in the car park in July. | ![Sun hours](docs/images/demo/sun-hours.jpg) **Sun hours**, late October (hours per day): long shadows in the canyon and north of the tall blocks. |
+| ![Sky view factor](docs/images/demo/svf.jpg) **Sky view factor**: low in the 8 m canyon and under tree crowns. | ![Daylight](docs/images/demo/daylight.jpg) **Daylight**, late October: north sides of the tall blocks stay dark. |
 | ![Wind speed](docs/images/demo/wind.jpg) **Wind speed**, 5 m/s from the west: wakes east of the blocks. | ![Wind comfort](docs/images/demo/wind-comfort.jpg) **Wind comfort** (Lawson 2001) from a year of wind: sheltered near the blocks, windier in the open park. |
-| ![Facade sun hours](docs/images/demo/facade-sun.jpg) **Facade sun hours**: every wall, in 3D. | ![Phone layout](docs/images/demo/mobile.jpg) The explorer on a phone. |
+| ![Facade sun hours](docs/images/demo/facade-sun.jpg) **Facade and roof sun hours**: every wall and roof, in 3D; the pins mark the sunniest and darkest walls. | ![Phone layout](docs/images/demo/mobile.jpg) The explorer on a phone. |
 
-The two wind models read buildings only, so the greener street does not
+The two wind models read buildings only, so the greener variant does not
 change them: the explorer says so instead of showing a difference.
 
 **How the demo was made.** `apps/examples/src/demo/scene-layout.ts` describes
@@ -115,8 +125,8 @@ the site as plain numbers (blocks, streets, lake, hill, tree groups), and
 trees as GeoJSON points with height, crown and genus, ground materials as
 GeoJSON layers, and the hill as a terrain mesh (`groundGeometry` with
 `terrainAlignment: 'auto-align'`). `apps/examples/scripts/precompute-demo.ts`
-ran every analysis once on Infrared staging (SDK 0.12.13-next.18, 480
-AItokens in total) and stored the results. To run it again (needs Node 22.18
+ran every analysis on Infrared staging (SDK 0.12.13-next.18, 400
+AItokens for a full run) and stored the results. To run it again (needs Node 22.18
 or newer, and spends AItokens):
 
 ```bash

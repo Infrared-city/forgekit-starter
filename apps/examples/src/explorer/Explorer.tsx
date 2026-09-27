@@ -1,6 +1,6 @@
 // The demo explorer: every analysis on one synthetic 512 m scene, pre-computed,
 // so it works offline without a key. Pick an analysis, then Baseline, Greener
-// street, or the Difference (greener street minus baseline).
+// (greener street and car park), or the Difference (greener minus baseline).
 import { useEffect, useMemo, useState } from 'react'
 import {
   ANALYSES,
@@ -10,20 +10,18 @@ import {
   WINTER_OF,
 } from '../demo/analyses'
 import { buildDemoScene, type DemoScene, VARIANT_INFO, VARIANTS, type Variant } from '../demo/scene'
-import { SCENE_SIZE_M } from '../demo/scene-layout'
-import { type ColorScale, colorOf, gridToCanvas } from './colors'
+import { AnalysisPicker } from './AnalysisPicker'
+import { notesFor } from './annotations'
+import { type ColorScale, colorOf } from './colors'
 import { ClassLegend, ContinuousLegend, classColor, LAWSON } from './Legend'
-import { PlanMap } from './PlanMap'
+import { buildingMeans, colorCanvas, valueAt } from './layers'
+import { type MapTip, PlanMap, type Probe } from './PlanMap'
 import { RunYourself } from './RunYourself'
-import {
-  type DemoResult,
-  difference,
-  type FacadeResult,
-  loadResult,
-  regionStats,
-  type Stats,
-} from './results'
+import { type DemoResult, difference, loadResult, regionStats } from './results'
 import { Scene3D } from './Scene3D'
+import { fmt, StatsLine, StatsTable } from './StatsLine'
+import './explorer.css'
+import './panel.css'
 import { planCanvas } from './scene-image'
 
 type Mode = Variant | 'diff'
@@ -61,90 +59,6 @@ function scaleFor(a: DemoAnalysis, mode: Mode): ColorScale {
     : { ramp: a.ramp, min: a.min, max: a.max }
 }
 
-function colorCanvas(r: DemoResult, scale: ColorScale): HTMLCanvasElement | null {
-  if (r.kind !== 'grid') return null
-  if (!r.legend) return gridToCanvas(r.values, r.rows, r.cols, scale)
-  // Classes: value i means legend[i]; colour by the class letter.
-  const canvas = gridToCanvas(r.values, r.rows, r.cols, { ramp: 'wind', min: 0, max: 1 })
-  const ctx = canvas.getContext('2d')
-  const img = ctx?.getImageData(0, 0, r.cols, r.rows)
-  if (!ctx || !img) return canvas
-  for (let row = 0; row < r.rows; row++) {
-    for (let c = 0; c < r.cols; c++) {
-      const v = r.values[row * r.cols + c]
-      if (Number.isNaN(v)) continue
-      const o = ((r.rows - 1 - row) * r.cols + c) * 4
-      img.data.set(classColor(r.legend[v] ?? ''), o)
-    }
-  }
-  ctx.putImageData(img, 0, 0)
-  return canvas
-}
-
-/** Mean value on each building's walls (facade results), by building id. */
-function buildingMeans(r: FacadeResult): Map<string, number> {
-  const sums = new Map<string, [number, number]>()
-  for (const [key, s] of Object.entries(r.surfaces)) {
-    const id = key.slice(0, key.lastIndexOf('/'))
-    const acc = sums.get(id) ?? [0, 0]
-    for (const v of s.values) {
-      if (v === null) continue
-      acc[0] += v
-      acc[1]++
-    }
-    sums.set(id, acc)
-  }
-  return new Map([...sums].map(([id, [sum, n]]) => [id, n ? sum / n : Number.NaN]))
-}
-
-function valueAt(r: DemoResult, scene: DemoScene, x: number, y: number): number | null {
-  if (r.kind === 'grid') {
-    const v =
-      r.values[
-        Math.floor((y * r.rows) / SCENE_SIZE_M) * r.cols + Math.floor((x * r.cols) / SCENE_SIZE_M)
-      ]
-    return Number.isNaN(v) ? null : v
-  }
-  const b = scene.boxes.find(({ rect: [x0, y0, x1, y1] }) => x >= x0 && x < x1 && y >= y0 && y < y1)
-  const v = b ? buildingMeans(r).get(b.id) : undefined
-  return v === undefined || Number.isNaN(v) ? null : v
-}
-
-function fmt(value: number, unit: string, diff: boolean) {
-  const v = Math.abs(value) < 0.05 ? 0 : value
-  const s = Math.abs(v) >= 20 ? v.toFixed(0) : v.toFixed(1)
-  return `${diff && v > 0 ? '+' : ''}${s} ${unit}`
-}
-
-function StatsLine({
-  label,
-  s,
-  a,
-  diff,
-}: {
-  label: string
-  s: Stats
-  a: DemoAnalysis
-  diff: boolean
-}) {
-  if (Number.isNaN(s.mean)) return null
-  const extreme = diff ? (Math.abs(s.min) > Math.abs(s.max) ? s.min : s.max) : null
-  return (
-    <li>
-      <b>{label}</b>: mean {fmt(s.mean, a.unit, diff)}
-      {extreme !== null && Math.abs(extreme) > 0.05 && (
-        <>, strongest {fmt(extreme, a.unit, true)}</>
-      )}
-      {!diff && (
-        <>
-          {' '}
-          (from {fmt(s.min, '', false).trim()} to {fmt(s.max, a.unit, false)})
-        </>
-      )}
-    </li>
-  )
-}
-
 export function Explorer() {
   const [{ a: analysisId, m: mode, v: view }, setState] = useState(readHash)
   const a = analysisById(analysisId)
@@ -155,7 +69,10 @@ export function Explorer() {
   } | null>(null)
   const [live, setLive] = useState<Record<string, DemoResult>>({})
   const [error, setError] = useState('')
-  const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
+  // `value` is set in 3D when the mouse is on a wall or roof cell.
+  const [hover, setHover] = useState<{ x: number; y: number; value?: number } | null>(null)
+  const [probes, setProbes] = useState<Array<{ id: number; x: number; y: number }>>([])
+  const [showNotes, setShowNotes] = useState(true)
   // The variant that "Difference" compares with the baseline: the last one picked.
   const [compared, setCompared] = useState<Variant>(
     mode !== 'diff' && mode !== 'baseline' ? mode : VARIANTS[1],
@@ -201,24 +118,76 @@ export function Explorer() {
 
   const scale = scaleFor(a, mode)
   const categorical = shown?.kind === 'grid' && shown.legend
+  const means = useMemo(
+    () => (shown?.kind === 'facades' ? buildingMeans(shown, 'walls') : null),
+    [shown],
+  )
   const images = useMemo(() => {
     const layer = shown ? colorCanvas(shown, scale) : null
-    const means = shown?.kind === 'facades' ? buildingMeans(shown) : null
+    const roofs = shown?.kind === 'facades' ? buildingMeans(shown, 'roofs') : null
     const roofColor = (id: string) => {
-      const v = means?.get(id)
+      const v = roofs?.get(id)
       if (v === undefined || Number.isNaN(v)) return null
       const [r, g, b] = colorOf(scale, v).map(Math.round)
       return `rgb(${r},${g},${b})`
     }
     return {
-      plan: planCanvas(scene, layer, { roofColor: means ? roofColor : undefined }).toDataURL(),
+      plan: planCanvas(scene, layer, { roofColor: roofs ? roofColor : undefined }).toDataURL(),
       ground: planCanvas(scene, layer, { trees: false }),
     }
-  }, [shown, scene, scale.ramp, scale.min, scale.max]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shown, means, scene, scale.ramp, scale.min, scale.max]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = shown ? regionStats(shown) : null
   const diff = mode === 'diff'
-  const hoverValue = hover && shown ? valueAt(shown, scene, hover.x, hover.y) : null
+  const hoverValue =
+    hover?.value ?? (hover && shown ? valueAt(shown, scene, hover.x, hover.y) : null)
+  const rgb = (c: ArrayLike<number>) =>
+    `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`
+  /** The value at (x, y) of the layer on screen, as tooltip text and colour. */
+  const tipAt = (x: number, y: number): MapTip | null => {
+    const v = shown ? valueAt(shown, scene, x, y) : null
+    if (!shown || v === null || (diff && a.buildingsOnly)) return null
+    const cls = categorical && !diff ? (shown.legend?.[v] ?? '') : null
+    return cls !== null
+      ? { text: `${cls} ${LAWSON[cls] ?? ''}`.trim(), color: rgb(classColor(cls)) }
+      : { text: fmt(v, a.unit, diff), color: rgb(colorOf(scale, v)) }
+  }
+  const tip =
+    hover?.value !== undefined
+      ? { text: fmt(hover.value, a.unit, diff), color: rgb(colorOf(scale, hover.value)) }
+      : hover
+        ? tipAt(hover.x, hover.y)
+        : null
+  const probeTips: Probe[] = probes.map((p) => ({ ...p, tip: tipAt(p.x, p.y) }))
+  const notes = useMemo(
+    () =>
+      shown && !(diff && a.buildingsOnly)
+        ? notesFor(analysisId, shown, scene, { diff, categorical: !!categorical, means, variant })
+        : [],
+    [shown, scene, analysisId, diff, categorical, means, a, variant],
+  )
+  // Stable object: a new one on every render would rebuild the whole 3D scene on each hover.
+  const facades = useMemo(
+    () => (shown?.kind === 'facades' ? { result: shown, scale } : null),
+    [shown, scale.ramp, scale.min, scale.max], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  // A new layer: forget the value under the mouse (a 3D cell value belongs to the old one).
+  useEffect(() => setHover(null), [shown])
+  // Memoised: the 3D view rebuilds its labels only when the pins change, not on hover
+  // (tipAt reads shown, scene and scale, so they are in the list).
+  const noteTips = useMemo(
+    () =>
+      showNotes
+        ? notes.map((n) => ({
+            ...n,
+            tip:
+              n.value === undefined
+                ? tipAt(n.x, n.y)
+                : { text: fmt(n.value, a.unit, diff), color: rgb(colorOf(scale, n.value)) },
+          }))
+        : [],
+    [notes, showNotes, shown, scene, scale.ramp, scale.min, scale.max],
+  )
 
   return (
     <section className="explorer">
@@ -228,20 +197,11 @@ export function Explorer() {
           A made-up 512 m site: city blocks on the left, a park with a lake and a hill on the right.
           Every result is pre-computed with the Infrared SDK, so this page needs no key.
         </p>
-        <label className="pick">
-          Analysis{' '}
-          <select
-            value={analysisId}
-            onChange={(e) => set({ a: e.target.value as AnalysisId })}
-            data-testid="analysis"
-          >
-            {pickableAnalyses.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <AnalysisPicker
+          analyses={pickableAnalyses}
+          value={summerBase ?? analysisId}
+          onChange={(id) => set({ a: id })}
+        />
         {(winterTwin || summerBase) && (
           <fieldset className="segmented small" aria-label="Leaf state">
             <button
@@ -250,7 +210,7 @@ export function Explorer() {
               aria-pressed={leaf === 'summer'}
               onClick={() => summerBase && set({ a: summerBase })}
             >
-              Summer
+              Leaves on
             </button>
             <button
               type="button"
@@ -258,7 +218,7 @@ export function Explorer() {
               aria-pressed={leaf === 'winter'}
               onClick={() => winterTwin && set({ a: winterTwin })}
             >
-              Winter (leaf-off)
+              Leaves off
             </button>
           </fieldset>
         )}
@@ -291,13 +251,32 @@ export function Explorer() {
       </div>
 
       <div className="ex-view">
+        <label className="notes-toggle">
+          <input
+            type="checkbox"
+            checked={showNotes}
+            onChange={(e) => setShowNotes(e.target.checked)}
+          />{' '}
+          Notes
+        </label>
         {view === 'map' ? (
-          <PlanMap image={images.plan} onHover={setHover} />
+          <PlanMap
+            image={images.plan}
+            onHover={setHover}
+            tip={tip}
+            probes={probeTips}
+            onPick={(p) => setProbes((ps) => [...ps.slice(-4), { id: Date.now(), ...p }])}
+            onRemoveProbe={(id) => setProbes((ps) => ps.filter((p) => p.id !== id))}
+            notes={noteTips}
+          />
         ) : (
           <Scene3D
             scene={scene}
             ground={images.ground}
-            facades={shown?.kind === 'facades' ? { result: shown, scale } : null}
+            facades={facades}
+            notes={noteTips}
+            onHover={setHover}
+            tip={tip}
           />
         )}
         <div className="readout" data-testid="readout">
@@ -315,14 +294,16 @@ export function Explorer() {
                           : fmt(hoverValue, a.unit, diff)
                       }`
                 : view === 'map'
-                  ? 'Move over (or tap) the map to read a value.'
-                  : 'Drag to turn, scroll or pinch to zoom.')}
+                  ? 'Move over the map to read a value. Click to pin a probe (up to 5).'
+                  : 'Move over the scene to read a value. Drag to turn, scroll to zoom.')}
         </div>
       </div>
 
       <div className="ex-info">
-        <h3>{a.label}</h3>
-        <p className="muted">{a.when}</p>
+        <header className="ex-head">
+          <h3>{a.label}</h3>
+          <p className="when">{a.when}</p>
+        </header>
         {categorical && !diff ? (
           <ClassLegend labels={shown.legend ?? []} />
         ) : (
@@ -330,7 +311,7 @@ export function Explorer() {
         )}
         {a.buildingsOnly && mode !== 'baseline' && (
           <p className="note">
-            This model uses buildings only. The greener street changes trees and ground, not
+            This model uses buildings only. The greener variant changes trees and ground, not
             buildings, so the result is the same {diff ? '(no difference)' : 'as the baseline'}.
           </p>
         )}
@@ -338,26 +319,28 @@ export function Explorer() {
           <p className="note">Wind comfort classes have no difference map.</p>
         )}
         {stats && !categorical && !(diff && a.buildingsOnly) && (
-          <ul className="stats" data-testid="stats">
+          <StatsTable unit={a.unit} diff={diff}>
             <StatsLine
-              label={a.facades ? 'Walls on Linden Street' : 'Linden Street'}
+              label={a.facades ? 'Walls on Linden St.' : 'Linden Street'}
               s={stats.street}
               a={a}
               diff={diff}
             />
-            {!a.facades && <StatsLine label="Park" s={stats.park} a={a} diff={diff} />}
+            <StatsLine label="Car park" s={stats.lot} a={a} diff={diff} />
+            <StatsLine label="Park" s={stats.park} a={a} diff={diff} />
+            <StatsLine label="Roofs" s={stats.roofs} a={a} diff={diff} />
             <StatsLine
               label={a.facades ? 'All walls' : 'Whole site'}
               s={stats.all}
               a={a}
               diff={diff}
             />
-          </ul>
+          </StatsTable>
         )}
-        <p>{a.explain}</p>
+        <p className="explain">{a.explain}</p>
         {diff && (
-          <p className="muted">
-            Difference = {VARIANT_INFO[compared].label.toLowerCase()} minus baseline.{' '}
+          <p className="callout">
+            <b>Difference</b> = {VARIANT_INFO[compared].label.toLowerCase()} minus baseline.{' '}
             {VARIANT_INFO[compared].what}
           </p>
         )}

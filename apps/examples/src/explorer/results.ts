@@ -1,8 +1,8 @@
 // Loads the pre-computed demo results from public/demo-results/ (no key, no
 // network other than this site). See scripts/precompute-demo.ts for the format.
-import type { AnalysisId } from '../demo/analyses'
+import { type AnalysisId, analysisById } from '../demo/analyses'
 import type { Variant } from '../demo/scene'
-import { MAIN_STREET, SCENE_SIZE_M } from '../demo/scene-layout'
+import { MAIN_STREET, PARKING_LOT, SCENE_SIZE_M } from '../demo/scene-layout'
 
 export interface ManifestEntry {
   analysis: AnalysisId
@@ -49,6 +49,9 @@ export interface FacadeResult {
   surfaces: Record<string, Surface>
 }
 export type DemoResult = GridResult | FacadeResult
+
+/** A roof: a horizontal surface grid (both axes flat). Walls have a vertical axis. */
+export const isRoof = (s: Surface) => Math.abs(s.uAxis[2]) < 0.01 && Math.abs(s.vAxis[2]) < 0.01
 
 const BASE = `${import.meta.env.BASE_URL}demo-results/`
 
@@ -97,17 +100,31 @@ export async function loadResult(analysis: AnalysisId, variant: Variant): Promis
     m.results.find((r) => r.analysis === analysis && r.variant === 'baseline')
   if (!e) throw new Error(`No pre-computed result for ${analysis}`)
   const key = e.file
+  const days = analysisById(analysis).perDay ?? 1
   if (!cache.has(key)) {
     cache.set(
       key,
       gunzip(BASE + e.file).then((raw) =>
-        e.kind === 'facades'
-          ? ({ kind: 'facades', ...JSON.parse(new TextDecoder().decode(raw)) } as FacadeResult)
-          : decodeGrid(e, raw),
+        perDay(
+          e.kind === 'facades'
+            ? ({ kind: 'facades', ...JSON.parse(new TextDecoder().decode(raw)) } as FacadeResult)
+            : decodeGrid(e, raw),
+          days,
+        ),
       ),
     )
   }
   return cache.get(key) as Promise<DemoResult>
+}
+
+/** Totals over a period of `days` days -> a mean per day. */
+export function perDay(r: DemoResult, days: number): DemoResult {
+  if (days === 1) return r
+  if (r.kind === 'grid') return { ...r, values: r.values.map((v) => v / days) }
+  const surfaces: Record<string, Surface> = {}
+  for (const [k, s] of Object.entries(r.surfaces))
+    surfaces[k] = { ...s, values: s.values.map((v) => (v === null ? null : v / days)) }
+  return { kind: 'facades', surfaces }
 }
 
 /** variant - baseline, cell by cell (NaN where either has no value). */
@@ -154,10 +171,15 @@ function stats(values: Iterable<number | null>): Stats {
   return { mean: n ? sum / n : Number.NaN, min, max }
 }
 
-/** Statistics for the whole square, Linden Street (the greened street) and the park. */
-export function regionStats(r: DemoResult): Record<'all' | 'street' | 'park', Stats> {
+/** Statistics for the whole square, Linden Street and the car park (both greened), and the park. */
+export function regionStats(
+  r: DemoResult,
+): Record<'all' | 'street' | 'park' | 'lot' | 'roofs', Stats> {
   if (r.kind === 'facades') {
-    const all = Object.values(r.surfaces).flatMap((s) => s.values)
+    // Walls only: roofs (sun almost all day) would hide the differences between walls.
+    const all = Object.values(r.surfaces)
+      .filter((s) => !isRoof(s))
+      .flatMap((s) => s.values)
     // Walls that face Linden Street: in the planes x = 108 and x = 140.
     const facesStreet = (s: Surface) =>
       Math.abs(s.uAxis[0]) < 0.01 &&
@@ -166,20 +188,33 @@ export function regionStats(r: DemoResult): Record<'all' | 'street' | 'park', St
     const street = Object.values(r.surfaces)
       .filter(facesStreet)
       .flatMap((s) => s.values)
-    return { all: stats(all), street: stats(street), park: stats([]) }
+    const roofs = Object.values(r.surfaces)
+      .filter(isRoof)
+      .flatMap((s) => s.values)
+    return {
+      all: stats(all),
+      street: stats(street),
+      park: stats([]),
+      lot: stats([]),
+      roofs: stats(roofs),
+    }
   }
   const cell = SCENE_SIZE_M / r.cols
-  const pick = (test: (x: number) => boolean) => {
+  const pick = (test: (x: number, y: number) => boolean) => {
     const out: number[] = []
     for (let row = 0; row < r.rows; row++) {
       for (let c = 0; c < r.cols; c++)
-        if (test((c + 0.5) * cell)) out.push(r.values[row * r.cols + c])
+        if (test((c + 0.5) * cell, (row + 0.5) * cell)) out.push(r.values[row * r.cols + c])
     }
     return out
   }
+  const [lx0, ly0, lx1, ly1] = PARKING_LOT
+  const inLot = (x: number, y: number) => x >= lx0 && x < lx1 && y >= ly0 && y < ly1
   return {
     all: stats(r.values),
     street: stats(pick((x) => x >= MAIN_STREET.x0 && x < MAIN_STREET.x1)),
-    park: stats(pick((x) => x >= 256)),
+    park: stats(pick((x, y) => x >= 256 && !inLot(x, y))),
+    lot: stats(pick(inLot)),
+    roofs: stats([]),
   }
 }

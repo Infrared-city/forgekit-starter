@@ -24,9 +24,11 @@ import {
   BLOCKS,
   COURTYARD,
   COURTYARD_TREES,
+  GREEN_LOT,
   GREEN_STREET,
   LAKE_RING,
   MAIN_STREET,
+  PARKING_LOT,
   PLAYGROUND,
   type Rect,
   SCENE_SIZE_M,
@@ -50,8 +52,8 @@ export const VARIANTS: readonly Variant[] = ['baseline', 'greener-street']
 export const VARIANT_INFO: Record<Variant, { label: string; what: string }> = {
   baseline: { label: 'Baseline', what: 'The site as it is.' },
   'greener-street': {
-    label: 'Greener street',
-    what: 'Linden Street keeps 7 m of asphalt instead of 18 m, gets grass strips and two rows of lime trees. Everything else is the same.',
+    label: 'Greener',
+    what: 'Linden Street keeps 7 m of asphalt instead of 18 m, gets grass strips and two rows of lime trees. The car park gets a grass border and a middle strip with maples. Everything else is the same.',
   },
 }
 
@@ -139,11 +141,46 @@ export function buildingBoxes(): Box[] {
   ]
 }
 
+/** Park buildings (the hill tower): no park tree inside or within 3 m. */
+const PARK_BOXES = BLOCKS.filter((b) => b.rect[0] >= 256)
+
 function isFreeForTree(x: number, y: number): boolean {
   if (x < 262 || x > 508 || y < 4 || y > 508) return false
+  if (inRect(x, y, PARKING_LOT)) return false
+  if (
+    PARK_BOXES.some(({ rect: [x0, y0, x1, y1] }) => inRect(x, y, [x0 - 3, y0 - 3, x1 + 3, y1 + 3]))
+  )
+    return false
   if (inLake(x, y, LAKE_RING.offset + LAKE_RING.width + 2)) return false
   if (inRect(x, y, PLAYGROUND)) return false
   return !nearCurve(x, y) && !nearCurve(x + 2, y) && !nearCurve(x - 2, y)
+}
+
+/** Greener variant: maples on the car park's grass border and middle strip. */
+function parkingTrees(): Tree[] {
+  const [x0, y0, x1, y1] = PARKING_LOT
+  const half = GREEN_LOT.border / 2
+  const midY = (GREEN_LOT.islandY0 + GREEN_LOT.islandY1) / 2
+  const out: Tree[] = []
+  const add = (x: number, y: number) =>
+    out.push({
+      id: `lot-${out.length}`,
+      x: round(x),
+      y: round(y),
+      genus: 'Acer',
+      height: 10,
+      crown: 8,
+    })
+  for (let x = x0 + half; x <= x1 - half; x += GREEN_LOT.treeSpacing) {
+    add(x, y0 + half)
+    add(x, y1 - half)
+    add(x, midY)
+  }
+  for (let y = y0 + half + GREEN_LOT.treeSpacing; y < y1 - half - 1; y += GREEN_LOT.treeSpacing) {
+    add(x0 + half, y)
+    add(x1 - half, y)
+  }
+  return out
 }
 
 export function sceneTrees(variant: Variant): Tree[] {
@@ -176,6 +213,7 @@ export function sceneTrees(variant: Variant): Tree[] {
   COURTYARD_TREES.forEach(([x, y], i) => {
     trees.push({ id: `courtyard-${i}`, x, y, genus: 'Acer', height: 10, crown: 8 })
   })
+  if (variant === 'greener-street') trees.push(...parkingTrees())
   if (variant === 'greener-street') {
     // Two rows of lime trees in the new grass strips, every 10 m, not in crossings.
     const rows = [
