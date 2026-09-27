@@ -25,8 +25,11 @@ you did in plain words. Read this whole file before the first edit.
    the owner's tokens. Before any deploy (`wrangler deploy`, `npm run
    deploy*`), make sure the user has set `APP_PASSWORD`
    (`npx wrangler secret put APP_PASSWORD --env production`) and
-   `ALLOWED_ORIGINS` to their own site, or uses Cloudflare Access. If not,
-   STOP and tell them the risk in plain words. See README "Deploy".
+   `ALLOWED_ORIGINS` to their own site (Cloudflare Access is better still).
+   The Worker fails closed (503 without `APP_PASSWORD`); NEVER weaken that
+   check, and NEVER put `ALLOW_OPEN_PROXY_FOR_LOCAL_DEV` in `wrangler.toml`
+   or a deployed environment. If the password is missing, STOP and tell the
+   user the risk in plain words. See README "Deploy".
 5. **Pass the geometry explicitly.** Read buildings / trees / ground with the
    SDK (or use the user's own), then pass the returned objects to the run.
 
@@ -141,7 +144,9 @@ hours, wind 0-15 m/s, UTCI about -40 to 46 °C, SVF / daylight 0-100).
 - Never print, log or commit keys, tokens or presigned URLs.
 - `.dev.vars` and `.env` are gitignored. Keep it that way.
 - `APP_PASSWORD` (Worker secret) makes `/infrared/*` answer `401` unless the
-  request has `X-App-Password`. The examples app sends it from the
+  request has `X-App-Password`. Without `APP_PASSWORD` the proxy answers
+  `503`, except on localhost with `ALLOW_OPEN_PROXY_FOR_LOCAL_DEV=true` in
+  `.dev.vars` (local development only). The examples app sends it from the
   "App password" field (localStorage). Never put the password in code, in
   `VITE_*` variables or in the bundle. A cost check that says "offline
   estimate" means the Worker did not answer: often a wrong password.

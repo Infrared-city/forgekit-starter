@@ -87,6 +87,9 @@ export function getClient(): Promise<InfraredClient> {
 
 /** Turn any thrown value into one short sentence for the screen. */
 export function errorText(err: unknown): string {
-  if (err instanceof Error) return `${err.name}: ${err.message}`
-  return String(err)
+  const text = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+  // 401 = wrong app password; 503 = the Worker has no APP_PASSWORD (it fails closed).
+  if (/\b401\b/.test(text)) return `${text} (Check the App password field.)`
+  if (/\b503\b/.test(text)) return `${text} (The Worker needs an APP_PASSWORD secret, see README.)`
+  return text
 }

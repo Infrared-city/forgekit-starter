@@ -36,6 +36,8 @@ INFRARED_AUTH_BASE_URL = "https://api.infrared.city"
 #   GOOGLE_MAPS_API_KEY=your-key-here
 
 # SAFETY before you deploy (see README "Deploy to Cloudflare"):
-#   npx wrangler secret put APP_PASSWORD --env production
+#   npx wrangler secret put APP_PASSWORD --env production   (REQUIRED: without it
+#   the deployed proxy answers 503)
+# NEVER add ALLOW_OPEN_PROXY_FOR_LOCAL_DEV here; it belongs in .dev.vars only.
 # and allow only your own site, in [env.production.vars]:
 #   ALLOWED_ORIGINS = "https://<your-app>.pages.dev"

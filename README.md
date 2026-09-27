@@ -107,11 +107,13 @@ downloads (`/infrared/s3-proxy/*`). See
 > Worker adds your API key to every request it receives. If you deploy it
 > without protection, anyone who finds its URL can run analyses and empty
 > your AItoken balance. CORS does not stop this: it blocks other web pages,
-> not scripts. Do the three steps below before you share the URL.
+> not scripts. So the Worker **fails closed**: a deployed Worker without an
+> `APP_PASSWORD` secret refuses every analysis request (`503`). Do the three
+> steps below.
 
 ### A safer setup in three steps
 
-**1. Set an app password (the Worker checks it).**
+**1. Set an app password (required; the Worker checks it).**
 
 ```bash
 cd apps/base/api
@@ -126,7 +128,10 @@ it in localStorage. The password is never built into the JavaScript bundle.
 Share it only with the people who may spend your tokens, and change it
 (`wrangler secret put` again) if it leaks.
 
-To try it locally, add `APP_PASSWORD=some-text` to `apps/base/api/.dev.vars`
+Locally, `apps/base/api/.dev.vars` has `ALLOW_OPEN_PROXY_FOR_LOCAL_DEV=true`,
+so `npm run dev` works without a password, on localhost only. A deployed
+Worker never reads `.dev.vars`; never put that flag in `wrangler.toml`. To
+try the password flow locally, add `APP_PASSWORD=some-text` to `.dev.vars`
 and restart `npm run dev`.
 
 **2. Allow only your own site (CORS).** In `apps/base/api/wrangler.toml`,

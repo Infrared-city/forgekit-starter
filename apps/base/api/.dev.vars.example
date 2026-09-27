@@ -6,9 +6,14 @@
 # Never commit it, never put it in browser code.
 INFRARED_API_KEY=
 
-# Optional. A shared password: requests without the header
-# `X-App-Password: <this>` get 401. Set it with `wrangler secret put` when
-# you deploy. Leave empty for local development.
+# Local development only: lets the proxy run without APP_PASSWORD on
+# localhost. A deployed Worker never reads this file, so there it has no
+# effect: without APP_PASSWORD the deployed proxy answers 503.
+ALLOW_OPEN_PROXY_FOR_LOCAL_DEV=true
+
+# A shared password: requests without the header `X-App-Password: <this>`
+# get 401. REQUIRED for a deployed Worker (`wrangler secret put APP_PASSWORD`).
+# Optional here; set it to try the password flow locally.
 APP_PASSWORD=
 
 # Optional. Maintainers only: another API base URL (for example staging).

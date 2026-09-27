@@ -21,4 +21,7 @@ export interface Env {
   // Optional shared password for /infrared/* (a secret, never a [vars] entry).
   // Set: `npx wrangler secret put APP_PASSWORD --env production`.
   APP_PASSWORD?: string
+  // Local development only, in .dev.vars: "true" lets the proxy run WITHOUT
+  // APP_PASSWORD on localhost. Never put it in wrangler.toml.
+  ALLOW_OPEN_PROXY_FOR_LOCAL_DEV?: string
 }

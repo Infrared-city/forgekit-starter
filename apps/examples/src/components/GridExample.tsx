@@ -68,7 +68,7 @@ export function GridExample(props: GridExampleProps) {
       const source =
         p.pricingSource === 'remote'
           ? 'live price'
-          : 'offline estimate: the Worker did not answer, check the app password'
+          : 'offline estimate: the Worker refused or did not answer. Check the app password, or set APP_PASSWORD on the Worker'
       setStatus(
         `${p.tileCount} tile(s), about ${p.estimatedCostTokens} AItokens (${source}), about ${p.estimatedTimeS} s.`,
       )

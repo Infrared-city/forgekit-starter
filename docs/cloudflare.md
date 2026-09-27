@@ -74,7 +74,8 @@ npm run deploy                     # wrangler pages deploy
 **Warning: a deployed Worker spends YOUR tokens for anyone who can reach
 it.** CORS stops other web pages, not scripts. Before you share the URL, set
 `APP_PASSWORD` (`wrangler secret put APP_PASSWORD --env production`) and
-`ALLOWED_ORIGINS`, or put it behind Cloudflare Access. See the README
+`ALLOWED_ORIGINS`, or put it behind Cloudflare Access. Without
+`APP_PASSWORD` the deployed proxy answers `503` (it fails closed). See the README
 section "Deploy to Cloudflare".
 
 Rename the `name` fields in both `wrangler.toml` files (currently
