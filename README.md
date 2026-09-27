@@ -103,20 +103,57 @@ downloads (`/infrared/s3-proxy/*`). See
 
 ## Deploy to Cloudflare
 
-Short version (details in [docs/cloudflare.md](./docs/cloudflare.md)):
+> **WARNING: an unprotected Worker spends YOUR tokens for anyone.** The
+> Worker adds your API key to every request it receives. If you deploy it
+> without protection, anyone who finds its URL can run analyses and empty
+> your AItoken balance. CORS does not stop this: it blocks other web pages,
+> not scripts. Do the three steps below before you share the URL.
+
+### A safer setup in three steps
+
+**1. Set an app password (the Worker checks it).**
 
 ```bash
 cd apps/base/api
 npx wrangler secret put INFRARED_API_KEY --env production
-npm run deploy:production
-# then set ALLOWED_ORIGINS in wrangler.toml to your Pages URL, and
-# VITE_API_URL=https://<your-worker>.workers.dev in the root .env
-npm run deploy --workspace apps/examples
+npx wrangler secret put APP_PASSWORD --env production   # choose a long random text
 ```
 
-**Warning:** the deployed Worker spends **your** tokens for anyone who can
-reach it. Protect it (for example with Cloudflare Access) before you share
-the URL.
+When `APP_PASSWORD` is set, every `/infrared/*` request without the header
+`X-App-Password: <that text>` gets `401`. In the examples app, type the
+password once in the **App password** field (top right); the browser keeps
+it in localStorage. The password is never built into the JavaScript bundle.
+Share it only with the people who may spend your tokens, and change it
+(`wrangler secret put` again) if it leaks.
+
+To try it locally, add `APP_PASSWORD=some-text` to `apps/base/api/.dev.vars`
+and restart `npm run dev`.
+
+**2. Allow only your own site (CORS).** In `apps/base/api/wrangler.toml`,
+under `[env.production.vars]`:
+
+```toml
+ALLOWED_ORIGINS = "https://<your-app>.pages.dev"
+```
+
+**3. Deploy.**
+
+```bash
+npm run deploy:production                          # in apps/base/api
+# in the root .env: VITE_API_URL=https://<your-worker>.<you>.workers.dev
+npm run deploy --workspace apps/examples           # from the repo root
+```
+
+**Better protection (optional):**
+
+- **Real login:** put the Worker and the site behind
+  [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/)
+  (free for small teams). Only people you invite by email can open them.
+- **A daily token budget:** count the tokens that the Worker lets through in
+  a Cloudflare KV or D1 row per day, and answer `429` above your limit. Also
+  keep the account balance small: top up only what you plan to spend.
+
+More details: [docs/cloudflare.md](./docs/cloudflare.md).
 
 ## For maintainers
 

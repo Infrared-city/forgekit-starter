@@ -9,3 +9,8 @@ Short version: start in `apps/examples`; the API key lives only in
 `apps/base/api/.dev.vars`; all SDK traffic goes through the Worker proxy
 (`/infrared/*` and `/infrared/s3-proxy/*`); every run costs AItokens, so
 check the cost first; pass buildings / trees / ground to the run explicitly.
+
+**Never deploy an open Worker:** it spends the owner's tokens for anyone with
+the URL. Before any deploy, `APP_PASSWORD` (Worker secret) and
+`ALLOWED_ORIGINS` must be set, or Cloudflare Access must protect it. If not,
+stop and warn the user.

@@ -72,9 +72,10 @@ npm run deploy                     # wrangler pages deploy
 ```
 
 **Warning: a deployed Worker spends YOUR tokens for anyone who can reach
-it.** The `/infrared/*` proxy has no login. CORS stops other web pages, not
-scripts. Before you share the URL, protect the Worker (for example with
-Cloudflare Access), or keep it for local use only.
+it.** CORS stops other web pages, not scripts. Before you share the URL, set
+`APP_PASSWORD` (`wrangler secret put APP_PASSWORD --env production`) and
+`ALLOWED_ORIGINS`, or put it behind Cloudflare Access. See the README
+section "Deploy to Cloudflare".
 
 Rename the `name` fields in both `wrangler.toml` files (currently
 `my-climate-app` / `my-climate-app-api`) before your first deploy — Cloudflare

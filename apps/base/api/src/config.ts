@@ -18,4 +18,7 @@ export interface Env {
   // Optional, comma-separated browser origins allowed to call this Worker
   // (for example "https://my-app.pages.dev"). Unset = the list in index.ts.
   ALLOWED_ORIGINS?: string
+  // Optional shared password for /infrared/* (a secret, never a [vars] entry).
+  // Set: `npx wrangler secret put APP_PASSWORD --env production`.
+  APP_PASSWORD?: string
 }

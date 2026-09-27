@@ -4,6 +4,7 @@ import { FacadeView } from './examples/FacadeView'
 import { HeatMap } from './examples/HeatMap'
 import { SunHours } from './examples/SunHours'
 import { WindAround } from './examples/WindAround'
+import { getAppPassword, setAppPassword } from './lib/infrared'
 import './styles.css'
 
 // Add your own page here: one entry, one component.
@@ -18,6 +19,25 @@ type PageId = keyof typeof PAGES
 function currentPage(): PageId {
   const id = window.location.hash.replace('#', '')
   return id in PAGES ? (id as PageId) : 'sun'
+}
+
+/** Only needed when your deployed Worker has an APP_PASSWORD secret. */
+function AppPasswordField() {
+  const [value, setValue] = useState(getAppPassword())
+  return (
+    <label className="password">
+      App password{' '}
+      <input
+        type="password"
+        value={value}
+        placeholder="only if your Worker has one"
+        onChange={(e) => {
+          setValue(e.target.value)
+          setAppPassword(e.target.value)
+        }}
+      />
+    </label>
+  )
 }
 
 function App() {
@@ -37,6 +57,7 @@ function App() {
             {p.label}
           </a>
         ))}
+        <AppPasswordField />
       </nav>
       <Page key={page} />
     </>

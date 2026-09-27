@@ -6,6 +6,11 @@
 # Never commit it, never put it in browser code.
 INFRARED_API_KEY=
 
+# Optional. A shared password: requests without the header
+# `X-App-Password: <this>` get 401. Set it with `wrangler secret put` when
+# you deploy. Leave empty for local development.
+APP_PASSWORD=
+
 # Optional. Maintainers only: another API base URL (for example staging).
 # INFRARED_BASE_URL=
 

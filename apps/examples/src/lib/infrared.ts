@@ -26,12 +26,47 @@ const proxyFetch: typeof fetch = (input, init) => {
     const u = new URL(url)
     if (S3_HOST.test(u.host)) {
       const relayed = `${absolute(API_BASE)}/infrared/s3-proxy/${u.host}${u.pathname}${u.search}`
-      return fetch(relayed, init) // `init` keeps the SDK's abort signal
+      return fetch(relayed, withPassword(input, init)) // `init` keeps the SDK's abort signal
     }
+    if (u.href.startsWith(absolute(API_BASE))) return fetch(input, withPassword(input, init))
   } catch {
     // Not an absolute URL: fall through.
   }
   return fetch(input, init)
+}
+
+// ---- Optional app password -------------------------------------------------
+// If the Worker has an APP_PASSWORD secret, every request to it must carry the
+// same value in `X-App-Password`. The user types it once in the page; it is
+// kept in this browser only (localStorage), never in the code or the bundle.
+const PASSWORD_KEY = 'infrared-app-password'
+
+export function getAppPassword(): string {
+  try {
+    return localStorage.getItem(PASSWORD_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function setAppPassword(value: string): void {
+  try {
+    if (value) localStorage.setItem(PASSWORD_KEY, value)
+    else localStorage.removeItem(PASSWORD_KEY)
+  } catch {
+    // Storage blocked (private window): the password is not remembered.
+  }
+}
+
+function withPassword(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
+  const password = getAppPassword()
+  if (!password) return init
+  // Keep the SDK's own headers (from `init`, or from a Request object).
+  const headers = new Headers(
+    init?.headers ?? (input instanceof Request ? input.headers : undefined),
+  )
+  headers.set('X-App-Password', password)
+  return { ...init, headers }
 }
 
 let ready: Promise<InfraredClient> | undefined

@@ -4,7 +4,7 @@ You help a person who is new to coding build a small app on Infrared's urban
 microclimate SDK. Keep changes small, keep the app running, and explain what
 you did in plain words. Read this whole file before the first edit.
 
-## The four rules
+## The five rules
 
 1. **The API key never goes to the browser.** It lives only in
    `apps/base/api/.dev.vars` (local) or a Worker secret (deployed). Never put
@@ -20,7 +20,14 @@ you did in plain words. Read this whole file before the first edit.
    (`client.previewAreaWithPricing` or, for facades,
    `client.previewAreaBatches`). Never start runs in a loop, on page load, or
    in tests. Never repeat a submit that had an unknown result: poll the jobs.
-4. **Pass the geometry explicitly.** Read buildings / trees / ground with the
+4. **Never deploy an open Worker.** The Worker adds the owner's key to every
+   request, so an unprotected deployed Worker lets anyone with its URL spend
+   the owner's tokens. Before any deploy (`wrangler deploy`, `npm run
+   deploy*`), make sure the user has set `APP_PASSWORD`
+   (`npx wrangler secret put APP_PASSWORD --env production`) and
+   `ALLOWED_ORIGINS` to their own site, or uses Cloudflare Access. If not,
+   STOP and tell them the risk in plain words. See README "Deploy".
+5. **Pass the geometry explicitly.** Read buildings / trees / ground with the
    SDK (or use the user's own), then pass the returned objects to the run.
 
 ## Layout
@@ -133,8 +140,11 @@ hours, wind 0-15 m/s, UTCI about -40 to 46 °C, SVF / daylight 0-100).
 
 - Never print, log or commit keys, tokens or presigned URLs.
 - `.dev.vars` and `.env` are gitignored. Keep it that way.
-- The deployed Worker is not protected by a login: tell the user that anyone
-  with the URL can spend their tokens, and suggest Cloudflare Access.
+- `APP_PASSWORD` (Worker secret) makes `/infrared/*` answer `401` unless the
+  request has `X-App-Password`. The examples app sends it from the
+  "App password" field (localStorage). Never put the password in code, in
+  `VITE_*` variables or in the bundle. A cost check that says "offline
+  estimate" means the Worker did not answer: often a wrong password.
 - Maintainers can point the Worker at another API (for example staging) with
   `INFRARED_BASE_URL` in `.dev.vars`.
 

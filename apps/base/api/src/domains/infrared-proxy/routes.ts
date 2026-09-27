@@ -25,7 +25,15 @@ export const S3_HOST_ALLOW =
 const LEGACY_S3_HOST = 'infrared-async-inference-jobs-outputs.s3.eu-central-1.amazonaws.com'
 
 /** Request headers never sent to S3 (a presigned URL carries its own auth). */
-const S3_STRIP = ['cookie', 'authorization', 'x-api-key', 'referer', 'origin', 'host']
+const S3_STRIP = [
+  'cookie',
+  'authorization',
+  'x-api-key',
+  'x-app-password',
+  'referer',
+  'origin',
+  'host',
+]
 
 /** Response headers not copied back (the runtime sets them again). */
 const RESPONSE_STRIP = ['content-encoding', 'content-length', 'transfer-encoding', 'set-cookie']
@@ -69,7 +77,7 @@ app.all('/*', async (c) => {
   target.search = new URL(c.req.url).search
 
   const headers = new Headers(c.req.raw.headers)
-  for (const h of ['cookie', 'host', 'origin', 'referer']) headers.delete(h)
+  for (const h of ['cookie', 'host', 'origin', 'referer', 'x-app-password']) headers.delete(h)
   // The server-side key replaces the browser's placeholder. A signed-in
   // user's `Authorization: Bearer <jwt>` is forwarded unchanged; the gateway
   // then bills that user instead of the key owner.

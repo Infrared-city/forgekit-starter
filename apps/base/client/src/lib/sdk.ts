@@ -36,11 +36,33 @@ const proxyFetch: typeof fetch = (input, init) => {
     if (S3_HOST.test(u.host)) {
       return fetch(
         `${absolute(API_BASE)}/infrared/s3-proxy/${u.host}${u.pathname}${u.search}`,
-        init,
+        withPassword(input, init),
       )
     }
   }
+  if (url.startsWith(absolute(API_BASE))) return fetch(input, withPassword(input, init))
   return fetch(input, init)
+}
+
+/**
+ * Optional: when the Worker has an APP_PASSWORD secret, send it as
+ * `X-App-Password`. Store it in this browser with
+ * `localStorage.setItem('infrared-app-password', '<password>')`.
+ */
+function withPassword(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
+  let password = ''
+  try {
+    password = localStorage.getItem('infrared-app-password') ?? ''
+  } catch {
+    // Storage blocked: no password.
+  }
+  if (!password) return init
+  // Keep the SDK's own headers (from `init`, or from a Request object).
+  const headers = new Headers(
+    init?.headers ?? (input instanceof Request ? input.headers : undefined),
+  )
+  headers.set('X-App-Password', password)
+  return { ...init, headers }
 }
 
 /**

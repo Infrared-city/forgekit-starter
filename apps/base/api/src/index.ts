@@ -7,6 +7,7 @@ import { indoorRoutes } from './domains/indoor/routes.js'
 import { infraredProxyRoutes } from './domains/infrared-proxy/routes.js'
 import { mapRoutes } from './domains/map/routes.js'
 import { placesRoutes } from './domains/places/routes.js'
+import { appPassword } from './middleware/app-password.js'
 import { authMiddleware } from './middleware/auth.js'
 
 // Replace with your own Cloudflare Pages / custom domain once deployed —
@@ -38,6 +39,7 @@ app.use('*', async (c, next) => {
       'X-Api-Key',
       'x-infrared-application',
       'x-infrared-sdk',
+      'X-App-Password',
     ],
     allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     // `Link` carries the presigned result URL the SDK downloads next.
@@ -52,6 +54,8 @@ app.get('/', (c) => c.json({ status: 'ok' }))
 app.route('/auth', authRoutes)
 
 // Infrared API proxy — authenticated by server-side API key, not user token
+// Optional APP_PASSWORD check first: an open proxy spends your tokens for anyone.
+app.use('/infrared/*', appPassword)
 app.route('/infrared', infraredProxyRoutes)
 
 // Protected routes behind auth middleware

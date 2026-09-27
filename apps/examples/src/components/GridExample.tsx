@@ -63,8 +63,14 @@ export function GridExample(props: GridExampleProps) {
     try {
       const client = await getClient()
       const p = await client.previewAreaWithPricing(polygon, { analysisType: props.analysisType })
+      // pricingSource 'fallback' = the Worker did not answer (wrong app
+      // password, Worker not running): the number is only an offline guess.
+      const source =
+        p.pricingSource === 'remote'
+          ? 'live price'
+          : 'offline estimate: the Worker did not answer, check the app password'
       setStatus(
-        `${p.tileCount} tile(s), about ${p.estimatedCostTokens} AItokens, about ${p.estimatedTimeS} s.`,
+        `${p.tileCount} tile(s), about ${p.estimatedCostTokens} AItokens (${source}), about ${p.estimatedTimeS} s.`,
       )
     } catch (err) {
       setStatus(errorText(err))

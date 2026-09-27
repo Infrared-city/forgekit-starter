@@ -124,3 +124,11 @@ button:disabled {
     height: 60vh;
   }
 }
+.password {
+  margin-left: auto;
+  color: #555;
+}
+.password input {
+  width: 180px;
+  padding: 4px;
+}
