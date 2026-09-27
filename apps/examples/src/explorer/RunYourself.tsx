@@ -51,7 +51,7 @@ export function RunYourself({ analysis, variant, onResult }: Props) {
             })
         const live =
           'pricingSource' in p && p.pricingSource !== 'remote'
-            ? ' (offline estimate: is the Worker running?)'
+            ? ' (offline estimate: the Worker did not answer; check the App password)'
             : ''
         setStatus(`About ${p.estimatedCostTokens} AItokens${live}. Nothing was submitted.`)
         return
