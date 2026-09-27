@@ -166,6 +166,13 @@ export function Explorer() {
         : [],
     [shown, scene, analysisId, diff, categorical, means, a, variant],
   )
+  // Stable object: a new one on every render would rebuild the whole 3D scene on each hover.
+  const facades = useMemo(
+    () => (shown?.kind === 'facades' ? { result: shown, scale } : null),
+    [shown, scale.ramp, scale.min, scale.max], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  // A new layer: forget the value under the mouse (a 3D cell value belongs to the old one).
+  useEffect(() => setHover(null), [shown])
   // Memoised: the 3D view rebuilds its labels only when the pins change, not on hover
   // (tipAt reads shown, scene and scale, so they are in the list).
   const noteTips = useMemo(
@@ -266,7 +273,7 @@ export function Explorer() {
           <Scene3D
             scene={scene}
             ground={images.ground}
-            facades={shown?.kind === 'facades' ? { result: shown, scale } : null}
+            facades={facades}
             notes={noteTips}
             onHover={setHover}
             tip={tip}
