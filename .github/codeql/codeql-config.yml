@@ -1,0 +1,8 @@
+name: forgekit-starter CodeQL config
+# packages/sdk is a vendored BUILD of @infrared-city/infrared-sdk-ts (not our
+# source). Its alerts belong upstream (infrared-core) and arrive with the next
+# `npm run update-sdk`.
+paths-ignore:
+  - packages/sdk/dist
+  - packages/sdk/generated
+  - packages/sdk/**/*.wasm

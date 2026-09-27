@@ -32,9 +32,16 @@ class PlacesApiError extends Error {
   }
 }
 
+/** Drop trailing '/' characters in linear time (a `/\/+$/` regex can backtrack). */
+function trimTrailingSlashes(url: string): string {
+  let end = url.length
+  while (end > 0 && url[end - 1] === '/') end--
+  return url.slice(0, end)
+}
+
 export function createPlacesClient(config: PlacesClientConfig): PlacesClient {
   const fetchImpl = config.fetch ?? fetch
-  const base = config.baseUrl.replace(/\/+$/, '')
+  const base = trimTrailingSlashes(config.baseUrl)
 
   function buildHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = { ...(extra ?? {}) }
