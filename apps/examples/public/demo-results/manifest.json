@@ -40,12 +40,12 @@
       "unit": "% of hours",
       "legendMin": 0,
       "legendMax": 100,
-      "when": "December, 09:00-15:00, with staging's deciduous leaf-off model on",
+      "when": "1-7 November, 09:00-15:00, deciduous trees bare",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 2,
-      "sceneHash": "6f44183565448c09",
+      "seconds": 1,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -67,12 +67,12 @@
       "unit": "% of hours",
       "legendMin": 0,
       "legendMax": 100,
-      "when": "December, 09:00-15:00, with staging's deciduous leaf-off model on",
+      "when": "1-7 November, 09:00-15:00, deciduous trees bare",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 2,
-      "sceneHash": "1886b2b58262a119",
+      "seconds": 1,
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -94,11 +94,12 @@
       "unit": "% of hours",
       "legendMin": 0,
       "legendMax": 100,
-      "when": "December, 09:00-15:00 (the darkest month)",
+      "when": "25-31 October, 09:00-15:00, leaves on",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
       "seconds": 1,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -110,8 +111,7 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.0015259254737998596,
-      "sceneHash": "6f44183565448c09"
+      "step": 0.0015259254737998596
     },
     {
       "analysis": "daylight",
@@ -121,11 +121,12 @@
       "unit": "% of hours",
       "legendMin": 0,
       "legendMax": 100,
-      "when": "December, 09:00-15:00 (the darkest month)",
+      "when": "25-31 October, 09:00-15:00, leaves on",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 1,
+      "seconds": 2,
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -137,8 +138,7 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.0015259254737998596,
-      "sceneHash": "1886b2b58262a119"
+      "step": 0.0015259254737998596
     },
     {
       "analysis": "facade-sun",
@@ -148,15 +148,15 @@
       "unit": "hours",
       "legendMin": 0,
       "legendMax": 10,
-      "when": "21 March (equinox), 08:00-17:00, on every wall",
+      "when": "21 March (equinox), 08:00-17:00, on every wall and roof",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 2,
+      "seconds": 4,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "facades",
-      "surfaceCount": 72,
-      "sensorCount": 28552,
-      "sceneHash": "6f44183565448c09"
+      "surfaceCount": 95,
+      "sensorCount": 46640
     },
     {
       "analysis": "facade-sun",
@@ -166,15 +166,15 @@
       "unit": "hours",
       "legendMin": 0,
       "legendMax": 10,
-      "when": "21 March (equinox), 08:00-17:00, on every wall",
+      "when": "21 March (equinox), 08:00-17:00, on every wall and roof",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
       "seconds": 1,
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "facades",
-      "surfaceCount": 72,
-      "sensorCount": 28552,
-      "sceneHash": "1886b2b58262a119"
+      "surfaceCount": 95,
+      "sensorCount": 46640
     },
     {
       "analysis": "solar",
@@ -188,7 +188,8 @@
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 1,
+      "seconds": 2,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -200,8 +201,7 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.0026413769951475568,
-      "sceneHash": "6f44183565448c09"
+      "step": 0.0026413769951475568
     },
     {
       "analysis": "solar",
@@ -216,6 +216,7 @@
       "date": "2026-09-27",
       "estimatedTokens": 10,
       "seconds": 1,
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -227,23 +228,22 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.0026413769951475568,
-      "sceneHash": "1886b2b58262a119"
+      "step": 0.0026413769951475568
     },
     {
       "analysis": "sun-hours-winter",
       "variant": "baseline",
       "file": "sun-hours-winter.baseline.bin.gz",
       "analysisType": "direct-sun-hours",
-      "unit": "hours",
+      "unit": "h/day",
       "legendMin": 0,
-      "legendMax": 10,
-      "when": "21 December (winter solstice), 08:00-17:00",
+      "legendMax": 7,
+      "when": "1-7 November, 09:00-15:00, deciduous trees bare (7 h/day at most)",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 5,
-      "sceneHash": "6f44183565448c09",
+      "seconds": 1,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -255,22 +255,22 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.00012207403790398877
+      "step": 0.0007477034821619312
     },
     {
       "analysis": "sun-hours-winter",
       "variant": "greener-street",
       "file": "sun-hours-winter.greener-street.bin.gz",
       "analysisType": "direct-sun-hours",
-      "unit": "hours",
+      "unit": "h/day",
       "legendMin": 0,
-      "legendMax": 10,
-      "when": "21 December (winter solstice), 08:00-17:00",
+      "legendMax": 7,
+      "when": "1-7 November, 09:00-15:00, deciduous trees bare (7 h/day at most)",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
       "seconds": 1,
-      "sceneHash": "1886b2b58262a119",
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -282,21 +282,22 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.00012207403790398877
+      "step": 0.0007477034821619312
     },
     {
       "analysis": "sun-hours",
       "variant": "baseline",
       "file": "sun-hours.baseline.bin.gz",
       "analysisType": "direct-sun-hours",
-      "unit": "hours",
+      "unit": "h/day",
       "legendMin": 0,
-      "legendMax": 10,
-      "when": "21 March (equinox), 08:00-17:00",
+      "legendMax": 7,
+      "when": "25-31 October, 09:00-15:00, leaves on: mean hours of direct sun per day (7 at most)",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 1,
+      "seconds": 2,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -308,22 +309,22 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.00015259254737998596,
-      "sceneHash": "6f44183565448c09"
+      "step": 0.0007477034821619312
     },
     {
       "analysis": "sun-hours",
       "variant": "greener-street",
       "file": "sun-hours.greener-street.bin.gz",
       "analysisType": "direct-sun-hours",
-      "unit": "hours",
+      "unit": "h/day",
       "legendMin": 0,
-      "legendMax": 10,
-      "when": "21 March (equinox), 08:00-17:00",
+      "legendMax": 7,
+      "when": "25-31 October, 09:00-15:00, leaves on: mean hours of direct sun per day (7 at most)",
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
       "seconds": 1,
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -335,8 +336,7 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.00015259254737998596,
-      "sceneHash": "1886b2b58262a119"
+      "step": 0.0007477034821619312
     },
     {
       "analysis": "svf",
@@ -350,7 +350,8 @@
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 1,
+      "seconds": 3,
+      "sceneHash": "440af7a7e2fcc085",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -362,8 +363,7 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.00152134769737846,
-      "sceneHash": "6f44183565448c09"
+      "step": 0.00152134769737846
     },
     {
       "analysis": "svf",
@@ -378,6 +378,7 @@
       "date": "2026-09-27",
       "estimatedTokens": 10,
       "seconds": 1,
+      "sceneHash": "1cfd03987a77b9a3",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -389,8 +390,7 @@
       ],
       "encoding": "u16",
       "offset": 0,
-      "step": 0.00152134769737846,
-      "sceneHash": "1886b2b58262a119"
+      "step": 0.00152134769737846
     },
     {
       "analysis": "utci",
@@ -404,7 +404,8 @@
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 3,
+      "seconds": 5,
+      "sceneHash": "d4a9c97eaefffabf",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -416,8 +417,7 @@
       ],
       "encoding": "u16",
       "offset": 24.03125,
-      "step": 0.00010991431928464614,
-      "sceneHash": "04a960cd7cc78320"
+      "step": 0.00011253700369273965
     },
     {
       "analysis": "utci",
@@ -431,7 +431,8 @@
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 10,
-      "seconds": 3,
+      "seconds": 2,
+      "sceneHash": "b447364934154d62",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -442,9 +443,8 @@
         48.25230226331116
       ],
       "encoding": "u16",
-      "offset": 24.03125,
-      "step": 0.00010991431928464614,
-      "sceneHash": "63993f1264ccf45d"
+      "offset": 23.984375,
+      "step": 0.00010800691244239632
     },
     {
       "analysis": "wind-comfort",
@@ -458,7 +458,8 @@
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 200,
-      "seconds": 18,
+      "seconds": 6,
+      "sceneHash": "4ec523d938ed1c7e",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -474,8 +475,7 @@
         "B",
         "C",
         "D"
-      ],
-      "sceneHash": "4631c4bc9b0eccc3"
+      ]
     },
     {
       "analysis": "wind",
@@ -489,7 +489,8 @@
       "sdkVersion": "0.12.13-next.18",
       "date": "2026-09-27",
       "estimatedTokens": 40,
-      "seconds": 17,
+      "seconds": 2,
+      "sceneHash": "4ec523d938ed1c7e",
       "kind": "grid",
       "rows": 512,
       "cols": 512,
@@ -500,9 +501,8 @@
         48.25230226331116
       ],
       "encoding": "u16",
-      "offset": 0.1523,
-      "step": 0.00009751731925412763,
-      "sceneHash": "4631c4bc9b0eccc3"
+      "offset": 0.1495,
+      "step": 0.00008933530686361278
     }
   ]
 }

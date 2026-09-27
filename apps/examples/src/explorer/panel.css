@@ -1,0 +1,84 @@
+/* The info panel of the demo explorer: title, period, legend, statistics, text. */
+.ex-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ex-head h3 {
+  font-size: 19px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.ex-info .when {
+  align-self: flex-start;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f2f2ee;
+  color: #555;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.stats {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #ecebe6;
+  border-radius: 10px;
+  border-style: hidden;
+  box-shadow: 0 0 0 1px #ecebe6;
+  background: #fafaf7;
+  font-variant-numeric: tabular-nums;
+}
+.stats caption {
+  caption-side: bottom;
+  padding-top: 6px;
+  color: #999;
+  font-size: 11px;
+  text-align: right;
+}
+.stats th,
+.stats td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #efeee9;
+  text-align: right;
+  font-weight: 400;
+}
+.stats tbody tr:last-child th,
+.stats tbody tr:last-child td {
+  border-bottom: 0;
+}
+.stats th[scope="row"] {
+  text-align: left;
+  color: #333;
+}
+.stats thead th:first-child {
+  text-align: left;
+}
+.stats thead th {
+  padding: 8px 12px 4px;
+  color: #888;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.stats .stat-mean {
+  font-size: 16px;
+  font-weight: 600;
+}
+.stats .stat-range {
+  white-space: nowrap;
+  color: #777;
+  font-size: 12.5px;
+}
+.ex-info .explain {
+  color: #333;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.ex-info .callout {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef3fb;
+  color: #2c3e57;
+  font-size: 13px;
+  line-height: 1.5;
+}

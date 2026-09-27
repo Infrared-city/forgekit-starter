@@ -1,6 +1,6 @@
 // Example 4 — "Which facades get sun?"
-// Analysis: direct-sun-hours with `analysisSurfaces: 'facades'`. The sensors
-// sit on the building walls, not on the ground. Billing is per building batch
+// Analysis: direct-sun-hours with `analysisSurfaces: 'all'`. The sensors
+// sit on the building walls and roofs, not on the ground. Billing is per building batch
 // (use previewAreaBatches, not previewArea, to price it).
 import type { SurfaceAnalysisResponse } from '@infrared-city/infrared-sdk-ts'
 import { useMemo, useState } from 'react'
@@ -23,7 +23,7 @@ export function FacadeView() {
   const input = useMemo(
     () => ({
       analysisType: 'direct-sun-hours',
-      analysisSurfaces: 'facades',
+      analysisSurfaces: 'all',
       latitude: center.lat,
       longitude: center.lon,
       dateFilters: {
@@ -74,7 +74,10 @@ export function FacadeView() {
     <section className="example">
       <div className="panel">
         <h2>Facade view</h2>
-        <p>Direct sun hours on every building wall in a 512 m square. Drag to orbit the 3D view.</p>
+        <p>
+          Direct sun hours on every building wall and roof in a 512 m square. Drag to orbit the 3D
+          view.
+        </p>
         <PlacePicker onPlace={setCenter} disabled={busy} />
         <div className="buttons">
           <button type="button" onClick={checkCost} disabled={busy}>

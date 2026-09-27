@@ -7,7 +7,7 @@ import { buildRequest, type DemoAnalysis } from '../demo/analyses'
 import { buildDemoScene, DEMO_POLYGON, type Variant } from '../demo/scene'
 import { DEMO_CENTER } from '../demo/scene-layout'
 import { errorText, getClient } from '../lib/infrared'
-import type { DemoResult } from './results'
+import { type DemoResult, perDay } from './results'
 
 interface Props {
   analysis: DemoAnalysis
@@ -71,16 +71,17 @@ export function RunYourself({ analysis, variant, onResult }: Props) {
             },
           ]),
         )
-        onResult({ kind: 'facades', surfaces })
+        onResult(perDay({ kind: 'facades', surfaces }, analysis.perDay ?? 1))
       } else {
         const [rows, cols] = r.gridShape
-        onResult({
+        const grid: DemoResult = {
           kind: 'grid',
           rows,
           cols,
           values: Float32Array.from(r.mergedGrid),
           legend: r.legend ? [...r.legend] : undefined,
-        })
+        }
+        onResult(perDay(grid, analysis.perDay ?? 1))
       }
       setStatus('Done. The map now shows your live result.')
     } catch (err) {
@@ -108,7 +109,7 @@ export function RunYourself({ analysis, variant, onResult }: Props) {
           </button>
         </div>
       ) : (
-        <p className="muted">Pick Baseline or Greener street first.</p>
+        <p className="muted">Pick Baseline or Greener first.</p>
       )}
       {status && (
         <p className="status" data-testid="run-status">

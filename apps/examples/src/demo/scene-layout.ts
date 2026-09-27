@@ -21,7 +21,7 @@ export interface Block {
 /**
  * The main street, "Linden Street": north-south, 24 m wide (32 m between the
  * facades). Baseline: 3 m sidewalk, 18 m asphalt, 3 m sidewalk.
- * The "greener street" variant keeps 7 m of asphalt and turns the rest into
+ * The "greener" variant keeps 7 m of asphalt and turns the rest into
  * grass strips with a row of street trees on each side (see scene.ts).
  */
 export const MAIN_STREET = { x0: 112, x1: 136, sidewalk: 3 } as const
@@ -61,6 +61,9 @@ export const BLOCKS: readonly Block[] = [
   { id: 'north-w2', rect: [66, 440, 108, 508], height: 21 },
   { id: 'north-e1', rect: [140, 440, 190, 508], height: 24 },
   { id: 'north-e2', rect: [196, 440, 232, 508], height: 12 },
+  // In the park, at the south-west foot of the hill (flat ground: more than
+  // HILL.radius from the top). Shows a tall building next to the terrain.
+  { id: 'hill-tower', rect: [336, 286, 360, 310], height: 45 },
 ]
 
 // ---- Park (east half) ---------------------------------------------------------
@@ -71,7 +74,8 @@ export const LAKE = { cx: 395, cy: 135, rx: 58, ry: 34 } as const
 /**
  * A gentle hill: a smooth bump in the terrain, `height` metres at the top
  * (steepest slope about 19°). Its south slope is open lawn, so the slope effect
- * on sun and radiation is easy to see; trees stand at its north-east foot.
+ * on sun and radiation is easy to see. Trees stand on its north-west slope
+ * and at its north-east foot; the hill tower stands at its south-west foot.
  */
 export const HILL = { cx: 420, cy: 385, radius: 90, height: 20 } as const
 
@@ -121,6 +125,14 @@ export const PATHS: ReadonlyArray<{
 /** A ring path around the lake, `offset` m from the shore. */
 export const LAKE_RING = { offset: 9, width: 3 } as const
 
+/**
+ * A large open-air car park: bare asphalt, no shade. It is the hottest spot of
+ * the baseline. The "greener" variant puts a tree ring and a middle row of
+ * trees on grass strips around and through it (see ground.ts and scene.ts).
+ */
+export const PARKING_LOT: Rect = [262, 8, 338, 52]
+export const GREEN_LOT = { border: 4, islandY0: 28, islandY1: 32, treeSpacing: 9 } as const
+
 /** A small sand playground (soil). */
 export const PLAYGROUND: Rect = [276, 440, 312, 476]
 
@@ -157,7 +169,7 @@ export const TREE_CLUSTERS: ReadonlyArray<{
     height: [9, 15],
     crown: [6, 10],
   },
-  { cx: 395, cy: 300, spread: 14, count: 12, genus: ['Populus'], height: [16, 24], crown: [4, 6] },
+  { cx: 398, cy: 296, spread: 14, count: 12, genus: ['Populus'], height: [16, 24], crown: [6, 9] },
   {
     cx: 488,
     cy: 468,
@@ -176,14 +188,15 @@ export const TREE_CLUSTERS: ReadonlyArray<{
     height: [10, 16],
     crown: [7, 11],
   },
+  // On the north-west slope of the hill (the terrain seats them, see buildRequest).
   {
-    cx: 290,
-    cy: 30,
+    cx: 390,
+    cy: 425,
     spread: 14,
-    count: 12,
-    genus: ['Betula', 'Acer'],
-    height: [8, 13],
-    crown: [5, 8],
+    count: 14,
+    genus: ['Betula', 'Pinus', 'Acer'],
+    height: [9, 15],
+    crown: [6, 9],
   },
 ]
 

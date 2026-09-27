@@ -6,11 +6,13 @@ import type { Variant } from './scene.ts'
 import {
   COURTYARD,
   DEMO_CENTER,
+  GREEN_LOT,
   GREEN_STREET,
   HILL,
   LAKE,
   LAKE_RING,
   MAIN_STREET,
+  PARKING_LOT,
   PATHS,
   PLAYGROUND,
   type Rect,
@@ -127,6 +129,16 @@ function mainStreetClass(x: number, variant: Variant): number {
   return x >= GREEN_STREET.asphaltX0 && x < GREEN_STREET.asphaltX1 ? ASPHALT : GRASS
 }
 
+/** The car park: all asphalt; the greener variant adds a grass border and middle strip. */
+function parkingClass(x: number, y: number, variant: Variant): number {
+  if (variant === 'baseline') return ASPHALT
+  const [x0, y0, x1, y1] = PARKING_LOT
+  const b = GREEN_LOT.border
+  const border = x < x0 + b || x >= x1 - b || y < y0 + b || y >= y1 - b
+  const island = y >= GREEN_LOT.islandY0 && y < GREEN_LOT.islandY1
+  return border || island ? GRASS : ASPHALT
+}
+
 export function streetClass(x: number, y: number): number | null {
   let hit: number | null = null
   for (const s of STREETS) {
@@ -152,6 +164,7 @@ function groundClass(x: number, y: number, variant: Variant): number {
     if (inRect(x, y, [cx0 + d, cy0 + d, cx1 - d, cy1 - d])) return GRASS
     return CONCRETE // forecourts, plazas, the ground under the buildings
   }
+  if (inRect(x, y, PARKING_LOT)) return parkingClass(x, y, variant)
   if (inLake(x, y)) return WATER
   const ring = inLake(x, y, LAKE_RING.offset + LAKE_RING.width) && !inLake(x, y, LAKE_RING.offset)
   if (ring || nearCurve(x, y)) return CONCRETE
