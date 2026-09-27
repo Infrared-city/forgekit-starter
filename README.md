@@ -31,7 +31,8 @@ street drops by 29 kWh/m² on average in July.
 
 Daylight and Sun hours have a **Leaves on / Leaves off** switch: the last
 week of October against the first week of November. The sun is almost the
-same, but the model makes deciduous trees bare from November to March, so
+same, but the model makes deciduous trees bare from November to March
+(northern hemisphere), so
 oaks, limes and maples let the light through and the pines stay dark. Pins on
 the map mark the highest and lowest area and explain the interesting spots;
 click the map to pin your own probes.
@@ -102,6 +103,11 @@ await client.runAreaAndWait(input, polygon, { buildings, vegetation })
 The run does not read anything by itself: if you leave out `buildings`, the
 simulation sees an empty site. When you have your own design (a new building,
 a new park), put your own geometry in these objects instead.
+
+The full SDK guide (result shapes, facades and roofs, terrain, weather,
+seasons, the inputs of each analysis) is in
+[AGENTS.md "SDK reference"](./AGENTS.md#sdk-reference). Your AI coding tool
+reads the same file.
 
 ## Demo gallery
 

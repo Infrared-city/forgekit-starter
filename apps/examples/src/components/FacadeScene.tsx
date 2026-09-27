@@ -1,6 +1,8 @@
 // Draws facade results in 3D with three.js. Each surface is a flat grid of
-// sensor cells: cell (i, j) spans origin + i*gridSize*uAxis + j*gridSize*vAxis.
-// Coordinates are metres from the area's south-west corner: x east, y north, z up.
+// sensor cells. `origin` is the CENTRE of cell (0, 0): cell (i, j) is centred
+// on origin + i*gridSize*uAxis + j*gridSize*vAxis and reaches half a cell to
+// each side. Coordinates are metres from the area's south-west corner: x east,
+// y north, z up. See AGENTS.md "Facades and roofs".
 import type { SurfaceAnalysisResponse } from '@infrared-city/infrared-sdk-ts'
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
@@ -24,8 +26,10 @@ function buildMesh(result: SurfaceAnalysisResponse, scale: Scale): THREE.Mesh {
           value === null || Number.isNaN(value)
             ? grey
             : ramp((value - scale.min) / (scale.max - scale.min)).map((x) => x / 255)
-        // Four corners of the cell. Swap y and z: three.js uses y up.
-        const p = (a: number, b: number) => {
+        // Four corners of the cell (centre +- half a cell). Swap y and z: three.js uses y up.
+        const p = (ci: number, cj: number) => {
+          const a = ci - 0.5
+          const b = cj - 0.5
           const x = ox + a * u[0] + b * v[0]
           const y = oy + a * u[1] + b * v[1]
           const z = oz + a * u[2] + b * v[2]
