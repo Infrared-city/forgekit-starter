@@ -9,6 +9,8 @@ Short version: start in `apps/examples`; the API key lives only in
 `apps/base/api/.dev.vars`; all SDK traffic goes through the Worker proxy
 (`/infrared/*` and `/infrared/s3-proxy/*`); every run costs AItokens, so
 check the cost first; pass buildings / trees / ground to the run explicitly.
+The demo explorer (`#demo`) reads pre-computed results; to add a scenario,
+follow "Add a variant" in AGENTS.md (never edit `public/demo-results/` by hand).
 
 **Never deploy an open Worker:** it spends the owner's tokens for anyone with
 the URL. Before any deploy, `APP_PASSWORD` (Worker secret) and

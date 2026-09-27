@@ -36,7 +36,12 @@ you did in plain words. Read this whole file before the first edit.
 ## Layout
 
 ```
-apps/examples/        START HERE. React + Vite + Leaflet, 4 example pages. Port 3002.
+apps/examples/        START HERE. React + Vite + Leaflet: demo explorer + 4 example pages. Port 3002.
+  src/demo/             the demo site: scene-layout.ts (plain numbers), scene.ts + ground.ts
+                        (-> SDK inputs), analyses.ts (one request builder per analysis)
+  src/explorer/         the demo explorer page (plan map, 3D view, legends, difference maps)
+  public/demo-results/  pre-computed results + manifest.json (generated, do not edit by hand)
+  scripts/precompute-demo.ts   runs the demo analyses and writes public/demo-results/
   src/lib/infrared.ts   the one SDK client (WASM init, proxy base URL, S3 rewrite)
   src/lib/geo.ts        squareAround(center, sizeM), geocode(address)
   src/lib/colors.ts     grid -> PNG with a FIXED value range, legend ramp
@@ -57,6 +62,41 @@ A new page: copy `apps/examples/src/examples/SunHours.tsx`, change
 `analysisType`, `scale`, `prepare`, add it to `PAGES` in `src/main.tsx`.
 Keep each file under 400 lines. Do not add a new framework or state library
 for a small feature.
+
+## Demo explorer and variants
+
+The `#demo` page shows pre-computed results for a synthetic 512 m site. It
+never calls the API on load (the "Run it yourself" button is the only paid
+path, and it asks for a cost check first). The scene is plain SDK input:
+buildings are `{ id: { mesh_id, coordinates, indices } }` in metres from the
+site's south-west corner, trees are GeoJSON points (`height_m`, `diameter_m`,
+`genus`), ground materials are non-overlapping GeoJSON layers, and the hill is
+`groundGeometry` with `terrainAlignment: 'auto-align'`. Keep the generator
+deterministic (seeded random, no `Math.random`): the stored results are only
+valid for the exact scene (`sceneHash` in the manifest).
+
+**Add a variant** (for example "fewer cars", "a new tower"):
+
+1. `src/demo/scene.ts`: add the name to `Variant`, `VARIANTS` and
+   `VARIANT_INFO` (label + one plain sentence of what changes).
+2. Put the new numbers in `src/demo/scene-layout.ts` and branch on the variant
+   where the scene is built: `groundClass` in `ground.ts` (materials),
+   `sceneTrees` / `buildingBoxes` in `scene.ts` (trees, buildings). Change
+   ONLY what the variant is about; everything else must stay identical, or
+   the difference map shows noise.
+3. Check the cost, then run only the new variant (spends AItokens; use a
+   staging key if you are a maintainer):
+   `npm run demo:precompute --workspace apps/examples -- --preview --variant <name>`, then
+   `... -- --run --variant <name>`. The wind models read buildings only: the
+   script skips them for a variant, and the explorer shows the baseline.
+4. `npm run demo:precompute --workspace apps/examples -- --refresh-manifest`
+   must print no `OUT OF DATE` line. The explorer picks the variant up from
+   `VARIANTS` (buttons and difference map); nothing else to wire.
+
+If you change the baseline scene or an analysis period, rerun the affected
+analyses with `--run --force --only <ids>`. Look at the maps before you
+commit: shadows must fall away from the sun, buildings must sit in the holes
+of the grid (NaN), and the difference must be zero away from the change.
 
 ## How the SDK works (`@infrared-city/infrared-sdk-ts`, 0.12.13-next.18)
 

@@ -8,6 +8,29 @@ JavaScript, or an AI coding tool, and an Infrared API key.
 The app runs in the browser on Cloudflare Pages. A small Cloudflare Worker
 keeps your API key secret.
 
+## See it first: the demo explorer (no key needed)
+
+![UTCI difference map: the greener street is up to 3.3 °C cooler](docs/images/demo/utci-diff.jpg)
+
+The first page, **Demo explorer**, shows every analysis on one made-up 512 m
+x 512 m site: city blocks with a narrow street canyon and a courtyard on the
+left, a park with tree groups, paths, a lake and a 20 m hill on the right. All
+results are **pre-computed** and stored in this repo
+(`apps/examples/public/demo-results/`, about 0.9 MB), so the page works offline,
+with no key and no cost.
+
+Pick an analysis, then **Baseline**, **Greener street** or **Difference**. The
+greener street keeps 7 m of asphalt instead of 18 m on Linden Street (the main
+street), adds grass strips and 88 lime trees, and changes nothing else. In
+July afternoons it lowers the "feels like" temperature (UTCI) on the street by
+**1.2 °C on average and by up to 3.3 °C** under the trees; the solar
+radiation on the street drops by 29 kWh/m² on average in July.
+
+Hover (or tap) the map to read a value, switch to **3D** to see the scene and
+the facade results, and press **Run it yourself** to send the same scene to
+Infrared with your own key. See [the gallery](#demo-gallery) for every
+analysis.
+
 ## Start in 5 minutes
 
 You need [Node.js 20 or newer](https://nodejs.org) and git.
@@ -21,10 +44,11 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3002**. You see four example apps:
+Open **http://localhost:3002**. You see the demo explorer and four example apps:
 
 | Page | What it shows | Analysis | Cost (512 m square) |
 |---|---|---|---|
+| Demo explorer | All analyses on a demo site, baseline vs. a greener street, difference maps | all eight below | free (pre-computed) |
 | Sun hours | Hours of direct sun at an address on one day | `direct-sun-hours` | 10 AItokens |
 | Wind | Wind speed, or wind comfort from a local wind rose | `wind-speed` / `pedestrian-wind-comfort` | 40 / 200 AItokens (256 m square: 10 / 50) |
 | UTCI heat | "Feels like" temperature on summer afternoons | `thermal-comfort-index` | 10 AItokens |
@@ -69,6 +93,37 @@ The run does not read anything by itself: if you leave out `buildings`, the
 simulation sees an empty site. When you have your own design (a new building,
 a new park), put your own geometry in these objects instead.
 
+## Demo gallery
+
+Every picture is the demo explorer with the pre-computed results
+(`npm run dev`, then open the page and pick the analysis).
+
+| | |
+|---|---|
+| ![UTCI baseline](docs/images/demo/utci.jpg) **Heat stress (UTCI)**, July afternoons. Asphalt and open lawns are hot; tree shade, the lake and the shaded canyon are cool. | ![UTCI difference in 3D](docs/images/demo/utci-3d.jpg) **UTCI difference in 3D**: the cooling follows the new street trees. |
+| ![Solar radiation difference](docs/images/demo/solar-diff.jpg) **Solar radiation, difference**: the street trees block up to 85 kWh/m² in July. | ![Sun hours](docs/images/demo/sun-hours.jpg) **Sun hours** on 21 March: long shadows in the canyon, the courtyard and east of the tall blocks. |
+| ![Sky view factor](docs/images/demo/svf.jpg) **Sky view factor**: low in the 8 m canyon and under tree crowns. | ![Daylight](docs/images/demo/daylight.jpg) **Daylight** in December: north sides of the tall blocks stay dark. |
+| ![Wind speed](docs/images/demo/wind.jpg) **Wind speed**, 5 m/s from the west: wakes east of the blocks. | ![Wind comfort](docs/images/demo/wind-comfort.jpg) **Wind comfort** (Lawson 2001) from a year of wind: sheltered near the blocks, windier in the open park. |
+| ![Facade sun hours](docs/images/demo/facade-sun.jpg) **Facade sun hours**: every wall, in 3D. | ![Phone layout](docs/images/demo/mobile.jpg) The explorer on a phone. |
+
+The two wind models read buildings only, so the greener street does not
+change them: the explorer says so instead of showing a difference.
+
+**How the demo was made.** `apps/examples/src/demo/scene-layout.ts` describes
+the site as plain numbers (blocks, streets, lake, hill, tree groups), and
+`scene.ts` / `ground.ts` turn it into normal SDK inputs: buildings as meshes,
+trees as GeoJSON points with height, crown and genus, ground materials as
+GeoJSON layers, and the hill as a terrain mesh (`groundGeometry` with
+`terrainAlignment: 'auto-align'`). `apps/examples/scripts/precompute-demo.ts`
+ran every analysis once on Infrared staging (SDK 0.12.13-next.18, 480
+AItokens in total) and stored the results. To run it again (needs Node 22.18
+or newer, and spends AItokens):
+
+```bash
+npm run demo:precompute --workspace apps/examples -- --preview   # free cost check
+npm run demo:precompute --workspace apps/examples -- --run       # runs what is missing
+```
+
 ## Build your own app
 
 The easiest way: open this folder in Claude Code, Cursor, Codex or another AI
@@ -86,7 +141,7 @@ it, and add it to `PAGES` in `apps/examples/src/main.tsx`.
 ## What is in this repo
 
 ```
-apps/examples/      START HERE: 4 small example pages (React + Vite + Leaflet)
+apps/examples/      START HERE: the demo explorer and 4 small example pages (React + Vite + Leaflet)
 apps/base/api/      Cloudflare Worker: holds INFRARED_API_KEY, proxies the SDK and S3
 apps/base/client/   A bigger reference app (3D map, sign-in, drawing tools). Needs a Mapbox token.
 packages/sdk/       The Infrared TypeScript SDK (built files only, see "For maintainers")

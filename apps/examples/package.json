@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
+    "demo:precompute": "node scripts/precompute-demo.ts",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=my-infrared-examples"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "@vitejs/plugin-react": "^5.1.1",
     "typescript": "~5.9.3",
     "vite": "^7.2.4",
-    "@types/three": "^0.182.0"
+    "@types/three": "^0.182.0",
+    "@types/node": "^24.0.0"
   }
 }

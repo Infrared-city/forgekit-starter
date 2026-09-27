@@ -10,7 +10,8 @@
       "!**/coverage",
       "!**/.bun",
       "!**/.tmp",
-      "!**/.wrangler"
+      "!**/.wrangler",
+      "!**/public/demo-results"
     ]
   },
   "css": {
