@@ -2,7 +2,13 @@
 // so it works offline without a key. Pick an analysis, then Baseline, Greener
 // street, or the Difference (greener street minus baseline).
 import { useEffect, useMemo, useState } from 'react'
-import { ANALYSES, type AnalysisId, analysisById, type DemoAnalysis } from '../demo/analyses'
+import {
+  ANALYSES,
+  type AnalysisId,
+  analysisById,
+  type DemoAnalysis,
+  WINTER_OF,
+} from '../demo/analyses'
 import { buildDemoScene, type DemoScene, VARIANT_INFO, VARIANTS, type Variant } from '../demo/scene'
 import { SCENE_SIZE_M } from '../demo/scene-layout'
 import { type ColorScale, colorOf, gridToCanvas } from './colors'
@@ -26,6 +32,14 @@ const MODES: ReadonlyArray<[Mode, string]> = [
   ...VARIANTS.map((v): [Mode, string] => [v, VARIANT_INFO[v].label]),
   ['diff', 'Difference'],
 ]
+
+/** The analysis that toggles to `id` in winter, if any (the reverse of `WINTER_OF`). */
+function summerOf(id: AnalysisId): AnalysisId | null {
+  const found = (Object.entries(WINTER_OF) as Array<[AnalysisId, AnalysisId]>).find(
+    ([, winter]) => winter === id,
+  )
+  return found ? found[0] : null
+}
 
 const scenes = new Map<Variant, DemoScene>()
 function sceneOf(v: Variant): DemoScene {
@@ -147,6 +161,13 @@ export function Explorer() {
     mode !== 'diff' && mode !== 'baseline' ? mode : VARIANTS[1],
   )
 
+  // Winter twins (daylight-winter, sun-hours-winter) live only behind the
+  // Leaf state toggle below, not in the main list.
+  const pickableAnalyses = ANALYSES.filter((x) => !summerOf(x.id))
+  const winterTwin = WINTER_OF[analysisId]
+  const summerBase = summerOf(analysisId)
+  const leaf: 'summer' | 'winter' = winterTwin ? 'summer' : 'winter'
+
   const set = (patch: Partial<{ a: AnalysisId; m: Mode; v: View }>) => {
     const next = { a: analysisId, m: mode, v: view, ...patch }
     if (patch.a && analysisById(patch.a).facades) next.v = '3d'
@@ -214,13 +235,33 @@ export function Explorer() {
             onChange={(e) => set({ a: e.target.value as AnalysisId })}
             data-testid="analysis"
           >
-            {ANALYSES.map((x) => (
+            {pickableAnalyses.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.label}
               </option>
             ))}
           </select>
         </label>
+        {(winterTwin || summerBase) && (
+          <fieldset className="segmented small" aria-label="Leaf state">
+            <button
+              type="button"
+              className={leaf === 'summer' ? 'on' : ''}
+              aria-pressed={leaf === 'summer'}
+              onClick={() => summerBase && set({ a: summerBase })}
+            >
+              Summer
+            </button>
+            <button
+              type="button"
+              className={leaf === 'winter' ? 'on' : ''}
+              aria-pressed={leaf === 'winter'}
+              onClick={() => winterTwin && set({ a: winterTwin })}
+            >
+              Winter (leaf-off)
+            </button>
+          </fieldset>
+        )}
         <fieldset className="segmented" aria-label="Scenario">
           {MODES.map(([id, label]) => (
             <button
