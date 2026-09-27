@@ -159,7 +159,7 @@ export function useGroundMaterialsAreaMutation(
       // Half the bbox diagonal, floored at one SDK tile radius (mirrors getArea).
       const distanceM = Math.max(Math.sqrt(latSpanM ** 2 + lonSpanM ** 2) / 2, 363)
 
-      const raw = await sdkClient.groundMaterials.getRaw(centerLat, centerLon, distanceM, 'fgb')
+      const raw = await sdkClient.groundMaterials.getRaw(centerLat, centerLon, distanceM)
       // Process BEFORE the stale-write guard so the FULL result is returned even
       // when the store write is suppressed (a suppress-and-keep caller needs
       // `rawLayers` to build its own scenario-keyed slot).

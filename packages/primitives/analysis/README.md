@@ -120,7 +120,7 @@ the main-thread build rather than mis-rendering.
 ## Development
 
 ```bash
-bun run --cwd packages/primitives/analysis build
-bun run --cwd packages/primitives/analysis typecheck
-bun run --cwd packages/primitives/analysis test:run
+npm run build --workspace packages/primitives/analysis
+npm run typecheck --workspace packages/primitives/analysis
+npm run test:run --workspace packages/primitives/analysis
 ```

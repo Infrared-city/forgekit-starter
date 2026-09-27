@@ -63,7 +63,7 @@ const errors = validatePlugins(plugins)
 ## Development
 
 ```bash
-bun run --cwd packages/interfaces/shared build
-bun run --cwd packages/interfaces/shared typecheck
-bun run --cwd packages/interfaces/shared test:run
+npm run build --workspace packages/interfaces/shared
+npm run typecheck --workspace packages/interfaces/shared
+npm run test:run --workspace packages/interfaces/shared
 ```

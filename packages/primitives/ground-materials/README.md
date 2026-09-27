@@ -253,7 +253,7 @@ const features = useGroundMaterialsStore((s) => s.features)
 ## Development
 
 ```bash
-bun run --cwd packages/primitives/ground-materials build
-bun run --cwd packages/primitives/ground-materials typecheck
-bun run --cwd packages/primitives/ground-materials test:run
+npm run build --workspace packages/primitives/ground-materials
+npm run typecheck --workspace packages/primitives/ground-materials
+npm run test:run --workspace packages/primitives/ground-materials
 ```

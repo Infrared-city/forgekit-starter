@@ -140,7 +140,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     // Prevent ESBuild from trying to bundle web-ifc WASM binary
-    exclude: ['web-ifc'],
+    exclude: ['web-ifc', '@infrared-city/infrared-sdk-ts'],
     // Force pre-bundling of heavy vendor libs on dev-server startup so they
     // aren't re-discovered + esbuilt lazily on first import (which adds
     // seconds to warm reloads when the Vite dep cache is cold or busted).
@@ -180,42 +180,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
-      // Proxy Infrared SDK calls to avoid CORS in dev mode.
-      // The client sets VITE_INFRARED_BASE_URL=/infrared-api so all SDK
-      // requests go through the Vite dev server → Infrared API.
-      '/infrared-api': {
-        target: 'https://api-test.infrared.city',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/infrared-api/, ''),
-        secure: true,
-        // JWT bearer flows through from the SDK's getToken (createSdk in
-        // src/lib/sdk.ts is wired by composition/map-plugins.ts and
-        // composition/WorkflowPanel.tsx with `getToken: () =>
-        // useAuthStore.getState().idToken ?? ''`). The gateway authorizer
-        // prefers JWT when both are present (auth-service authorizer.ts:316-321)
-        // and all routes have apiKeyRequired: false.
-      },
-      // Proxy S3 presigned URL downloads to avoid CORS in dev mode.
-      // The SDK rewrites S3 URLs to go through /s3-proxy/... instead of
-      // hitting the S3 bucket directly from the browser.
-      '/s3-proxy': {
-        target:
-          'https://infrared-async-inference-jobs-outputs.s3.eu-central-1.amazonaws.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/s3-proxy/, ''),
-        secure: true,
-        // Strip all non-essential headers — S3 presigned URLs are self-authenticated
-        // and S3 rejects requests whose header section exceeds 8 KB.
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.removeHeader('cookie')
-            proxyReq.removeHeader('authorization')
-            proxyReq.removeHeader('x-api-key')
-            proxyReq.removeHeader('referer')
-            proxyReq.removeHeader('origin')
-          })
-        },
-      },
+      // The Infrared SDK also goes through /api (the Worker's /infrared/*
+      // proxy adds the API key and relays S3). See src/lib/sdk.ts.
     },
   },
 })

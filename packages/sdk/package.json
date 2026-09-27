@@ -1,62 +1,81 @@
 {
   "name": "@infrared-city/infrared-sdk-ts",
-  "version": "0.12.3",
-  "infraredPyVersion": "0.4.10",
-  "description": "TypeScript SDK for the Infrared City API (vendored build — see README.md at repo root for provenance)",
+  "version": "0.12.13-next.18",
+  "description": "WASM-first Infrared City TypeScript SDK",
+  "license": "Apache-2.0",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "node": {
+        "import": "./dist/node.js",
+        "require": "./dist/index.cjs"
+      },
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    },
-    "./analyses": {
-      "types": "./dist/analyses.d.ts",
-      "import": "./dist/analyses.js",
-      "require": "./dist/analyses.cjs"
+      "default": "./dist/index.js"
     },
     "./tiling": {
-      "types": "./dist/tiling.d.ts",
-      "import": "./dist/tiling.js",
-      "require": "./dist/tiling.cjs"
+      "types": "./dist/area/index.d.ts",
+      "require": null,
+      "node": "./dist/node-tiling.js",
+      "import": "./dist/area/index.js",
+      "default": "./dist/area/index.js"
     },
     "./utilities": {
       "types": "./dist/utilities.d.ts",
+      "require": null,
       "import": "./dist/utilities.js",
-      "require": "./dist/utilities.cjs"
+      "default": "./dist/utilities.js"
     },
-    "./jobs": {
-      "types": "./dist/jobs.d.ts",
-      "import": "./dist/jobs.js",
-      "require": "./dist/jobs.cjs"
-    },
-    "./webhooks": {
-      "types": "./dist/webhooks.d.ts",
-      "import": "./dist/webhooks.js",
-      "require": "./dist/webhooks.cjs"
+    "./geodata": {
+      "types": "./dist/geodata/index.d.ts",
+      "require": null,
+      "import": "./dist/geodata/index.js",
+      "default": "./dist/geodata/index.js"
     },
     "./billing": {
       "types": "./dist/billing.d.ts",
+      "require": null,
       "import": "./dist/billing.js",
-      "require": "./dist/billing.cjs"
-    }
+      "default": "./dist/billing.js"
+    },
+    "./worker": {
+      "types": "./dist/worker/index.d.ts",
+      "require": null,
+      "import": "./dist/worker/index.js",
+      "default": "./dist/worker/index.js"
+    },
+    "./core.wasm": "./generated/infrared-core_bg.wasm"
   },
-  "files": [
-    "dist"
-  ],
   "dependencies": {
-    "fflate": "^0.8.2",
-    "mitt": "^3.0.1",
-    "p-limit": "^7.3.0",
-    "polygon-clipping": "^0.15.7",
-    "uuid": "^14.0.0"
+    "fflate": "0.8.3"
   },
   "peerDependencies": {
-    "zod": "^4.0.0"
+    "hyparquet": "^1.30.0",
+    "hyparquet-compressors": "^1.1.1"
   },
-  "license": "Apache-2.0",
-  "homepage": "https://infrared.city/docs/sdk"
+  "peerDependenciesMeta": {
+    "hyparquet": {
+      "optional": true
+    },
+    "hyparquet-compressors": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "generated/infrared-core.js",
+    "generated/infrared-core.d.ts",
+    "generated/infrared-core_bg.wasm",
+    "generated/infrared-core_bg.wasm.d.ts",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "vendored": {
+    "note": "Built output only, copied by scripts/update-sdk.mjs. Do not edit by hand.",
+    "integrity": "sha512-j/TAoNhI+YDAnesmnQbDwZ03A0sAORPQfYVkT4aIVhbfJYW+rPgN9oYLtiGWFTKPG+DF5DBbGR4nYrWpahyrNg=="
+  }
 }

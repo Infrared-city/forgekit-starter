@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@forge-kit/buildings": "workspace:*",
-    "@forge-kit/geo-core": "workspace:*",
-    "ui": "workspace:*"
+    "@forge-kit/buildings": "*",
+    "@forge-kit/geo-core": "*",
+    "ui": "*"
   },
   "devDependencies": {
     "vitest": "^2.1.8"

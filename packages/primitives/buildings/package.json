@@ -42,7 +42,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@forge-kit/geo-core": "workspace:*",
+    "@forge-kit/geo-core": "*",
     "@turf/boolean-point-in-polygon": "^7.3.4",
     "@turf/boolean-valid": "^7.3.4",
     "@turf/kinks": "^7.3.4"

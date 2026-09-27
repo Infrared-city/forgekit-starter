@@ -41,6 +41,6 @@ tests — copy that pattern for new consumers.
 ## Development
 
 ```bash
-bun run --cwd packages/primitives/geo-core build
-bun run --cwd packages/primitives/geo-core test:run
+npm run build --workspace packages/primitives/geo-core
+npm run test:run --workspace packages/primitives/geo-core
 ```

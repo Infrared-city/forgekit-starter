@@ -84,6 +84,6 @@ Key types exported:
 ## Development
 
 ```bash
-bun run --cwd packages/analysis-colors build
-bun run --cwd packages/analysis-colors typecheck
+npm run build --workspace packages/analysis-colors
+npm run typecheck --workspace packages/analysis-colors
 ```

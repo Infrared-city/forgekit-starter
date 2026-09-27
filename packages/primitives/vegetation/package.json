@@ -42,11 +42,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@forge-kit/geo-core": "workspace:*",
+    "@forge-kit/geo-core": "*",
     "@turf/boolean-valid": "^7.3.4",
     "@turf/kinks": "^7.3.4",
     "zod": "^4.3.6",
-    "@infrared-city/infrared-sdk-ts": "workspace:*"
+    "@infrared-city/infrared-sdk-ts": "*"
   },
   "peerDependencies": {
     "react": ">=18",

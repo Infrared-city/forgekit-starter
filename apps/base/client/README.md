@@ -36,10 +36,10 @@ See [docs/DOMAIN_TEMPLATE.md](docs/DOMAIN_TEMPLATE.md) for patterns and conventi
 
 ```bash
 # Install dependencies
-bun install
+npm install
 
 # Start development server
-bun run dev
+npm run dev
 
 # Navigate to /map to see the application
 ```
@@ -48,16 +48,16 @@ bun run dev
 
 | Command | Description |
 |---------|-------------|
-| `bun run dev` | Start Vite dev server with HMR |
-| `bun run build` | Type-check and build for production |
-| `bun run build:analyze` | Build and generate bundle analysis (`dist/stats.html`) |
-| `bun run test` | Run tests with Vitest |
-| `bun run test:watch` | Run tests in watch mode |
-| `bun run test:coverage` | Run tests with coverage report |
-| `bun run test:smoke` | Run opt-in API contract smoke suite (no-op unless `SMOKE=1`) |
-| `bun run lint` | Lint with Biome |
-| `bun run preview` | Preview production build |
-| `bun run deploy` | Build and deploy to Cloudflare Pages |
+| `npm run dev` | Start Vite dev server with HMR |
+| `npm run build` | Type-check and build for production |
+| `npm run build:analyze` | Build and generate bundle analysis (`dist/stats.html`) |
+| `npm run test` | Run tests with Vitest |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run test:coverage` | Run tests with coverage report |
+| `npm run test:smoke` | Run opt-in API contract smoke suite (no-op unless `SMOKE=1`) |
+| `npm run lint` | Lint with Biome |
+| `npm run preview` | Preview production build |
+| `npm run deploy` | Build and deploy to Cloudflare Pages |
 
 ## Environment Variables
 
@@ -77,7 +77,7 @@ See the [root README](../../../README.md#environment-variables) for the full lis
 
 ## Smoke tests
 
-The default `bun run test` suite mocks at the `apiClient` boundary, which
+The default `npm run test` suite mocks at the `apiClient` boundary, which
 means it cannot catch wire-level contract drift between the client and the
 Python FastAPI backend (`apps/base/api-python`). An opt-in smoke suite fills
 that gap. It lives at `src/__tests__/api-contract.smoke.test.ts` and runs
@@ -88,7 +88,7 @@ cannot leak into the real-fetch path.
 ### Safe default (no live API calls)
 
 ```bash
-bun run --cwd apps/base/client test:smoke
+npm run test:smoke --workspace apps/base/client
 ```
 
 Unless `SMOKE` is set to exactly `1`, every smoke test is skipped via
@@ -96,7 +96,7 @@ Unless `SMOKE` is set to exactly `1`, every smoke test is skipped via
 (e.g. `SMOKE=true`, `SMOKE=0`, `SMOKE=yes`) is treated as "off" so that
 typos do not accidentally fire real network calls. This proves the config
 and guard work without hitting the network on dev machines or CI. Default
-`bun run test` is unaffected -- the smoke config's `include` pattern
+`npm run test` is unaffected -- the smoke config's `include` pattern
 (`src/**/*.smoke.test.ts`) is distinct from the default pattern
 (`src/**/*.test.ts`), and the default config's `exclude` list strips any
 `*.smoke.test.ts` files that would otherwise match. The two suites never
@@ -109,7 +109,7 @@ collide.
 cd apps/base/api-python && uvicorn src.main:app --reload --port 9000
 
 # Terminal 2 -- exercise the contract smoke suite
-SMOKE=1 bun run --cwd apps/base/client test:smoke
+SMOKE=1 npm run test:smoke --workspace apps/base/client
 ```
 
 Unauthenticated probes (`GET /`, `GET /openapi.json`) always run when
@@ -122,7 +122,7 @@ require a valid idToken via `SMOKE_BEARER`:
 # auth store in the browser devtools (Application -> Local Storage ->
 # auth-store), and export it here.
 SMOKE=1 SMOKE_BEARER=<idToken> \
-  bun run --cwd apps/base/client test:smoke
+  npm run test:smoke --workspace apps/base/client
 ```
 
 An alternate base URL (e.g. a preview stage) can be supplied via
@@ -130,7 +130,7 @@ An alternate base URL (e.g. a preview stage) can be supplied via
 
 ```bash
 SMOKE=1 SMOKE_BASE_URL=https://api-preview.forge-kit.infrared.city \
-  bun run --cwd apps/base/client test:smoke
+  npm run test:smoke --workspace apps/base/client
 ```
 
 ### Adding new smoke tests

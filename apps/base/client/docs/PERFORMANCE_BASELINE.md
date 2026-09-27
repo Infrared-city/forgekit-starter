@@ -159,7 +159,7 @@ manualChunks: {
 
 ### Bundle Analysis
 
-Run `bun run build:analyze` to generate `dist/stats.html` which provides an interactive visualization of:
+Run `npm run build:analyze` to generate `dist/stats.html` which provides an interactive visualization of:
 - Chunk sizes (raw and gzipped)
 - Module tree structure
 - Import relationships
@@ -174,7 +174,7 @@ After implementing changes, run measurements again and update:
 ```bash
 # Build and measure bundle sizes
 cd apps/base/client
-bun run build:analyze
+npm run build:analyze
 
 # View chunk sizes
 ls -la dist/assets/*.js
