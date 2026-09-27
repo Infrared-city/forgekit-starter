@@ -1,6 +1,6 @@
 name: CodeQL
 
-# Advanced setup, same language and query suite as GitHub's default setup,
+# Advanced setup, same language and (default) query suite as GitHub's default setup,
 # plus .github/codeql/codeql-config.yml (it skips the vendored SDK build).
 # Default setup must be OFF in Settings > Code security for this to upload.
 on:
@@ -25,7 +25,6 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
-          queries: default
           config-file: ./.github/codeql/codeql-config.yml
       - uses: github/codeql-action/analyze@v3
         with:
