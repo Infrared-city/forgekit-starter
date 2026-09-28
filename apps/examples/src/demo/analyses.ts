@@ -76,17 +76,18 @@ const EQUINOX_DAY: Period = {
   end: { month: 3, day: 21, hour: 17 },
 }
 // The leaf-fall pair for daylight and sun hours: the model makes deciduous
-// trees bare from November to March (northern hemisphere, from the period's
-// month; lambda-models `season.rs`). The last week of October and the first
-// week of November have almost the same sun, so the difference is the leaves.
-// Seven days also blur the hourly shadow snapshots into smooth edges.
-const LEAVES_ON_WEEK: Period = {
-  start: { month: 10, day: 25, hour: 9 },
+// trees bare from November to March (northern hemisphere, chosen from the
+// period's month). 31 October and 1 November are the two days next to that
+// switch: the noon sun differs by only 0.3 degrees, so building shadows stay
+// in place and the difference is the leaves. (A week on each side would move
+// the sun by 2.5 degrees and make every building shadow longer.)
+const LEAVES_ON_DAY: Period = {
+  start: { month: 10, day: 31, hour: 9 },
   end: { month: 10, day: 31, hour: 15 },
 }
-const LEAVES_OFF_WEEK: Period = {
+const LEAVES_OFF_DAY: Period = {
   start: { month: 11, day: 1, hour: 9 },
-  end: { month: 11, day: 7, hour: 15 },
+  end: { month: 11, day: 1, hour: 15 },
 }
 const WHOLE_YEAR: Period = {
   start: { month: 1, day: 1, hour: 0 },
@@ -132,35 +133,33 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     id: 'sun-hours',
     label: 'Sun hours',
     analysisType: 'direct-sun-hours',
-    unit: 'h/day',
+    unit: 'hours',
     min: 0,
     max: 7,
     diff: 4,
     ramp: 'sun',
-    period: LEAVES_ON_WEEK,
-    perDay: 7,
+    period: LEAVES_ON_DAY,
     needsWeather: false,
     uses: ALL,
-    when: '25-31 October, 09:00-15:00, leaves on: mean hours of direct sun per day (7 at most)',
+    when: '31 October, 09:00-15:00, leaves on: hours of direct sun (7 at most)',
     explain:
-      'How many hours of direct sun a spot gets on a late-October day, while the trees still have their leaves. The autumn sun is low, so long shadows show where the narrow canyon, the north sides of blocks and the ground behind the hill tower stay in the shade.',
+      'How many hours of direct sun a spot gets on 31 October, the last day with leaves on the trees. The autumn sun is low, so long shadows show where the narrow canyon, the north sides of blocks and the ground behind the hill tower stay in the shade.',
   },
   {
     id: 'sun-hours-winter',
     label: 'Sun hours (leaf-off)',
     analysisType: 'direct-sun-hours',
-    unit: 'h/day',
+    unit: 'hours',
     min: 0,
     max: 7,
     diff: 4,
     ramp: 'sun',
-    period: LEAVES_OFF_WEEK,
-    perDay: 7,
+    period: LEAVES_OFF_DAY,
     needsWeather: false,
     uses: ALL,
-    when: '1-7 November, 09:00-15:00, deciduous trees bare (7 h/day at most)',
+    when: '1 November, 09:00-15:00, deciduous trees bare (7 hours at most)',
     explain:
-      'One week later, after leaf fall. The sun path is almost the same, but bare deciduous crowns let most of the sun through, so their shadows fade. Pines keep their needles and still cast full shadows.',
+      'One day later, after leaf fall. The sun path is the same, but bare deciduous crowns let most of the sun through, so their shadows fade. Pines keep their needles and still cast full shadows.',
   },
   {
     id: 'svf',
@@ -186,12 +185,12 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     max: 100,
     diff: 50,
     ramp: 'sky',
-    period: LEAVES_ON_WEEK,
+    period: LEAVES_ON_DAY,
     needsWeather: false,
     uses: ALL,
-    when: '25-31 October, 09:00-15:00, leaves on',
+    when: '31 October, 09:00-15:00, leaves on',
     explain:
-      'The share of daytime hours with enough daylight on the ground in late October, with leafy trees. Deep canyons, courtyards and the north side of tall blocks get too little; open lawns are bright.',
+      'The share of daytime hours with enough daylight on the ground on 31 October, with leafy trees. Deep canyons, courtyards and the north side of tall blocks get too little; open lawns are bright.',
   },
   {
     id: 'daylight-winter',
@@ -202,12 +201,12 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     max: 100,
     diff: 50,
     ramp: 'sky',
-    period: LEAVES_OFF_WEEK,
+    period: LEAVES_OFF_DAY,
     needsWeather: false,
     uses: ALL,
-    when: '1-7 November, 09:00-15:00, deciduous trees bare',
+    when: '1 November, 09:00-15:00, deciduous trees bare',
     explain:
-      'One week later, after leaf fall: the sun is almost the same, but bare deciduous crowns let much more daylight through, so the ground under oaks, limes and maples gets brighter. Pines keep their needles and stay dark.',
+      'One day later, after leaf fall: the sun is the same, but bare deciduous crowns let much more daylight through, so the ground under oaks, limes and maples gets brighter. Pines keep their needles and stay dark.',
   },
   {
     id: 'wind',
