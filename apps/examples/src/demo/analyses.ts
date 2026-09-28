@@ -178,7 +178,7 @@ export const ANALYSES: readonly DemoAnalysis[] = [
   },
   {
     id: 'daylight',
-    label: 'Daylight',
+    label: 'Daylight availability (direct sun)',
     analysisType: 'daylight-availability',
     unit: '% of hours',
     min: 0,
@@ -190,11 +190,11 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     uses: ALL,
     when: '31 October, 09:00-15:00, leaves on',
     explain:
-      'The share of daytime hours with enough daylight on the ground on 31 October, with leafy trees. Deep canyons, courtyards and the north side of tall blocks get too little; open lawns are bright.',
+      'How much DIRECT sun a spot gets on 31 October, with leafy trees. The model counts only sunbeams, not light from the sky: 100 % = direct sun for at least half of the daytime hours, 0 % = no direct sun at all (the spot is not dark, it only never gets a sunbeam). Deep canyons, courtyards and the north side of tall blocks get 0 %; open lawns get 100 %.',
   },
   {
     id: 'daylight-winter',
-    label: 'Daylight (leaf-off)',
+    label: 'Daylight availability (leaf-off)',
     analysisType: 'daylight-availability',
     unit: '% of hours',
     min: 0,
@@ -206,7 +206,7 @@ export const ANALYSES: readonly DemoAnalysis[] = [
     uses: ALL,
     when: '1 November, 09:00-15:00, deciduous trees bare',
     explain:
-      'One day later, after leaf fall: the sun is the same, but bare deciduous crowns let much more daylight through, so the ground under oaks, limes and maples gets brighter. Pines keep their needles and stay dark.',
+      'One day later, after leaf fall: the sun is the same, but bare deciduous crowns let much more direct sun through, so the ground next to oaks, limes and maples gets more of it. Pines keep their needles and still block the sun. As on the leaves-on day, only direct sun counts, not sky light.',
   },
   {
     id: 'wind',

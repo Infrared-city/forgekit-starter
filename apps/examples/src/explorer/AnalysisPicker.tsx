@@ -47,7 +47,7 @@ const TILES: Partial<Record<AnalysisId, { short: string; tip: string; icon: Reac
   },
   daylight: {
     short: 'Daylight',
-    tip: 'Daylight: the share of daytime hours with enough daylight.',
+    tip: 'Daylight availability: how much of the day a spot gets DIRECT sun (sky light is not counted).',
     icon: (
       <>
         <rect x="4" y="3" width="16" height="18" rx="1" />
