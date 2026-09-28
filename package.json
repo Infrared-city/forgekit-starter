@@ -23,9 +23,15 @@
     "packages/interfaces/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.4.2"
+    "@biomejs/biome": "2.4.2",
+    "@testing-library/dom": "^10.4.0",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "fflate": "^0.8.3",
+    "image-size": "^2.0.3"
   }
 }

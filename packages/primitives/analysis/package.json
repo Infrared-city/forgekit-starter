@@ -87,7 +87,7 @@
   },
   "devDependencies": {
     "@deck.gl-community/editable-layers": "^9.2.8",
-    "vitest": "^2.1.8",
+    "vitest": "^4.1.11",
     "@types/geojson": "^7946.0.16"
   }
 }
