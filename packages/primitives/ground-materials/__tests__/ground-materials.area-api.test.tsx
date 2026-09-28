@@ -33,7 +33,7 @@ function createWrapper() {
   }
 }
 
-// The mutation now does ONE whole-AOI `getRaw(lat, lon, distance, 'fgb')` call
+// The mutation now does ONE whole-AOI `getRaw(lat, lon, distance)` call
 // (not the tiled, Mapbox-default `getArea`); getRaw returns the name-keyed layers
 // dict directly.
 function makeSdk(
@@ -49,7 +49,7 @@ afterEach(() => {
 })
 
 describe('useGroundMaterialsAreaMutation', () => {
-  it('fetches whole-AOI via getRaw(fgb) and writes the layers to the store', async () => {
+  it('fetches whole-AOI via one getRaw call and writes the layers to the store', async () => {
     const { client, getRaw } = makeSdk()
     const { result } = renderHook(() => useGroundMaterialsAreaMutation(client as never), {
       wrapper: createWrapper(),
@@ -60,9 +60,10 @@ describe('useGroundMaterialsAreaMutation', () => {
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    // ONE call (no per-tile fan-out) with the 'fgb' source (never 'mapbox').
+    // ONE call (no per-tile fan-out): getRaw(lat, lon, distance), the SDK's
+    // whole signature (it has no source argument any more).
     expect(getRaw).toHaveBeenCalledTimes(1)
-    expect(getRaw.mock.calls[0][3]).toBe('fgb')
+    expect(getRaw.mock.calls[0]).toHaveLength(3)
     // lat/lon/distance are numbers derived from the polygon bbox.
     expect(typeof getRaw.mock.calls[0][0]).toBe('number')
     expect(typeof getRaw.mock.calls[0][2]).toBe('number')
@@ -93,7 +94,7 @@ describe('useGroundMaterialsAreaMutation', () => {
     expect(typeof params.distance).toBe('number')
   })
 
-  it('skips clean-v3 when no cleaner is supplied (raw fgb layers)', async () => {
+  it('skips clean-v3 when no cleaner is supplied (raw layers)', async () => {
     const { client, getRaw } = makeSdk()
     const { result } = renderHook(() => useGroundMaterialsAreaMutation(client as never), {
       wrapper: createWrapper(),
@@ -105,7 +106,7 @@ describe('useGroundMaterialsAreaMutation', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(getRaw).toHaveBeenCalledTimes(1)
-    expect(getRaw.mock.calls[0][3]).toBe('fgb')
+    expect(getRaw.mock.calls[0]).toHaveLength(3)
   })
 
   it('shouldCommit:false returns the FULL result (incl. rawLayers) without writing the store', async () => {

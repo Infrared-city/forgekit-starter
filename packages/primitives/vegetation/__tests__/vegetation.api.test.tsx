@@ -45,7 +45,7 @@ function createWrapper() {
   }
 }
 
-// The mutation now does ONE whole-AOI `getGeoJson(lat, lon, distance, 'fgb')`
+// The mutation now does ONE whole-AOI `getGeoJson(lat, lon, distance)`
 // call (not the tiled `getArea`); getGeoJson returns a FeatureCollection whose
 // `features` is an ARRAY (the mutation keys it into the id-dict downstream expects).
 function makeSdk(
@@ -82,7 +82,7 @@ describe('isPolygonSafeToFetch', () => {
 })
 
 describe('useVegetationMeshesMutation', () => {
-  it('fetches whole-AOI via getGeoJson(fgb) and builds meshes locally', async () => {
+  it('fetches whole-AOI via one getGeoJson call and builds meshes locally', async () => {
     const { client, getGeoJson } = makeSdk()
     const { result } = renderHook(() => useVegetationMeshesMutation(client), {
       wrapper: createWrapper(),
@@ -93,9 +93,10 @@ describe('useVegetationMeshesMutation', () => {
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    // ONE call (no per-tile fan-out) with the 'fgb' source.
+    // ONE call (no per-tile fan-out): getGeoJson(lat, lon, distance), the
+    // SDK's whole signature (it has no source argument any more).
     expect(getGeoJson).toHaveBeenCalledTimes(1)
-    expect(getGeoJson.mock.calls[0][3]).toBe('fgb')
+    expect(getGeoJson.mock.calls[0]).toHaveLength(3)
     expect(typeof getGeoJson.mock.calls[0][0]).toBe('number') // lat
     expect(typeof getGeoJson.mock.calls[0][2]).toBe('number') // distance
 
