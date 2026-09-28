@@ -2,7 +2,7 @@
 // Replace packages/sdk with the BUILT output of one published version of
 // @infrared-city/infrared-sdk-ts. Maintainers only: novices never run this.
 //
-//   NPM_TOKEN=<token with read:packages> npm run update-sdk -- 0.12.13-next.18
+//   NPM_TOKEN=<token with read:packages> npm run update-sdk -- 0.12.13-next.19
 //
 // Options:
 //   --registry <url>   default https://npm.pkg.github.com (use

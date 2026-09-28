@@ -1,5 +1,6 @@
 import { buildAuthResolver, } from "./internal/auth.js";
 import { rejectRemovedOption } from "./internal/service.js";
+import { trimTrailingSlashes } from "./internal/url-trim.js";
 import { JobsService, } from "./jobs.js";
 import { prepareAnalysisPayload } from "./area/payload.js";
 import { checkAreaState as pollAreaState, lastPerJobRequests } from "./area/poll.js";
@@ -95,7 +96,7 @@ export class InfraredClient {
         rejectRemovedOption(options, "acquisition", "the public-data path is the only path; remove the option");
         const apiKey = options.apiKey ?? envValue(options.env, "INFRARED_API_KEY");
         const baseUrl = options.baseUrl ?? envValue(options.env, "INFRARED_BASE_URL") ?? DEFAULT_BASE_URL;
-        this.baseUrl = String(baseUrl).replace(/\/+$/, "");
+        this.baseUrl = trimTrailingSlashes(String(baseUrl));
         this.apiKey = apiKey;
         this.logger = options.logger ?? consoleLogger;
         const credentialsPresent = apiKey !== undefined || options.token !== undefined || options.getToken !== undefined;

@@ -4,9 +4,14 @@ export class SubmissionUncertainError extends Error {
     acceptedJobIds;
     name = "SubmissionUncertainError";
     phase = "unknown-acceptance";
-    constructor(acceptedJobIds) {
-        super("job submission returned an invalid accepted response");
+    /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
+    status;
+    constructor(acceptedJobIds, status) {
+        super(status === undefined
+            ? "job submission returned an invalid accepted response"
+            : `job submission received HTTP ${status}; the job may already exist`);
         this.acceptedJobIds = acceptedJobIds;
+        this.status = status;
     }
 }
 /** A typed accepted-response failure that must not be collapsed into a generic parse error. */
@@ -106,14 +111,26 @@ function acceptedJobIds(value) {
     return typeof jobId === "string" && jobId.length > 0 ? [jobId] : [];
 }
 async function post(options, body, contentType, allowExpired, allowGatewaySizeFallback) {
-    const response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
-        method: "POST",
-        headers: { "Content-Type": contentType },
-        body,
-        acceptHttpErrors: true,
-        ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-    });
+    let response;
+    try {
+        response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
+            method: "POST",
+            headers: { "Content-Type": contentType },
+            body,
+            acceptHttpErrors: true,
+            ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+        });
+    }
+    catch (error) {
+        // The transport answers a redirect with an error before the body is read.
+        // The POST was sent, so the job may exist (#261, Python's classifier).
+        if (error instanceof TransportError && error.phase === "response" &&
+            error.status !== undefined && error.status >= 300 && error.status < 400) {
+            throw new SubmissionUncertainError([], error.status);
+        }
+        throw error;
+    }
     const parsed = parseJson(response.content);
     const ok = response.status >= 200 && response.status < 300;
     if (!ok) {
@@ -132,6 +149,13 @@ async function post(options, body, contentType, allowExpired, allowGatewaySizeFa
             if (typeof code === "string" && PRE_ACCEPT_REF_REJECTIONS.get(response.status)?.has(code)) {
                 throw new GeometryReferenceRejectedError(code);
             }
+        }
+        // Only a 4xx proves no job exists. A 5xx (the handler may have queued the
+        // job before the proxy failed) and a browser's opaque redirect (status 0
+        // under `redirect: "manual"`) are uncertain, so `retryFrom` never pays for
+        // them again (#261, #197), as on the binary route.
+        if (response.status < 400 || response.status >= 500) {
+            throw new SubmissionUncertainError([], response.status);
         }
         throw new TransportError(`job submission received HTTP ${response.status}`, "response", "http", "POST", response.status);
     }

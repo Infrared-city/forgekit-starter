@@ -16,7 +16,9 @@ export declare class SubmissionUncertainError extends Error {
     readonly acceptedJobIds: readonly string[];
     readonly name = "SubmissionUncertainError";
     readonly phase = "unknown-acceptance";
-    constructor(acceptedJobIds: readonly string[]);
+    /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
+    readonly status: number | undefined;
+    constructor(acceptedJobIds: readonly string[], status?: number);
 }
 /** A typed accepted-response failure that must not be collapsed into a generic parse error. */
 export declare class AcceptedResponseError extends Error {

@@ -61,7 +61,7 @@ function unsafeCandidate(error) {
     if (error instanceof TransportError && error.reason === "aborted")
         throw error;
     if (error instanceof SubmissionUncertainError) {
-        throw new GeometryReferenceSubmissionError(error.acceptedJobIds, "accepted-response-invalid");
+        throw new GeometryReferenceSubmissionError(error.acceptedJobIds, error.status === undefined ? "accepted-response-invalid" : "endpoint-response-uncertain");
     }
     if (error instanceof TransportError && error.phase === "unknown-acceptance") {
         throw new GeometryReferenceSubmissionError([], "endpoint-post-failed");

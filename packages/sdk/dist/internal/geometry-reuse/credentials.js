@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "../url-trim.js";
 import { canonicalJsonBytes, sha256Hex } from "./canonical.js";
 function activeCredential(headers) {
     let apiKey;
@@ -20,7 +21,7 @@ export async function credentialPartition(baseUrl, headers) {
     const digest = material === undefined ? undefined : await sha256Hex(material);
     return digest === undefined
         ? undefined
-        : `${baseUrl.replace(/\/+$/, "")}\n${credential.kind}:${digest}`;
+        : `${trimTrailingSlashes(baseUrl)}\n${credential.kind}:${digest}`;
 }
 export async function exactAuthHeadersDigest(headers) {
     if (activeCredential(headers) === undefined)
