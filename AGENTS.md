@@ -331,10 +331,11 @@ picks the state from the month of `dateFilters` and the latitude:
 - Evergreens (pines, spruces, palms) never lose their leaves.
 - The TS SDK has no option to force the leaf state. It drops a `leafState` /
   `leaf-state` field from every request, so daylight, sun hours, solar and
-  thermal all use the season rule. To compare leaves on and off, run two
-  short windows on each side of the change (the demo uses 25-31 October and
-  1-7 November). The sun changes a little between them too, so this is
-  close to, but not exactly, a leaves-only difference.
+  thermal all use the season rule. To compare leaves on and off, run the
+  two days next to the change (the demo uses 31 October and 1 November).
+  Wider windows move the sun too: one week on each side lowers the noon sun
+  by about 2.5 degrees, and every building shadow then gets longer in the
+  "difference". Two adjacent days keep that change to about 0.3 degrees.
 - Keep a window inside one season. Do not let it cross the change.
 
 ### Time windows (`dateFilters`)

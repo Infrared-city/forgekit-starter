@@ -29,10 +29,11 @@ afternoons it lowers the "feels like" temperature (UTCI) on the street by
 by **2.5 °C on average and by up to 7.2 °C**. The solar radiation on the
 street drops by 29 kWh/m² on average in July.
 
-Daylight and Sun hours have a **Leaves on / Leaves off** switch: the last
-week of October against the first week of November. The sun is almost the
-same, but the model makes deciduous trees bare from November to March
-(northern hemisphere), so
+Daylight and Sun hours have a **Leaves on / Leaves off** switch: 31 October
+against 1 November. The model chooses the leaf state from the month
+(deciduous trees are bare from November to March in the northern
+hemisphere), and on two adjacent days the sun is the same, so building
+shadows stay in place and
 oaks, limes and maples let the light through and the pines stay dark. Pins on
 the map mark the highest and lowest area and explain the interesting spots;
 click the map to pin your own probes.
