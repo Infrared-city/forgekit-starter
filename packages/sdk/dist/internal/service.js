@@ -1,4 +1,5 @@
 import { GatewayTransport } from "./transport.js";
+import { trimTrailingSlashes } from "./url-trim.js";
 /** A site-context option was given a value the SDK does not have. */
 export class InvalidOptionError extends TypeError {
     name = "InvalidOptionError";
@@ -20,7 +21,7 @@ export function rejectRemovedOption(options, name, replacement) {
     throw new InvalidOptionError(`${name} was removed; ${replacement}`);
 }
 export function serviceTransport(options, suffix = "") {
-    const base = String(options.baseUrl).replace(/\/+$/, "");
+    const base = trimTrailingSlashes(String(options.baseUrl));
     return new GatewayTransport({
         baseUrl: `${base}${suffix}`,
         auth: options.auth,

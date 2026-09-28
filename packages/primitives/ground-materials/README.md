@@ -67,7 +67,7 @@ import {
 const asphalt = GROUND_MATERIAL_REGISTRY['asphalt-uuid']
 
 // Convert between names and UUIDs
-const uuids = mapNamesToUuids(['asphalt', 'grass'], GROUND_MATERIAL_REGISTRY)
+const uuids = mapNamesToUuids(['asphalt', 'vegetation'], GROUND_MATERIAL_REGISTRY)
 const names = mapUuidsToNames(uuids, GROUND_MATERIAL_REGISTRY)
 ```
 
@@ -97,7 +97,7 @@ Imported polygons flow through the same draw + commit pipeline as user-drawn one
 
 ### Single FeatureCollection with per-feature `material`
 
-When the file is a `FeatureCollection` whose features carry a `properties.material` string, each feature is routed to the matching registry entry. Unknown / missing names fall back to the currently-selected panel material (or `DEFAULT_FALLBACK_MATERIAL` = `"asphalt"` if nothing is selected). When every feature has a valid known label the panel material picker is hidden — there is nothing to pick.
+When the file is a `FeatureCollection` whose features carry a `properties.material` string, each feature is routed to the matching registry entry. The names are the SDK's five ground layers: `asphalt`, `concrete`, `soil`, `vegetation` (grass, lawn, planted ground) and `water`. Unknown / missing names fall back to the currently-selected panel material (or `DEFAULT_FALLBACK_MATERIAL` = `"asphalt"` if nothing is selected). When every feature has a valid known label the panel material picker is hidden — there is nothing to pick.
 
 ```json
 {
@@ -110,7 +110,7 @@ When the file is a `FeatureCollection` whose features carry a `properties.materi
     },
     {
       "type": "Feature",
-      "properties": { "material": "grass" },
+      "properties": { "material": "vegetation" },
       "geometry": { "type": "Polygon", "coordinates": [/* ... */] }
     }
   ]
@@ -138,7 +138,7 @@ When the file is a plain object whose values are themselves FeatureCollections, 
     "type": "FeatureCollection",
     "features": [/* polygons */]
   },
-  "grass": {
+  "vegetation": {
     "type": "FeatureCollection",
     "features": [/* polygons */]
   }

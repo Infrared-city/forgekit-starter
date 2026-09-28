@@ -1,6 +1,6 @@
 {
   "name": "@infrared-city/infrared-sdk-ts",
-  "version": "0.12.13-next.18",
+  "version": "0.12.13-next.19",
   "description": "WASM-first Infrared City TypeScript SDK",
   "license": "Apache-2.0",
   "type": "module",
@@ -76,6 +76,6 @@
   ],
   "vendored": {
     "note": "Built output only, copied by scripts/update-sdk.mjs. Do not edit by hand.",
-    "integrity": "sha512-j/TAoNhI+YDAnesmnQbDwZ03A0sAORPQfYVkT4aIVhbfJYW+rPgN9oYLtiGWFTKPG+DF5DBbGR4nYrWpahyrNg=="
+    "integrity": "sha512-0TY+uBsnT4bECypPijzAT2pKqIejONhmqLGlG+xyk/K4w/wngssnNwbtSV4keaQSu8VIvop80ixlPEUQIJfZaw=="
   }
 }

@@ -240,7 +240,7 @@ More details: [docs/cloudflare.md](./docs/cloudflare.md).
 GitHub Packages:
 
 ```bash
-NPM_TOKEN=<GitHub token with read:packages> npm run update-sdk -- 0.12.13-next.18
+NPM_TOKEN=<GitHub token with read:packages> npm run update-sdk -- 0.12.13-next.19
 npm install
 npm run typecheck && npm run build
 ```

@@ -660,7 +660,7 @@ function initializeCore(options = {}) {
 }
 
 // src/version.ts
-var VERSION = "0.12.13-next.18";
+var VERSION = "0.12.13-next.19";
 
 // src/logger.ts
 var discard = (..._args) => void 0;
@@ -822,6 +822,15 @@ function resolveFetch(implementation) {
   return typeof native === "function" ? native.bind(globalThis) : void 0;
 }
 
+// src/internal/url-trim.ts
+function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
 // src/internal/transport.ts
 var TransportError = class extends Error {
   constructor(message, phase, reason2, method, status) {
@@ -857,7 +866,7 @@ function normalizeBaseUrl(input) {
   if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new TypeError("gateway base URL must be an uncredentialed HTTP(S) URL without query or fragment");
   }
-  const path = url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+  const path = url.pathname === "/" ? "" : trimTrailingSlashes(url.pathname);
   return { origin: url.origin, path };
 }
 function decodedPath(raw) {
@@ -1032,7 +1041,7 @@ function rejectRemovedOption(options, name, replacement) {
   throw new InvalidOptionError(`${name} was removed; ${replacement}`);
 }
 function serviceTransport(options, suffix = "") {
-  const base = String(options.baseUrl).replace(/\/+$/, "");
+  const base = trimTrailingSlashes(String(options.baseUrl));
   return new GatewayTransport({
     baseUrl: `${base}${suffix}`,
     auth: options.auth,
@@ -7141,7 +7150,7 @@ var StaticWeatherReader = class {
   request;
   ttlMs;
   constructor(options = {}) {
-    this.baseUrl = (options.baseUrl ?? DEFAULT_STATIC_BASE_URL).replace(/\/+$/, "");
+    this.baseUrl = trimTrailingSlashes(options.baseUrl ?? DEFAULT_STATIC_BASE_URL);
     this.ttlMs = options.catalogTtlMs ?? CATALOG_TTL_MS;
     this.request = {
       ...options.fetch === void 0 ? {} : { fetch: options.fetch },
@@ -8170,12 +8179,15 @@ async function uploadPresignedZip(input, content, options) {
 
 // src/internal/submission.ts
 var SubmissionUncertainError = class extends Error {
-  constructor(acceptedJobIds2) {
-    super("job submission returned an invalid accepted response");
+  constructor(acceptedJobIds2, status) {
+    super(status === void 0 ? "job submission returned an invalid accepted response" : `job submission received HTTP ${status}; the job may already exist`);
     this.acceptedJobIds = acceptedJobIds2;
+    this.status = status;
   }
   name = "SubmissionUncertainError";
   phase = "unknown-acceptance";
+  /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
+  status;
 };
 var AcceptedResponseError = class extends Error {
   name = "AcceptedResponseError";
@@ -8265,14 +8277,22 @@ function acceptedJobIds(value) {
   return typeof jobId === "string" && jobId.length > 0 ? [jobId] : [];
 }
 async function post(options, body, contentType, allowExpired, allowGatewaySizeFallback) {
-  const response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
-    method: "POST",
-    headers: { "Content-Type": contentType },
-    body,
-    acceptHttpErrors: true,
-    ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
-    ...options.signal === void 0 ? {} : { signal: options.signal }
-  });
+  let response;
+  try {
+    response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
+      method: "POST",
+      headers: { "Content-Type": contentType },
+      body,
+      acceptHttpErrors: true,
+      ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+      ...options.signal === void 0 ? {} : { signal: options.signal }
+    });
+  } catch (error) {
+    if (error instanceof TransportError && error.phase === "response" && error.status !== void 0 && error.status >= 300 && error.status < 400) {
+      throw new SubmissionUncertainError([], error.status);
+    }
+    throw error;
+  }
   const parsed = parseJson2(response.content);
   const ok = response.status >= 200 && response.status < 300;
   if (!ok) {
@@ -8287,6 +8307,9 @@ async function post(options, body, contentType, allowExpired, allowGatewaySizeFa
       if (typeof code === "string" && PRE_ACCEPT_REF_REJECTIONS.get(response.status)?.has(code)) {
         throw new GeometryReferenceRejectedError(code);
       }
+    }
+    if (response.status < 400 || response.status >= 500) {
+      throw new SubmissionUncertainError([], response.status);
     }
     throw new TransportError(
       `job submission received HTTP ${response.status}`,
@@ -8569,7 +8592,7 @@ async function credentialPartition(baseUrl, headers) {
   if (credential === void 0) return void 0;
   const material = canonicalJsonBytes(`${credential.kind}\0${credential.value}`);
   const digest = material === void 0 ? void 0 : await sha256Hex(material);
-  return digest === void 0 ? void 0 : `${baseUrl.replace(/\/+$/, "")}
+  return digest === void 0 ? void 0 : `${trimTrailingSlashes(baseUrl)}
 ${credential.kind}:${digest}`;
 }
 async function exactAuthHeadersDigest(headers) {
@@ -8763,7 +8786,10 @@ function unsafeCandidate(error) {
   if (error instanceof GeometryReferenceRejectedError) throw error;
   if (error instanceof TransportError && error.reason === "aborted") throw error;
   if (error instanceof SubmissionUncertainError) {
-    throw new GeometryReferenceSubmissionError(error.acceptedJobIds, "accepted-response-invalid");
+    throw new GeometryReferenceSubmissionError(
+      error.acceptedJobIds,
+      error.status === void 0 ? "accepted-response-invalid" : "endpoint-response-uncertain"
+    );
   }
   if (error instanceof TransportError && error.phase === "unknown-acceptance") {
     throw new GeometryReferenceSubmissionError([], "endpoint-post-failed");
@@ -8939,8 +8965,8 @@ async function referenced(preparedSubmission, prepared, partitionKey, transport3
 // src/internal/geometry-reuse/options.ts
 function buildGeometryReuseOptions(options, fetch2, thresholdBytes, timeoutMs) {
   return {
-    baseUrl: String(options.baseUrl).replace(/\/+$/, ""),
-    gatewayBaseUrl: String(options.gatewayBaseUrl ?? options.baseUrl).replace(/\/+$/, ""),
+    baseUrl: trimTrailingSlashes(String(options.baseUrl)),
+    gatewayBaseUrl: trimTrailingSlashes(String(options.gatewayBaseUrl ?? options.baseUrl)),
     auth: options.auth,
     fetch: fetch2,
     thresholdBytes,
@@ -12549,7 +12575,7 @@ var InfraredClient = class {
     );
     const apiKey = options.apiKey ?? envValue(options.env, "INFRARED_API_KEY");
     const baseUrl = options.baseUrl ?? envValue(options.env, "INFRARED_BASE_URL") ?? DEFAULT_BASE_URL;
-    this.baseUrl = String(baseUrl).replace(/\/+$/, "");
+    this.baseUrl = trimTrailingSlashes(String(baseUrl));
     this.apiKey = apiKey;
     this.logger = options.logger ?? consoleLogger;
     const credentialsPresent = apiKey !== void 0 || options.token !== void 0 || options.getToken !== void 0;

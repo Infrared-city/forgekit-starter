@@ -1,6 +1,7 @@
 import { AuthPartitionChangedError } from "./auth.js";
 import { Deadline, requireTimeout } from "./deadline.js";
 import { resolveFetch } from "./fetch.js";
+import { trimTrailingSlashes } from "./url-trim.js";
 export class TransportError extends Error {
     phase;
     reason;
@@ -46,7 +47,7 @@ function normalizeBaseUrl(input) {
     if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) {
         throw new TypeError("gateway base URL must be an uncredentialed HTTP(S) URL without query or fragment");
     }
-    const path = url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+    const path = url.pathname === "/" ? "" : trimTrailingSlashes(url.pathname);
     return { origin: url.origin, path };
 }
 function decodedPath(raw) {

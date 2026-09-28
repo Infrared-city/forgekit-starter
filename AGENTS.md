@@ -100,7 +100,7 @@ of the grid (NaN), and the difference must be zero away from the change.
 
 ## SDK reference
 
-For `@infrared-city/infrared-sdk-ts` 0.12.13-next.18 (the copy in
+For `@infrared-city/infrared-sdk-ts` 0.12.13-next.19 (the copy in
 `packages/sdk`). This section is the one complete reference: README and the
 code comments link here. Every snippet compiles against `packages/sdk`, and
 every request shape passes the SDK's own validators (`prepareAreaPayload`).
@@ -169,6 +169,8 @@ try {
   if (err instanceof SubmissionUncertainError) {
     // The server may have accepted jobs. Do NOT submit again: check each one
     // with client.jobs.getStatus(id) for id of err.acceptedJobIds.
+    // err.status is the HTTP status when a sent POST got a 3xx or 5xx answer
+    // instead of an accept (undefined when the answer never arrived).
   } else if (err instanceof AreaTimeoutError) {
     // err.areaState has the counts. The jobs still run (default limit: 3600 s).
   } else if (err instanceof ReadMarginError) {

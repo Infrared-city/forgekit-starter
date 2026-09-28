@@ -1,8 +1,9 @@
 import { consoleLogger } from "../../logger.js";
+import { trimTrailingSlashes } from "../url-trim.js";
 export function buildGeometryReuseOptions(options, fetch, thresholdBytes, timeoutMs) {
     return {
-        baseUrl: String(options.baseUrl).replace(/\/+$/, ""),
-        gatewayBaseUrl: String(options.gatewayBaseUrl ?? options.baseUrl).replace(/\/+$/, ""),
+        baseUrl: trimTrailingSlashes(String(options.baseUrl)),
+        gatewayBaseUrl: trimTrailingSlashes(String(options.gatewayBaseUrl ?? options.baseUrl)),
         auth: options.auth,
         fetch,
         thresholdBytes,

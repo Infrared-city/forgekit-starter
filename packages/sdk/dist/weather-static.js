@@ -32,6 +32,7 @@ import { decodeJsonObject, decodeUtf8, failWeather, gunzipIfNeeded, indexStation
 import { BoundedCache, CATALOG_CACHE_LIMIT, POINTER_CACHE_LIMIT, STATION_CACHE_LIMIT, } from "./internal/weather-static-cache.js";
 import { requireCore } from "./internal/core.js";
 import { fetchPublicBytes, GeodataError, } from "./geodata/index.js";
+import { trimTrailingSlashes } from "./internal/url-trim.js";
 export { WeatherServiceError, } from "./internal/weather-static-decode.js";
 /** Where the catalog lives. Mirrors the Python `DEFAULT_STATIC_BASE_URL`. */
 export const DEFAULT_STATIC_BASE_URL = "https://geo.infrared.city/weather";
@@ -139,7 +140,7 @@ export class StaticWeatherReader {
     request;
     ttlMs;
     constructor(options = {}) {
-        this.baseUrl = (options.baseUrl ?? DEFAULT_STATIC_BASE_URL).replace(/\/+$/, "");
+        this.baseUrl = trimTrailingSlashes(options.baseUrl ?? DEFAULT_STATIC_BASE_URL);
         this.ttlMs = options.catalogTtlMs ?? CATALOG_TTL_MS;
         this.request = {
             ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
