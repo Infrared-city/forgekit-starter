@@ -119,7 +119,7 @@ Every picture is the demo explorer with the pre-computed results
 |---|---|
 | ![UTCI baseline](docs/images/demo/utci.jpg) **Heat stress (UTCI)**, July afternoons. Asphalt and open lawns are hot; tree shade, the lake and the shaded canyon are cool. | ![UTCI difference in 3D](docs/images/demo/utci-3d.jpg) **UTCI difference in 3D**: the cooling follows the new street trees. |
 | ![Solar radiation difference](docs/images/demo/solar-diff.jpg) **Solar radiation, difference**: the new trees block up to 85 kWh/m² on the street and up to 173 kWh/m² in the car park in July. | ![Sun hours](docs/images/demo/sun-hours.jpg) **Sun hours**, late October (hours per day): long shadows in the canyon and north of the tall blocks. |
-| ![Sky view factor](docs/images/demo/svf.jpg) **Sky view factor**: low in the 8 m canyon and under tree crowns. | ![Daylight](docs/images/demo/daylight.jpg) **Daylight**, late October: north sides of the tall blocks stay dark. |
+| ![Sky view factor](docs/images/demo/svf.jpg) **Sky view factor**: low in the 8 m canyon and under tree crowns. | ![Daylight](docs/images/demo/daylight.jpg) **Daylight availability**, 31 October: the model counts direct sun only (no sky light), so the north sides of the tall blocks get 0 %: no sunbeam, not darkness. |
 | ![Wind speed](docs/images/demo/wind.jpg) **Wind speed**, 5 m/s from the west: wakes east of the blocks. | ![Wind comfort](docs/images/demo/wind-comfort.jpg) **Wind comfort** (Lawson 2001) from a year of wind: sheltered near the blocks, windier in the open park. |
 | ![Facade sun hours](docs/images/demo/facade-sun.jpg) **Facade and roof sun hours**: every wall and roof, in 3D; the pins mark the sunniest and darkest walls. | ![Phone layout](docs/images/demo/mobile.jpg) The explorer on a phone. |
 

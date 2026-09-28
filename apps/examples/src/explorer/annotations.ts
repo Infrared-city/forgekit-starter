@@ -48,8 +48,8 @@ const WORDS: Partial<Record<AnalysisId, [string, string]>> = {
   'sun-hours': ['Most sun', 'Least sun'],
   'sun-hours-winter': ['Most sun', 'Least sun'],
   svf: ['Most open sky', 'Least open sky'],
-  daylight: ['Brightest', 'Darkest'],
-  'daylight-winter': ['Brightest', 'Darkest'],
+  daylight: ['Most direct sun', 'Least direct sun'],
+  'daylight-winter': ['Most direct sun', 'Least direct sun'],
   wind: ['Windiest', 'Calmest'],
   'facade-sun': ['Sunniest walls', 'Darkest walls'],
 }
@@ -85,9 +85,9 @@ export const NOTES: Partial<
     [420, 385, 'Hill top: open sky'],
   ],
   daylight: [
-    [186, 428, 'North of tall blocks: too little daylight'],
+    [186, 428, 'North of tall blocks: no direct sun all day (not dark)'],
     [300, 195, 'Oak grove: shade falls north of the crowns (low autumn sun)'],
-    [348, 322, 'Hill tower: dark to its north'],
+    [348, 322, 'Hill tower: little direct sun to its north'],
   ],
   'daylight-winter': [
     [300, 195, 'Oak grove after leaf fall: bright again'],
@@ -127,7 +127,7 @@ function windowMean(
 /**
  * The centre (metres) of the highest and lowest 9 m area of a grid, at least
  * 12 m from the edge (a model edge is not a finding). An extreme that covers
- * more than 3 % of the site (a plateau, e.g. 100 % daylight on the open lawn)
+ * more than 3 % of the site (a plateau, e.g. 100 % direct sun on the open lawn)
  * has no single place, so it gets no pin (null).
  */
 function gridExtremes(r: DemoResult & { kind: 'grid' }) {

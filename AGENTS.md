@@ -381,7 +381,7 @@ picks the state from the month of `dateFilters` and the latitude:
 | analysisType | Needs (besides the geometry) | Output | Notes |
 |---|---|---|---|
 | `direct-sun-hours` | `latitude`, `longitude`, `dateFilters`. No weather. | hours | See the night-hour rule above. |
-| `daylight-availability` | `latitude`, `longitude`, `dateFilters`. No weather. | % of hours | |
+| `daylight-availability` | `latitude`, `longitude`, `dateFilters`. No weather. | % of hours | **Direct sun only, no sky light.** % = direct-sun hours / (half of the window's sun hours), capped at 100. 0 % = no sunbeam at all, not darkness. |
 | `sky-view-factors` | nothing | % of open sky, 0-100 | No time, no weather. |
 | `solar-radiation` | `latitude`, `longitude`, `dateFilters`, and `weatherData` or `weather` | kWh/m² | Weather is required. |
 | `wind-speed` | `windSpeed` (m/s), `windDirection` (degrees, where the wind comes FROM: 270 = west) | m/s | Buildings only. Several tiles: add `strategy: 'directional_blend', windDirectionDeg` to `options`. |
