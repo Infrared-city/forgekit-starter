@@ -11,7 +11,8 @@
       "!**/.bun",
       "!**/.tmp",
       "!**/.wrangler",
-      "!**/public/demo-results"
+      "!**/public/demo-results",
+      "!packages/sdk"
     ]
   },
   "css": {

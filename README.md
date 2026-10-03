@@ -135,7 +135,10 @@ GeoJSON layers, and the hill as a terrain mesh (`groundGeometry` with
 ran every analysis on Infrared staging (SDK 0.12.13-next.18, 400
 AItokens for a full run) and stored the results. The stored results have not
 been re-run on SDK 0.14.0-next.0. To run it again (needs Node 22.18
-or newer, and spends AItokens):
+or newer, and spends AItokens). The script turns on the SDK's threaded core
+(`initializeCore({ threads: 4 })`), which makes the facade merge about twice as
+fast on large runs. Do the same in your own Node scripts. The browser app
+cannot use it. See "Speed" in `AGENTS.md`:
 
 ```bash
 npm run demo:precompute --workspace apps/examples -- --preview   # free cost check

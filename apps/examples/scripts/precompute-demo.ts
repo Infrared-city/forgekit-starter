@@ -10,6 +10,7 @@
 // It is never written anywhere. INFRARED_BASE_URL selects another API (maintainers).
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { availableParallelism } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
@@ -152,7 +153,9 @@ function refreshManifest() {
 async function main() {
   if (flag('refresh-manifest')) return refreshManifest()
   const { apiKey, baseUrl } = readKey()
-  await initializeCore()
+  // Threaded core (Node 22+, SDK 0.13+): speeds up the facade (surface) merge.
+  // 4 threads is the best measured setting; more is slower.
+  await initializeCore({ threads: Math.min(4, availableParallelism()) })
   const client = new InfraredClient({ apiKey, ...(baseUrl ? { baseUrl } : {}) })
   mkdirSync(OUT, { recursive: true })
   const only = value('only')?.split(',')

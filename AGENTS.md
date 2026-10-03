@@ -118,6 +118,24 @@ every request shape passes the SDK's own validators (`prepareAreaPayload`).
   bounding box: x east, y north, z up. Your own meshes, the terrain and the
   facade results use it.
 
+### Speed: binary transport and the threaded core
+
+- **Binary transport is the default** (SDK 0.13+). It uploads each scene once
+  and sends smaller requests. Leave `transport` unset. Do not pass
+  `transport: 'json'` unless an analysis has no binary route (the SDK then
+  falls back to JSON by itself).
+- **Threaded core: turn it on in every Node script.** Call
+  `initializeCore({ threads: Math.min(4, availableParallelism()) })`. It
+  speeds up the facade (surface) merge: about 1.8x to 2x on large runs in the
+  SDK's own measurements. The result is bit-identical to the serial core.
+  `scripts/precompute-demo.ts` does this.
+  - Needs **Node 22 or later**. On older Node the SDK refuses with an error.
+  - **4 threads is the best measured value.** 8 is slower. The pool adds about
+    75 ms to start.
+  - **Node only.** The browser and the Cloudflare Worker use the serial core,
+    and `threads` above 1 is refused there. Do not add it to `src/lib/infrared.ts`.
+  - A panic or an out-of-memory error on a pool thread ends the whole process.
+
 ### An area run, end to end
 
 ```ts
