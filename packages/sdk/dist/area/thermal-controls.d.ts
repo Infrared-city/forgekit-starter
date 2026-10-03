@@ -62,6 +62,11 @@ export declare const THERMAL_MODELS: ReadonlySet<string>;
  * they picked a tier. The conversion refuses the typo rather than letting one
  * model's leniency hide it. An ABSENT value is not a member — it means the
  * model's own default, `advanced-moist` on both.
+ *
+ * `"v1"` is deprecated. It stays in this set and keeps running — removing it
+ * here would turn a silent default into a hard error — but new callers
+ * should leave `physics` unset or pick `"detail"`, `"advanced"`, or
+ * `"advanced-moist"`. A later release will remove `"v1"`.
  */
 export declare const PHYSICS_TIERS: readonly ["v1", "detail", "advanced", "advanced-moist"];
 /** One of {@link PHYSICS_TIERS}. */
@@ -85,5 +90,9 @@ export declare function rejectThermalControls(input: AnyRecord, type: string): v
  * `thermal-comfort-index` costs nothing — but `tcs.rs:187`/`:201` only ask
  * whether the value IS `"v1"`, so on `thermal-comfort-statistics` a misspelt
  * tier silently takes the advanced engine, returns 200 and is fully billed.
+ *
+ * @deprecated `"v1"` is deprecated. Use the default tier (leave `physics`
+ * unset) or pick `"detail"`, `"advanced"`, or `"advanced-moist"`. A later
+ * release will remove `"v1"`.
  */
 export declare function validatePhysics(input: AnyRecord): void;

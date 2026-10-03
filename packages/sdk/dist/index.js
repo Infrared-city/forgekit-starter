@@ -9,6 +9,8 @@ export { BuildingsService } from "./buildings.js";
 // D51 tells callers to expect this by type, so it has to be nameable. It is
 // on `/tiling` as well, beside the `runArea` that throws it.
 export { ConfigHashPolicyError } from "./area/planning.js";
+export { FacadeCountContractError } from "./area/count-contract.js";
+export { cleanMesh } from "./mesh-clean.js";
 // The typed geodata failures. MIGRATION and D48-TS both tell a caller to catch
 // these from `getArea` / `getBuildingsInArea`, and until now they were only on
 // the ESM-ONLY `/geodata` subpath — so the root import a caller already has
@@ -34,6 +36,7 @@ export { decompressResultValue } from "./compat.js";
 export { deserializeToCamelCase, serializeToKebab, setOwnKey, toCamelCase, toKebabCase, } from "./serialization.js";
 export { packMesh } from "./mesh.js";
 export { clearRegistryCache, DEFAULT_MAX_LONG_AXIS_PX, fetchVisualConfigurations, flattenVisualConfigs, gridImageSize, GridImageError, MAX_REGISTRY_BYTES, normalizeGrid, REGISTRY_URL, RegistryFetchError, renderGridPng, resolveVisualConfig, windClassOrdinals, } from "./images.js";
+export { legendRange, registryFixedRange, sharedLegendRange } from "./legend.js";
 // `Local` names outlived their remote twins (the service paths are gone); kept
 // because they are published API. Same for `convertPointsToMeshesLocal` above.
 export { cleanV3Local, LocalCleaner } from "./ground-materials.js";
@@ -45,6 +48,10 @@ export { SubmissionUncertainError } from "./internal/submission.js";
 export { FacadeArtifactMismatchError } from "./internal/facade-artifact-guard.js";
 export { GeometryReferenceAcknowledgementError, GeometryReferenceSubmissionError, } from "./internal/geometry-reuse/errors.js";
 export { AnalysisService, AreaTimeoutError, InfraredClient } from "./client.js";
+export { AnalysisPartsError } from "./parts/types.js";
+export { PartsTimeoutError } from "./parts/run.js";
+export { DaylightFactorResult, NO_ROOM } from "./parts/daylight-result.js";
+export { DEFAULT_DAYLIGHT_RESULT_FORMAT } from "./parts/result-format.js";
 export { InvalidOptionError } from "./internal/service.js";
 export { buildAuthResolver } from "./internal/auth.js";
 export function coreVersion() {

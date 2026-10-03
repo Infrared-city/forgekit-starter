@@ -15,8 +15,20 @@ const DEAD_REF_CODES = new Set(["REF_EXPIRED", "REF_NOT_FOUND"]);
 const INTERIOR_ANALYSES = new Set([
     "daylight-factor", "energy-balance", "spatial-daylight-autonomy",
 ]);
-function parsePlan(current, snapshot) {
-    return JSON.parse(requireCore().planGeometryReuse(JSON.stringify(current), JSON.stringify(snapshot.state), Date.now() / 1_000));
+/**
+ * Plan with each group's size, so a small group stays inline (D201). The
+ * mechanism tests send a few triangles on purpose and turn it off; production
+ * never does.
+ */
+export const planning = { withSizes: true };
+function parsePlan(prepared, snapshot) {
+    const sizes = {};
+    for (const name of Object.keys(prepared.identities)) {
+        const bytes = prepared.bytes[name];
+        if (bytes !== undefined)
+            sizes[name] = bytes.byteLength;
+    }
+    return JSON.parse(requireCore().planGeometryReuse(JSON.stringify(prepared.identities), JSON.stringify(snapshot.state), Date.now() / 1_000, planning.withSizes ? JSON.stringify(sizes) : undefined));
 }
 async function referenceFromPlan(planValue, prepared, snapshot) {
     if (planValue === null || typeof planValue !== "object" || Array.isArray(planValue))
@@ -79,7 +91,7 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
             const snapshot = cache.snapshot(partitionKey, scopeKey);
             let reference;
             try {
-                reference = await referenceFromPlan(parsePlan(prepared.identities, snapshot), prepared, snapshot);
+                reference = await referenceFromPlan(parsePlan(prepared, snapshot), prepared, snapshot);
             }
             catch {
                 safeLog(logger, "warn", "geometry_ref_fallback", "planning failed");
@@ -89,9 +101,16 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
                 cache.observe(partitionKey, scopeKey, prepared.identities);
                 return { kind: "prepost" };
             }
+            // The document is named by its content (D201): the partition uploads it
+            // once for every job that sends it. A URL this call did not PUT is
+            // `cached`, so a dead-reference answer refreshes it.
+            const shared = async (planned) => {
+                const { url, fresh } = await cache.sharedUpload(partitionKey, planned.key, () => uploadGeometry(joinParts(planned.parts), transport), transport.signal);
+                return { ...planned, url, cached: !fresh };
+            };
             if (reference.url === undefined) {
                 try {
-                    reference = { ...reference, url: await uploadGeometry(joinParts(reference.parts), transport) };
+                    reference = await shared(reference);
                 }
                 catch {
                     safeLog(logger, "warn", "geometry_ref_fallback", "geometry upload failed");
@@ -121,6 +140,7 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
                         // §5's first verb: the document the server refused to acknowledge
                         // must not stay in the reuse map with its URL.
                         cache.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
+                        await cache.dropUpload(partitionKey, reference.key, referenceUrl);
                     }
                     if (!(error instanceof GeometryReferenceRejectedError))
                         unsafeCandidate(error);
@@ -128,9 +148,10 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
                         return { kind: "ref-rejected", code: error.code };
                     if (reference.cached && !refreshed && DEAD_REF_CODES.has(error.code)) {
                         cache.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
+                        await cache.dropUpload(partitionKey, reference.key, referenceUrl);
                         try {
-                            referenceUrl = await uploadGeometry(joinParts(reference.parts), transport);
-                            reference = { ...reference, url: referenceUrl, cached: false };
+                            reference = await shared(reference);
+                            referenceUrl = reference.url;
                             refreshed = true;
                             continue;
                         }
@@ -153,7 +174,7 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
     }
 }
 /** Return undefined only when the caller must use the unchanged inline path. */
-export async function tryGeometryReuse(preparedSubmission, options, signal, beforeDispatch) {
+export async function tryGeometryReuse(preparedSubmission, options, signal, beforeDispatch, idempotencyKey) {
     if (INTERIOR_ANALYSES.has(preparedSubmission.analysisType))
         return undefined;
     const prepared = await prepareGeometryGroups(preparedSubmission.body);
@@ -164,7 +185,7 @@ export async function tryGeometryReuse(preparedSubmission, options, signal, befo
         const partitionKey = await credentialPartition(options.baseUrl, headers);
         if (partitionKey === undefined)
             return undefined;
-        const transport = bound(options, partitionKey, signal, beforeDispatch);
+        const transport = bound(options, partitionKey, signal, beforeDispatch, idempotencyKey);
         try {
             return await submitInPartition(preparedSubmission, prepared, partitionKey, transport, options);
         }

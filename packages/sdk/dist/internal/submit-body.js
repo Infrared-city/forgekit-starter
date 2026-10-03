@@ -1,5 +1,6 @@
 import { validatePreparedAnalysisRequest } from "../request-validation.js";
 import { takesGradeDrop } from "../to-grade.js";
+import { requireCore } from "./core.js";
 import { groupHasContent } from "./kernel-group.js";
 const INTERIOR_ANALYSES = new Set([
     "daylight-factor",
@@ -10,8 +11,10 @@ const UNSUPPORTED_TOP_LEVEL_ALIASES = new Set([
     "analysisType", "analysis_type", "analysisSurfaces", "analysis_surfaces",
     "binaryResults", "binary_results", "contextGeometry", "context_geometry",
     "emitCellTris", "emit_cell_tris", "groundMaterials", "ground_materials",
-    "groundGeometry", "ground_geometry", "sensorSurfaces", "sensor_surfaces",
+    "groundGeometry", "ground_geometry", "meshCleaning", "mesh_cleaning",
+    "sensorSurfaces", "sensor_surfaces",
     "surfaceGridSize", "surface_grid_size", "surfaceOffset", "surface_offset",
+    "surfgridVersion", "surfgrid_version",
     "terrainAlignment", "terrain_alignment", "webhookEvents", "webhook_events",
     "webhookUrl", "webhook_url",
 ]);
@@ -48,6 +51,16 @@ export function prepareSubmissionBody(analysisType, payload, options) {
     // happens at the plan seam, once per `runArea`, and a direct submission is
     // sent as given rather than rewritten by a second path.
     validatePreparedAnalysisRequest(body, { enforceTerrainTriangleLimit: true });
+    // infrared-core #674: the ONE point every surface submission passes
+    // through -- a direct `JobsService.submit`/`prepareSubmission` call AND
+    // each area tile's job (`area/plan-entries.ts` calls this same method).
+    // The area path already named the bundled kernel's roof-gate version in
+    // `area/payload.ts`, so this is a no-op there; a direct single-job surface
+    // submission, which never reaches that function, gets it here instead. An
+    // explicit caller value (5 or 6, already checked above) is kept as is.
+    if (body["analysis-surfaces"] != null && body["surfgrid-version"] == null) {
+        body["surfgrid-version"] = requireCore().surfgridVersion();
+    }
     if (takesGradeDrop(analysisType))
         delete body["terrain-alignment"];
     if (options.webhookUrl !== undefined)

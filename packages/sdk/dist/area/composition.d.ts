@@ -1,3 +1,4 @@
+import type { KernelTerrain } from "./site-terrain.js";
 import { SiteAssignment } from "./site-assign.js";
 import type { AreaGeometryGroups, ComposeOptions, IndexedTile, Polygon, TilePayloads } from "./types.js";
 /** The compose: the site pass, then one tile at a time. */
@@ -38,4 +39,6 @@ export declare function beginCompose(groups: AreaGeometryGroups, tiles: readonly
  * prepared site, D96). `composeTilePayloads` hands its payloads to the
  * caller, who may change them before a submit, so it never remembers.
  */
-rememberWire?: boolean): ComposeRun;
+rememberWire?: boolean, 
+/** The terrain read once for `groups["ground-geometry"]` (D200). */
+terrain?: KernelTerrain): ComposeRun;

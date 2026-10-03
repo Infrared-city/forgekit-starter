@@ -27,4 +27,6 @@ export declare function prepareGeometryGroups(body: Readonly<Record<string, unkn
  * upload. `undefined` when a selected group was not captured.
  */
 export declare function selectedDocumentParts(prepared: PreparedGeometryGroups, groups: Readonly<Record<string, string>>): readonly Uint8Array[] | undefined;
+/** The request field that declares the referenced groups. */
+export declare const GROUPS_FIELD = "geometry-$ref-groups";
 export declare function bodyWithReference(body: Readonly<Record<string, unknown>>, groups: Readonly<Record<string, string>>, url: string): Record<string, unknown>;

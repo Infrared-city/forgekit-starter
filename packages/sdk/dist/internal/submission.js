@@ -1,3 +1,4 @@
+import { dispatchKeyed } from "./idempotent-dispatch.js";
 import { TransportError } from "./transport.js";
 import { uploadPresignedZip } from "./upload.js";
 export class SubmissionUncertainError extends Error {
@@ -113,16 +114,20 @@ function acceptedJobIds(value) {
 async function post(options, body, contentType, allowExpired, allowGatewaySizeFallback) {
     let response;
     try {
-        response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
-            method: "POST",
-            headers: { "Content-Type": contentType },
+        response = await dispatchKeyed({
+            gateway: options.gateway,
+            endpointPath: options.endpointPath,
             body,
-            acceptHttpErrors: true,
+            headers: { "Content-Type": contentType,
+                ...(options.idempotencyKey === undefined ? {} : { "Idempotency-Key": options.idempotencyKey }) },
+            ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
             ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
             ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
     }
     catch (error) {
+        if (error instanceof SubmissionUncertainError)
+            throw error;
         // The transport answers a redirect with an error before the body is read.
         // The POST was sent, so the job may exist (#261, Python's classifier).
         if (error instanceof TransportError && error.phase === "response" &&

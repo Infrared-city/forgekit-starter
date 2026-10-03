@@ -1,9 +1,13 @@
+import { DaylightFactorResult } from "../parts/daylight-result.js";
 import { type DecompressResultArchiveOptions } from "./archive.js";
 import { type ParsedSurfaceResult, type ParseSurfaceOptions } from "./surface-record.js";
 export type GridExpectedKind = "numeric" | "categorical";
 export type ParsedResult = ParsedSurfaceResult | {
     readonly route: "json";
     readonly value: unknown;
+} | {
+    readonly route: "daylight-points";
+    readonly value: DaylightFactorResult;
 };
 export interface ParseResultOptions {
     readonly archive?: DecompressResultArchiveOptions;

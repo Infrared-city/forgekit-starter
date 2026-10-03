@@ -1,5 +1,14 @@
 import type { AreaStatusService, CheckAreaStateOptions } from "./run-options.js";
 import type { AreaSchedule, AreaState } from "./schedule-types.js";
+/** What one check met that the poll engine reads (D213). */
+export interface SweepRecord {
+    /** Per-job status requests sent after the batched sweep. */
+    perJob: number;
+    /** Transient failures (HTTP 429, 5xx, network). */
+    failures: number;
+    /** The longest `Retry-After` among them, seconds. */
+    retryAfterS: number | undefined;
+}
 /**
  * Give the poll circuit breaker's victims one more chance.
  *
@@ -18,6 +27,8 @@ import type { AreaSchedule, AreaState } from "./schedule-types.js";
  * Only the breaker's victims are revived: a `"skipped"` job WITH a `jobId`.
  * A tile skipped by an aborted submission has no `jobId` and stays as it is.
  */
-export declare function revivePolledOut(schedule: AreaSchedule): number;
-export declare function lastPerJobRequests(schedule: AreaSchedule): number;
-export declare function checkAreaState(service: AreaStatusService, schedule: AreaSchedule, options?: CheckAreaStateOptions): Promise<AreaState>;
+export declare function revivePolledOut(schedule: Pick<AreaSchedule, "jobs">): number;
+export declare function lastSweepRecord(schedule: Pick<AreaSchedule, "jobs">): SweepRecord;
+/** Poll every open job of a schedule once. Reads only `jobs`: an area
+ * schedule and a daylight-factor parts schedule (D221) poll the same way. */
+export declare function checkAreaState(service: AreaStatusService, schedule: Pick<AreaSchedule, "jobs">, options?: CheckAreaStateOptions): Promise<AreaState>;

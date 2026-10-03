@@ -1,7 +1,6 @@
 import { WIND_ANALYSIS_TYPES } from "./analysis-types.js";
 import { requireCore } from "./internal/core.js";
 import { groupHasContent, KernelGroup } from "./internal/kernel-group.js";
-const MAX_SENSOR_POINTS = 100_000;
 const SURFACE_TYPES = new Set([
     "sky-view-factors", "solar-radiation", "direct-sun-hours", "daylight-availability",
 ]);
@@ -15,8 +14,12 @@ const INTERIOR_TYPES = new Set(["daylight-factor", "energy-balance", "spatial-da
 const TCS_SUBTYPES = new Set(["thermal-comfort", "heat-stress", "cold-stress"]);
 const SURFACE_FIELDS = [
     "analysis-surfaces", "sensor-points", "sensor-normals", "context-geometry",
-    "surface-grid-size", "surface-offset", "emit-cell-tris",
+    "surface-grid-size", "surface-offset", "emit-cell-tris", "mesh-cleaning",
+    "surfgrid-version",
 ];
+// infrared-core #674: the bundled kernel's roof-gate version. The worker
+// uses 5 (the frozen pre-#674 layout) when the field is absent and 6 when
+// the request says 6; no other value is a kernel this SDK line has shipped.
 const TERRAIN_FIELDS = ["ground-geometry"];
 // `terrain-alignment` reaches two models further than `ground-geometry` does.
 // The wind family cannot take terrain at all and that refusal stands, but the
@@ -25,6 +28,17 @@ const TERRAIN_FIELDS = ["ground-geometry"];
 const ALIGNMENT_FIELDS = ["terrain-alignment"];
 const ALIGNMENT_TYPES = new Set([
     ...TERRAIN_TYPES, "wind-speed", "pedestrian-wind-comfort",
+]);
+// Server-side fast mode for a long time window (lambda-models #489). Valid
+// ONLY on the two solar area models and the two thermal models — `sky-view-
+// factors` and `solar-radiation` never read it, matching Python's
+// `extra="forbid"` refusal of `fast` there. NEEDS SERVER SUPPORT: the server
+// ignores this key until #489 ships; refusing it on the WRONG models now
+// still catches a caller's typo or a misplaced flag before the job bills.
+const FAST_FIELDS = ["fast"];
+const FAST_TYPES = new Set([
+    "direct-sun-hours", "daylight-availability",
+    "thermal-comfort-index", "thermal-comfort-statistics",
 ]);
 const TERRAIN_ALIGNMENT_MODES = new Set(["as-is", "auto-align", "assume-aligned"]);
 // The WIND family spells the same option with its own values (D91): there is no
@@ -66,8 +80,11 @@ function validateSensors(input) {
         const points = vectors(pointsValue, "sensor-points");
         if (points.length === 0)
             throw new TypeError("sensor-points must not be empty");
-        if (points.length > MAX_SENSOR_POINTS) {
-            throw new TypeError(`sensor-points length exceeds the maximum of ${MAX_SENSOR_POINTS}`);
+        // The one per-job sensor budget, BYO or synthesized, on both transports
+        // (kernel `MAX_SENSORS_PER_JOB`, D206). BYO sensors travel in S3 on both.
+        const maxSensors = requireCore().maxSensorsPerJob();
+        if (points.length > maxSensors) {
+            throw new TypeError(`sensor-points length exceeds the maximum of ${maxSensors}`);
         }
         points.forEach((point, index) => validateVector(point, `sensor-points[${index}]`, false));
         if (normalsValue != null) {
@@ -91,6 +108,26 @@ function validateSensors(input) {
     }
     if (emitCellTris != null && surfaces == null) {
         throw new TypeError("emit-cell-tris only applies to analysis-surfaces requests");
+    }
+    // #555: whether the kernel cleans each building first ("auto", the
+    // default) or uses the meshes as drawn ("off").
+    const cleaning = input["mesh-cleaning"];
+    if (cleaning != null && cleaning !== "auto" && cleaning !== "off") {
+        throw new TypeError('mesh-cleaning must be "auto" or "off"');
+    }
+    if (cleaning != null && surfaces == null) {
+        throw new TypeError("mesh-cleaning only applies to analysis-surfaces requests");
+    }
+    // #674: which roof-gate layout the worker ran, named by this SDK's own
+    // bundled kernel rather than guessed from an absent field.
+    const surfgridVersion = input["surfgrid-version"];
+    if (surfgridVersion != null && surfaces == null) {
+        throw new TypeError("surfgrid-version only applies to analysis-surfaces requests");
+    }
+    // Counting, batching and the layout hash run on the bundled kernel's
+    // version, so a request for another version is refused (#674).
+    if (surfgridVersion != null && surfgridVersion !== requireCore().surfgridVersion()) {
+        throw new TypeError(`surfgrid-version must be the bundled kernel's (${requireCore().surfgridVersion()}); leave it unset`);
     }
 }
 function validateCanonicalBase64(blob, key) {
@@ -208,6 +245,19 @@ export function validatePreparedAnalysisRequest(input, options = {}) {
                 ? "terrain-alignment must be to-ground or as-is on the wind models"
                 : "terrain-alignment must be as-is, auto-align, or assume-aligned");
         }
+    }
+    // Also sits ABOVE the interior return, for the same reason as
+    // `terrain-alignment`: an interior model (`daylight-factor`,
+    // `energy-balance`, `spatial-daylight-autonomy`) reads none of the four
+    // area models' `fast` field either, and a check placed only below the
+    // return would silently let it through on exactly the types it was
+    // never meant to reach.
+    const fast = present(input, FAST_FIELDS);
+    if (fast.length > 0 && !FAST_TYPES.has(type)) {
+        throw new TypeError(`${fast.join(", ")} not valid on '${type}'`);
+    }
+    if (input.fast != null && typeof input.fast !== "boolean") {
+        throw new TypeError("fast must be a Boolean");
     }
     if (typeof type !== "string" || INTERIOR_TYPES.has(type))
         return;

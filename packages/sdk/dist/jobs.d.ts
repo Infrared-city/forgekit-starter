@@ -1,4 +1,5 @@
 export { jobFromResponse, parseJobStatus } from "./internal/job-response.js";
+import { type BinaryCapability } from "./internal/binary-submission.js";
 import { type StatusSweep } from "./internal/status-batch.js";
 import { type ParsedResult, type ParseResultOptions } from "./results/router.js";
 import type { DownloadResult, DownloadResultsOptions, JobsServiceOptions, SubmitOptions, WaitForCompletionOptions } from "./job-options.js";
@@ -21,7 +22,7 @@ export declare class JobsService {
     private readonly bigPayloadThresholdBytes;
     private readonly geometryReuseEnabled;
     private readonly geometryReuseOptions;
-    private capabilityPromise;
+    private readonly capabilities;
     /** `undefined` until the batched status route has been tried once. */
     private batchedStatus;
     private readonly binaryPrepared;
@@ -49,6 +50,12 @@ export declare class JobsService {
     submitPrepared(prepared: PreparedSubmission, options?: {
         readonly signal?: AbortSignal;
         readonly beforeDispatch?: () => void;
+        /** One map per area run, shared by every tile's binary upload (#602).
+         * Absent for a direct, single submit — it then shares with nothing. */
+        readonly uploads?: Map<string, Promise<string>>;
+        /** The area retry `Idempotency-Key` for this submit (D224); unset for
+         * a direct, non-area submit (`area/retry-plan.ts`). */
+        readonly idempotencyKey?: string;
     }): Promise<Job>;
     /**
      * Finish all binary validation and encoding before a paid submission.
@@ -66,6 +73,14 @@ export declare class JobsService {
     }): Promise<void>;
     /** Free what a preflight is holding for a submission that will not happen. */
     releasePreflight(prepared: PreparedSubmission): void;
+    /**
+     * The live `/binary/v1/capabilities` document, cached for
+     * `CAPABILITY_TTL_MS` (`internal/capability-cache.ts`). A caller that only
+     * needs to know whether a model's binary route is live — the daylight-
+     * factor parts auto-routing (D228), among others — reads this instead of
+     * guessing from a submission outcome.
+     */
+    binaryCapability(signal?: AbortSignal): Promise<BinaryCapability>;
     private prepareBinaryValue;
     private getStatusWithSignal;
     getStatus(jobId: string, options?: {
@@ -84,7 +99,8 @@ export declare class JobsService {
         readonly signal?: AbortSignal;
         readonly maxWorkers?: number;
     }): Promise<StatusSweep>;
-    private notify;
+    /** Poll until the job is terminal, on the SDK's one poll engine
+     *  (`internal/wait-job.ts`, D213). */
     waitForCompletion(jobId: string, options?: WaitForCompletionOptions): Promise<Job>;
     private resultsUrl;
     private download;

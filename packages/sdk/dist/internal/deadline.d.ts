@@ -1,5 +1,6 @@
+import { MAX_TIMEOUT_MS, SendGuard, type SendLimits, type SendStop } from "./send-guard.js";
 export type StopReason = "aborted" | "timeout";
-export declare const MAX_TIMEOUT_MS = 2147483647;
+export { MAX_TIMEOUT_MS };
 export declare function requireTimeout(timeoutMs: number): number;
 /** One portable AbortController deadline shared by auth, fetch, and body read. */
 export declare class Deadline {
@@ -9,9 +10,19 @@ export declare class Deadline {
     private readonly timeout;
     private timedOut;
     private callerAborted;
-    private readonly timer;
+    private timer;
+    private guard;
     private readonly onCallerAbort;
     constructor(caller: AbortSignal | undefined, timeoutMs: number);
+    private expire;
+    /**
+     * Hand the timeout to a send guard at the dispatch of a request body
+     * (`send-body.ts`): this deadline's own timer stops, and the guard's stall,
+     * budget and response rules end the request from here, as a timeout.
+     */
+    guardSend(limits: SendLimits, observesProgress: boolean): SendGuard;
+    /** Which send rule stopped the request, when a send guard did. */
+    sendStop(): SendStop | undefined;
     reason(): StopReason | undefined;
     /**
      * Start work only when live, and remove this wait's listener on settlement.

@@ -1,5 +1,6 @@
 import { KernelGroup } from "../internal/kernel-group.js";
 import { ARENA_GROUPS } from "./site-assign.js";
+import { pickSceneArtifact } from "./site-facade-scene-frames.js";
 /**
  * A retry's saved batches, every tile's, so ownership is seeded from all. In
  * the schedule's own order: the kernel puts them in their one order and
@@ -27,6 +28,8 @@ const CALLER_FIELDS = [
     ["surface-offset", "offset"],
     ["partial-cells", "partial_cells"],
     ["min-coverage", "min_coverage"],
+    // #555: the plan counts with the same cleaning the server runs.
+    ["mesh-cleaning", "mesh_cleaning"],
 ];
 /**
  * The kernel request for this run: only what the caller set, and a retry's
@@ -116,6 +119,10 @@ class TileFrames {
     shared = new Map();
     written;
     handed = new Map();
+    /** Scene-mode (#602) answers, by limits key, handed out once like `handed`. */
+    scenes = new Map();
+    /** Keys `scenes` already fetched the full `wanted` list for once (#602 review). */
+    scenesFetched = new Set();
     /** The batches the plan submits, by index: only these are written ahead. */
     wanted;
     constructor(site, tile, records, submits) {
@@ -176,10 +183,55 @@ class TileFrames {
     capture(index, alignment) {
         return this.once(index, `capture\n${alignment}`, { capture: { alignment } }).capture;
     }
+    /**
+     * The batch's binary artifact. With `limits.facadeTargets` (#602), scene
+     * mode: the tile's jobs share ONE uploaded scene and each carries its own
+     * target range. Without it (an old server, no `facadeTargets`), one
+     * artifact per batch, as before.
+     */
     artifact(index, boxTrees, limits) {
+        if ((limits.facadeTargets ?? 0) >= 1)
+            return this.sceneArtifact(index, boxTrees, limits);
         const key = ["artifact", boxTrees, limits.maxGeometryBytes, limits.maxMetadataBytes,
             limits.maxMeshes, limits.maxInstances].join("\n");
         return this.once(index, key, { artifact: { boxTrees, limits } }).artifact;
+    }
+    /** Batch `index`'s facade-scene artifact (#602); the cache logic is
+     * {@link pickSceneArtifact} (`site-facade-scene-frames.ts`). */
+    sceneArtifact(index, boxTrees, limits) {
+        const key = ["scene", boxTrees, limits.maxGeometryBytes, limits.maxMetadataBytes,
+            limits.maxMeshes, limits.maxInstances].join("\n");
+        return pickSceneArtifact(this.scenes, this.scenesFetched, key, this.wanted, index, (indices) => this.scenesFor(indices, boxTrees, limits));
+    }
+    /** One `facadeScenes` call over `indices`, mapped to this batch's artifact.
+     * A tile answer is uniform (D218): every job `targets` (scene), every job
+     * `artifact` (boxed trees, D70), or every job `error` (a refusal). The
+     * first job's shape decides which of the three this answer is. */
+    scenesFor(indices, boxTrees, limits) {
+        if (this.site.facadeScenes === undefined)
+            throw new Error("facade scenes need the kernel site");
+        const active = indices.map((at) => this.records[at].active_ids);
+        const answer = this.site.facadeScenes(this.tile, active, boxTrees, limits);
+        const out = new Map();
+        if (answer.jobs[0]?.error !== undefined) {
+            indices.forEach((at, position) => out.set(at, new Error(answer.jobs[position].error)));
+            return out;
+        }
+        if (answer.jobs[0]?.targets !== undefined) {
+            const scene = answer.scenes[0];
+            indices.forEach((at, position) => {
+                const job = answer.jobs[position];
+                out.set(at, {
+                    archive: scene.archive, artifactDigest: scene.artifactDigest,
+                    geometryContentDigest: scene.geometryContentDigest, encoding: scene.encoding,
+                    targetIds: job.targetIds ?? [], targets: { start: job.targets.start, count: job.targets.count },
+                    ...(scene.treeBoxes === undefined ? {} : { treeBoxes: scene.treeBoxes }),
+                });
+            });
+            return out;
+        }
+        indices.forEach((at, position) => out.set(at, answer.jobs[position].artifact));
+        return out;
     }
     /**
      * Batch `index`'s part under `key`. The first ask writes it for every

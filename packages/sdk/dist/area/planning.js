@@ -1,11 +1,15 @@
 import { CONFIG_HASH_FOLD_CONTRACT_VERSION, foldHashFields, kernelConfigHash, kernelFacadeConfigHash, } from "./config-hash.js";
+import { checkFacadeCountContract } from "./count-contract.js";
 import { Slice } from "./cooperative.js";
 import { prepareAreaPayload } from "./payload.js";
 import { buildEntries } from "./plan-entries.js";
 import { foldTileBuildings, GROUP_KEYS, indexed } from "./plan-layers.js";
+import { liveTerrain, siteTerrain, terrainDigest } from "./site-terrain.js";
 import { buildPreparedSite, preparedSiteKey, preparedSites, } from "./prepared-site.js";
 import { checkPaidRetrySiteIdentity } from "./site-identity-guard.js";
 import { checkFacadeSensorCap } from "./sensor-cap.js";
+import { buildRetryContext } from "./retry-context.js";
+import { freshRunId } from "./retry-plan.js";
 import { FacadeOwnership } from "./facade-ownership.js";
 import { facadeRequest } from "./site-facade.js";
 import { generateTilesForPolygon, getTilingConfig, validatePolygon } from "./tiling.js";
@@ -20,11 +24,16 @@ import { checkResumeWeather, isWeatherBearing, preparedWeatherIdentity, } from "
  * legacy key is computed too; when IT matches, the inputs are the ones the
  * schedule was made from. The legacy key covers a superset of today's
  * content, so this accepts nothing today's key would refuse for new content.
+ *
+ * Gated on `retryContext.resubmitKeys` (D224 review), never
+ * `prior.failedSubmissions.length > 0`: a compute-failed job or an uncertain
+ * key with no failed SUBMIT also needs this fallback checked, because the
+ * plan resubmits it.
  */
-async function retrySiteIdentity(current, inputs, prior) {
+async function retrySiteIdentity(current, inputs, prior, retryContext) {
     const recorded = prior?.siteIdentity;
     if (current === undefined || recorded === undefined || recorded === current ||
-        prior === undefined || prior.failedSubmissions.length === 0)
+        prior === undefined || (retryContext?.resubmitKeys.size ?? 0) === 0)
         return current;
     const legacyKey = await preparedSiteKey(inputs, undefined, true);
     return legacyKey !== undefined && `sha256:${kernelConfigHash({ siteKey: legacyKey })}` === recorded
@@ -68,6 +77,8 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         throw new Error("legacy facade schedules can be polled and merged but cannot be retried safely");
     }
     if (surfaceFields)
+        checkFacadeCountContract(options.retryFrom);
+    if (surfaceFields)
         checkFacadeSensorCap(options);
     const polygon = validatePolygon(polygonInput);
     const grid = generateTilesForPolygon(polygon, {
@@ -103,10 +114,19 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     // A new map, or a map changed in place, gets a new digest (D104, D182);
     // raw key-order changes may conservatively refuse retry.
     const siteKey = await preparedSiteKey(inputs, texts);
-    const currentSiteIdentity = await retrySiteIdentity(siteKey === undefined ? undefined : `sha256:${kernelConfigHash({ siteKey })}`, inputs, options.retryFrom);
+    // D224: ONE retry context per round, built here -- before the legacy
+    // -identity fallback below and the paid-retry guard further down read
+    // `resubmitKeys`, and before `buildEntries` reads `retryContext.resubmitKeys`.
+    const retryContext = options.retryFrom === undefined
+        ? undefined
+        : await buildRetryContext(service, options.retryFrom, options);
+    const currentSiteIdentity = await retrySiteIdentity(siteKey === undefined ? undefined : `sha256:${kernelConfigHash({ siteKey })}`, inputs, options.retryFrom, retryContext);
     // A no-POST carry-forward cannot attest legacy jobs to newly supplied inputs.
     const siteIdentity = options.retryFrom === undefined ? currentSiteIdentity : options.retryFrom.siteIdentity;
-    const site = await preparedSites().get(siteKey, () => buildPreparedSite(inputs, analysisType, tiles, slice, texts), options.signal);
+    // The terrain, read into the kernel once per content (D200): the site
+    // below is built on it, and the schedule hash folds its group hash.
+    const terrain = siteTerrain(payload["ground-geometry"], terrainDigest(siteKey), texts);
+    const site = await preparedSites().get(siteKey, () => buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain), options.signal);
     texts.clear();
     slice.check();
     // A facade run's bodies are the kernel's: it composes no tile payload.
@@ -127,10 +147,24 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     if (Object.hasOwn(hashFields, "geometries"))
         hashFields.geometries = {};
     delete hashFields["ground-materials"];
+    // "auto" is the default (#555): hashed as nothing, as it is sent, so a retry
+    // with or without an explicit "auto" has the same identity.
+    if (hashFields["mesh-cleaning"] === "auto")
+        delete hashFields["mesh-cleaning"];
     // The geometry documents are replaced by the KERNEL's group hash before
     // the kernel's `configHash` ever sees them (D51). `foldHashFields` does
     // not mutate its input, so the shallow copies above are safe to hand it.
-    const foldedFields = foldHashFields(hashFields);
+    //
+    // `liveTerrain`, not `terrain` directly: `terrain` was read BEFORE the
+    // `await preparedSites().get(...)` above, and the realm's terrain cache
+    // is shared by every concurrent plan. A third, different terrain read by
+    // ANOTHER plan while this one was suspended on that await evicts and
+    // FREES the oldest handle (`site-terrain.ts`'s `MAX_TERRAINS`), which can
+    // be this plan's. Reading a freed wasm handle's `groupHash` throws; a
+    // plan that took its terrain before such an eviction must fall back to
+    // folding the document text instead, exactly as `buildPreparedSite`
+    // already does via the same guard (`site-kernel.ts`).
+    const foldedFields = foldHashFields(hashFields, liveTerrain(terrain));
     const hashInput = Object.hasOwn(foldedFields, "ground-geometry")
         ? { ...foldedFields, terrain_slicing: { v: 1 } }
         : foldedFields;
@@ -157,14 +191,24 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         if (options.retryFrom.configHash !== configHash) {
             throw new Error("retryFrom schedule configHash mismatch");
         }
-        checkPaidRetrySiteIdentity(options.retryFrom, currentSiteIdentity, options.retryFrom.failedSubmissions.length > 0);
+        // D224 review: the guard reads the kernel plan's own
+        // "does this round resubmit anything" answer (`resubmit.length > 0`) -- never
+        // `failedSubmissions.length > 0`, which misses a compute-failed job or
+        // an uncertain key with no failed SUBMIT.
+        checkPaidRetrySiteIdentity(options.retryFrom, currentSiteIdentity, (retryContext?.resubmitKeys.size ?? 0) > 0);
     }
-    const retry = options.retryFrom === undefined ? undefined : new Set(options.retryFrom.failedSubmissions);
+    // D224: the kernel's retry plan (built above) decides WHICH keys are
+    // rebuilt and sent -- never `failed - uncertain` host arithmetic. A fresh
+    // run has no plan: the run id is made here, attempt 1 for every tile.
+    const runId = retryContext?.runId ?? options.retryFrom?.runId ?? freshRunId();
+    const attemptFor = (key) => retryContext?.attempts[key] ?? 1;
+    const retry = retryContext === undefined ? undefined : retryContext.resubmitKeys;
     const tilePositions = options.retryFrom === undefined
         ? tiles.map((tile) => ({ ...tile }))
         : options.retryFrom.tilePositions.map((position) => ({ ...position }));
     const built = await buildEntries(tiles, {
         service, options, analysisType, base, byId, ownership, site: site.answers, surfaceFields, retry,
+        runId, attemptFor,
         ...(composed === undefined ? {} : { composed }),
         ...(surfaceFields ? { facadeRequest: facadeRequest(base, tiles, options.retryFrom, options.maxSensorsPerJob) } : {}),
         reuseScope: (key) => [
@@ -194,6 +238,8 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         // from the tile count.
         plannedJobCount: built.entries.length,
         terrainContextMarginM,
+        runId,
+        ...(retryContext === undefined ? {} : { retryContext }),
         ...(weatherIdentity === undefined ? {} : { weatherIdentity }),
         ...(surfaceFields
             ? {

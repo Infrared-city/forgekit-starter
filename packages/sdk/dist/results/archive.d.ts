@@ -4,6 +4,8 @@ export interface DecompressResultArchiveOptions {
     /** Maximum retained expanded document size. The default is 512 MiB. */
     readonly maxExpandedBytes?: number;
 }
+/** Throws for an archive option that is not a positive safe integer (no download needed). */
+export declare function checkArchiveOptions(options: DecompressResultArchiveOptions): void;
 /**
  * Expand one server result archive with bounded retained output.
  * Raw JSON is not an archive contract.

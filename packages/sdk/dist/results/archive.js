@@ -84,6 +84,11 @@ function expandZip(content, maximum) {
         throw new Error("result ZIP archive is truncated");
     return join(chunks, length);
 }
+/** Throws for an archive option that is not a positive safe integer (no download needed). */
+export function checkArchiveOptions(options) {
+    limit(options.maxCompressedBytes, DEFAULT_MAX_COMPRESSED_BYTES, "maxCompressedBytes");
+    limit(options.maxExpandedBytes, DEFAULT_MAX_EXPANDED_BYTES, "maxExpandedBytes");
+}
 /**
  * Expand one server result archive with bounded retained output.
  * Raw JSON is not an archive contract.

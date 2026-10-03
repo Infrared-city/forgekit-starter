@@ -1,3 +1,4 @@
+import type { KernelTerrain } from "./site-terrain.js";
 import type { Slice } from "./cooperative.js";
 import type { SiteAnswer, SiteAssignment } from "./site-assign.js";
 import type { RunAreaOptions } from "./run-options.js";
@@ -37,6 +38,8 @@ export declare function composeTiles(groups: AreaGeometryGroups, tiles: readonly
     keepKernelSite?: boolean;
     /** Group texts the site key already wrote (`prepared-site.ts`). */
     texts?: ReadonlyMap<object, string>;
+    /** The terrain read once for this plan (D200). */
+    terrain?: KernelTerrain;
 }, slice: Slice): Promise<{
     /** Every tile's groups, parsed on the first ask: a GRID run asks, a facade run never does. */
     composed: (slice: Slice) => Promise<Record<string, Record<string, unknown>>>;

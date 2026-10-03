@@ -76,6 +76,11 @@ export const THERMAL_MODELS = new Set([
  * they picked a tier. The conversion refuses the typo rather than letting one
  * model's leniency hide it. An ABSENT value is not a member — it means the
  * model's own default, `advanced-moist` on both.
+ *
+ * `"v1"` is deprecated. It stays in this set and keeps running — removing it
+ * here would turn a silent default into a hard error — but new callers
+ * should leave `physics` unset or pick `"detail"`, `"advanced"`, or
+ * `"advanced-moist"`. A later release will remove `"v1"`.
  */
 export const PHYSICS_TIERS = ["v1", "detail", "advanced", "advanced-moist"];
 /**
@@ -109,6 +114,10 @@ export function rejectThermalControls(input, type) {
  * `thermal-comfort-index` costs nothing — but `tcs.rs:187`/`:201` only ask
  * whether the value IS `"v1"`, so on `thermal-comfort-statistics` a misspelt
  * tier silently takes the advanced engine, returns 200 and is fully billed.
+ *
+ * @deprecated `"v1"` is deprecated. Use the default tier (leave `physics`
+ * unset) or pick `"detail"`, `"advanced"`, or `"advanced-moist"`. A later
+ * release will remove `"v1"`.
  */
 export function validatePhysics(input) {
     // `physics` is spelled the same either way; the other five are not, which is
@@ -121,5 +130,35 @@ export function validatePhysics(input) {
             `${JSON.stringify(value)}). thermal-comfort-statistics does not reject ` +
             "an unknown tier server-side — it runs the advanced engine and bills " +
             "for it — so the spelling is checked here.");
+    }
+    if (value === "v1")
+        warnPhysicsV1Deprecated();
+}
+/**
+ * True once {@link warnPhysicsV1Deprecated} has printed, so a long-running
+ * process (a server, a batch run) sees the notice only once.
+ */
+let physicsV1WarningShown = false;
+/**
+ * Print the `physics: "v1"` deprecation notice once per process.
+ *
+ * `v1` still runs and bills the same as today — this warns only, it does
+ * not change behavior. Uses Node's own deprecation-warning channel
+ * (`process.emitWarning`, type `DeprecationWarning` — the same channel
+ * `node --trace-deprecation` and `NODE_OPTIONS=--throw-deprecation` hook
+ * into) when it is available, and falls back to `console.warn` for a
+ * browser/bundled build where `process` does not exist.
+ */
+function warnPhysicsV1Deprecated() {
+    if (physicsV1WarningShown)
+        return;
+    physicsV1WarningShown = true;
+    const message = "The 'v1' physics tier is deprecated. Use the default tier (leave " +
+        "'physics' unset). A later release will remove 'v1'.";
+    if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
+        process.emitWarning(message, "DeprecationWarning");
+    }
+    else {
+        console.warn(`DeprecationWarning: ${message}`);
     }
 }

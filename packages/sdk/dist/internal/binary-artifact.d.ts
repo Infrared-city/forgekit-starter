@@ -13,6 +13,15 @@ export interface UploadArtifact {
     readonly artifactDigest: string;
     readonly geometryContentDigest: string;
     readonly encoding: "zip-store" | "zip-deflate";
+    /**
+     * The job's range in the archive's shared tile scene (#602): `{start,
+     * count}` of the scene's `geometries` group. Absent when the archive IS
+     * the job's own frame, not a shared scene.
+     */
+    readonly targets?: {
+        readonly start: number;
+        readonly count: number;
+    };
 }
 /** The kernel's count of what boxing a tile's trees did (D70), or nothing. */
 export interface TreeBoxCounts {
@@ -34,6 +43,12 @@ export interface ArtifactLimits {
     readonly maxMetadataBytes: number;
     readonly maxMeshes: number;
     readonly maxInstances: number;
+    /**
+     * The capability's `facadeTargets` (#602), carried with the limits so the
+     * facade artifact getter can pick scene mode. Not one of the four kernel
+     * encode limits; `bodyArtifact` never reads it and never sends it on.
+     */
+    readonly facadeTargets?: number;
 }
 /**
  * One body's artifact: its geometry groups as given, encoded by the kernel —

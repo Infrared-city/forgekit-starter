@@ -100,7 +100,7 @@ of the grid (NaN), and the difference must be zero away from the change.
 
 ## SDK reference
 
-For `@infrared-city/infrared-sdk-ts` 0.12.13-next.19 (the copy in
+For `@infrared-city/infrared-sdk-ts` 0.14.0-next.0 (the copy in
 `packages/sdk`). This section is the one complete reference: README and the
 code comments link here. Every snippet compiles against `packages/sdk`, and
 every request shape passes the SDK's own validators (`prepareAreaPayload`).
@@ -218,7 +218,7 @@ Put `analysisSurfaces` in the input: `'facades'` (walls), `'roofs'` or
 analyses and the wind analyses refuse it.
 
 ```ts
-import { isVertical, type SurfaceAnalysisResponse } from '@infrared-city/infrared-sdk-ts'
+import { isVertical, surfaceId, type SurfaceColumns } from '@infrared-city/infrared-sdk-ts'
 
 const input = {
   analysisType: 'direct-sun-hours',
@@ -237,34 +237,52 @@ const plan = await client.previewAreaBatches(input, polygon, { buildings })
 const facadeTokens = plan.plannedJobCount * cost.tokensPerJob
 
 const r = await client.runAreaAndWait(input, polygon, { buildings, vegetation })
-if (!('surfaces' in r)) throw new Error('Expected a surface result')
-const facades: SurfaceAnalysisResponse = r
-for (const [key, s] of Object.entries(facades.surfaces)) {
-  const buildingId = key.slice(0, key.lastIndexOf('/')) // keys are "<buildingId>/<n>"
-  const kind = isVertical(s) ? 'wall' : 'roof'
-  for (let j = 0; j < s.nv; j++) {
-    for (let i = 0; i < s.nu; i++) {
-      const value = s.values[j * s.nu + i] // null = no sensor in this cell
-      // Cell centre: origin + i*gridSize*uAxis + j*gridSize*vAxis.
-      // Cell corners: the same with (i ± 0.5, j ± 0.5).
-      void [buildingId, kind, value]
-    }
+if (!('kind' in r) || r.kind !== 'surface-columns') throw new Error('Expected a surface result')
+const facades: SurfaceColumns = r
+for (let row = 0; row < facades.surfaceCount; row++) {
+  const key = surfaceId(facades, row) // "<buildingId>/<n>"
+  const buildingId = key.slice(0, key.lastIndexOf('/'))
+  const kind = isVertical(facades, row) ? 'wall' : 'roof'
+  const origin = facades.origin.subarray(3 * row, 3 * row + 3) // same for uAxis, vAxis
+  const nu = facades.nu[row]
+  const cells = facades.values.subarray(facades.cellOffsets[row], facades.cellOffsets[row + 1])
+  for (let k = 0; k < cells.length; k++) {
+    const i = k % nu
+    const j = Math.floor(k / nu)
+    const value = cells[k] // NaN = no sensor in this cell
+    // Cell centre: origin + i*gridSize*uAxis + j*gridSize*vAxis.
+    // Cell corners: the same with (i ± 0.5, j ± 0.5).
+    void [buildingId, kind, origin, i, j, value]
   }
 }
 ```
 
-- Result: `{ surfaces, aggregates, sensorCount, minLegend, maxLegend }`.
-  Each surface is a flat grid of `nu` x `nv` square cells of `gridSize`
+- Result: `SurfaceColumns` (since SDK 0.13.0). There is **no object per
+  surface**: each field is one typed array, and all surfaces sit back to
+  back in it. Surface `row` has its vectors at `[3*row, 3*row + 3)` of
+  `origin`, `uAxis` and `vAxis`, its `gridSize[row]`, `nu[row]`, `nv[row]`,
+  `area[row]`, `mean[row]`, `peak[row]`, and its cells at
+  `values[cellOffsets[row] .. cellOffsets[row + 1])`. A cell without a value
+  is `NaN` (it was `null` before 0.13.0).
+- Look a surface up by id with `surfaceIndex(result).get(id)`. Join two
+  results (for example a variant and the base) by id and cell index, never by
+  row: the row order is the run's schedule order.
+- Each surface is a flat grid of `nu` x `nv` square cells of `gridSize`
   metres. `uAxis` and `vAxis` are unit vectors in the site frame.
 - **`origin` is the CENTRE of cell (0, 0)**, not a corner. It sits a small
   offset (`surfaceOffset`, default about 0.1 m) outside the building.
-- Wall or roof: `isVertical(s)` is true for a wall. A flat roof has both axes
-  horizontal (`uAxis[2]` and `vAxis[2]` are 0).
+- Wall or roof: `isVertical(result, row)` is true for a wall. A flat roof has
+  both axes horizontal.
 - `aggregates` holds `{ area, mean, peak }` per building, in groups (for
-  example `aggregates.buildings[buildingId]`).
+  example `aggregates.buildings[buildingId]`). `sensorCount`, `minLegend`
+  and `maxLegend` are also on the result.
 - To draw: two triangles per cell (see `src/components/FacadeScene.tsx`).
-  For exact cell shapes on odd walls, set `emitCellTris: true` and use
-  `surfaceTriangles(s)`.
+  For exact cell shapes on odd walls, set `emitCellTris: true`: then
+  `result.triangles.positions[g]` holds the triangles of job `g` in its
+  tile-local frame; add `triangles.anchors[2g]`, `[2g + 1]` as the mesh
+  position, and colour it with `vertexValues(result, g)`.
+- For the old per-surface object shape, see `surfacesFromColumns` in
+  `apps/examples/src/lib/surfaces.ts`.
 
 ### Terrain
 

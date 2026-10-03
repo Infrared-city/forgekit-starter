@@ -63,8 +63,25 @@ import type { AreaSchedule } from "./schedule-types.js";
  * `area/config-hash.ts`'s `CONFIG_HASH_FOLD_CONTRACT_VERSION` is the
  * discriminator that refuses the comparison instead of reporting a false
  * "your inputs changed".
+ *
+ * **Version 6 changes what an exact facade batch COUNTS** (infrared-core #555,
+ * D208): the kernel welds each building and orients its shells about the
+ * building, so the saved batches of an older facade schedule were sized with
+ * other sensor counts. `area/count-contract.ts` refuses such a retry by name.
+ *
+ * **Version 7 changes it again** (infrared-core #582, D212): the kernel gives
+ * each wall a level grid (`SURFGRID_VERSION` 4), so per-wall counts move.
+ *
+ * **Version 8 changes it again** (infrared-core #630): the kernel cleans
+ * each building in a canonical order (`SURFGRID_VERSION` 5), so per-building
+ * counts move again.
+ *
+ * **Version 9 changes it again** (infrared-core #674): a covered upward face
+ * that is outdoors — a terrace under an overhang — now gets roof sensors
+ * (`SURFGRID_VERSION` 6), so "all"/"roofs" counts move again. Facade counts
+ * do not change.
  */
-export declare const SCHEDULE_CONTRACT_VERSION = 5;
+export declare const SCHEDULE_CONTRACT_VERSION = 9;
 /**
  * The version at which `weatherIdentity` began to mean the RUN identity.
  *

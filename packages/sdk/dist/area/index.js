@@ -21,6 +21,7 @@ export { freePreparedSites } from "./prepared-site.js";
 // caller to catch it by type, so the class has to be nameable from the same
 // import the call came from — the root entry carries it too.
 export { ConfigHashPolicyError } from "./planning.js";
+export { FacadeCountContractError } from "./count-contract.js";
 export { mergeAreaJobs, mergeSurfaceAreaJobs } from "./merge.js";
 export { SCHEDULE_CONTRACT_VERSION, WeatherIdentityError, } from "./weather-guard.js";
 export { TileFailurePhase } from "./schedule-types.js";

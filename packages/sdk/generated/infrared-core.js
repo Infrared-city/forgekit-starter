@@ -388,6 +388,12 @@ if (Symbol.dispose) ResultArchiveDecode.prototype[Symbol.dispose] = ResultArchiv
  * One area site, read once, answering per tile range.
  */
 export class Site {
+    static __wrap(ptr) {
+        const obj = Object.create(Site.prototype);
+        obj.__wbg_ptr = ptr;
+        SiteFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
@@ -547,6 +553,38 @@ export class Site {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * One scene frame per tile and a target range per job (#602). The jobs
+     * are given as for `facadeFrames`; give every job of a tile in one call.
+     * Returns `{scenes, jobs}`: a scene is `{tile, archive, artifactDigest,
+     * contentDigest, encoding, treeBoxes, frameByteLength,
+     * metadataByteLength, meshCount, instanceCount}`; a job is `{targets:
+     * {scene, start, count}, targetIds}` (a range of `scenes[scene]`'s
+     * `geometries`), `{artifact}` (its own frame, as `facadeFrames` answers
+     * it) or `{error}`.
+     * @param {Uint32Array} tiles
+     * @param {Uint32Array} id_counts
+     * @param {string[]} ids
+     * @param {boolean} box_trees
+     * @param {bigint} max_total_bytes
+     * @param {number} max_metadata_bytes
+     * @param {bigint} max_meshes
+     * @param {bigint} max_instances
+     * @returns {object}
+     */
+    facadeScenes(tiles, id_counts, ids, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+        const ptr0 = passArray32ToWasm0(tiles, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(id_counts, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayJsValueToWasm0(ids, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.site_facadeScenes(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Tiles `start..end`'s presence masks (`present`: one byte per tile, bit
      * `i` for group `i` in `arenaGroups()` order) and `geometries` /
      * `context-geometry` group hashes (`meshGroupHashes`: two per tile, `""`
@@ -651,8 +689,120 @@ export class Site {
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }
+    /**
+     * The constructor with the site's terrain read once (`SiteTerrain`, WP1)
+     * in place of the `ground-geometry` document: the same arguments less
+     * that one, and the handle last. A building edit reads no terrain.
+     * @param {string[]} building_ids
+     * @param {Uint8Array} building_coordinates
+     * @param {Uint32Array} building_offsets
+     * @param {string[]} context_ids
+     * @param {Uint8Array} context_coordinates
+     * @param {Uint32Array} context_offsets
+     * @param {Uint32Array} rows
+     * @param {Uint32Array} cols
+     * @param {string[]} tile_ids
+     * @param {number} inference_size_m
+     * @param {number} context_size_m
+     * @param {number} step_m
+     * @param {number} site_lon
+     * @param {number} site_lat
+     * @param {string | null | undefined} geometries
+     * @param {string | null | undefined} context_geometry
+     * @param {string | null | undefined} vegetation
+     * @param {string | null | undefined} ground_materials
+     * @param {string} polygon_json
+     * @param {number | null | undefined} terrain_margin_m
+     * @param {SiteTerrain} terrain
+     * @returns {Site}
+     */
+    static withTerrain(building_ids, building_coordinates, building_offsets, context_ids, context_coordinates, context_offsets, rows, cols, tile_ids, inference_size_m, context_size_m, step_m, site_lon, site_lat, geometries, context_geometry, vegetation, ground_materials, polygon_json, terrain_margin_m, terrain) {
+        const ptr0 = passArrayJsValueToWasm0(building_ids, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(building_coordinates, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(building_offsets, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArrayJsValueToWasm0(context_ids, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArray8ToWasm0(context_coordinates, wasm.__wbindgen_malloc);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passArray32ToWasm0(context_offsets, wasm.__wbindgen_malloc);
+        const len5 = WASM_VECTOR_LEN;
+        const ptr6 = passArray32ToWasm0(rows, wasm.__wbindgen_malloc);
+        const len6 = WASM_VECTOR_LEN;
+        const ptr7 = passArray32ToWasm0(cols, wasm.__wbindgen_malloc);
+        const len7 = WASM_VECTOR_LEN;
+        const ptr8 = passArrayJsValueToWasm0(tile_ids, wasm.__wbindgen_malloc);
+        const len8 = WASM_VECTOR_LEN;
+        var ptr9 = isLikeNone(geometries) ? 0 : passStringToWasm0(geometries, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len9 = WASM_VECTOR_LEN;
+        var ptr10 = isLikeNone(context_geometry) ? 0 : passStringToWasm0(context_geometry, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len10 = WASM_VECTOR_LEN;
+        var ptr11 = isLikeNone(vegetation) ? 0 : passStringToWasm0(vegetation, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len11 = WASM_VECTOR_LEN;
+        var ptr12 = isLikeNone(ground_materials) ? 0 : passStringToWasm0(ground_materials, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len12 = WASM_VECTOR_LEN;
+        const ptr13 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len13 = WASM_VECTOR_LEN;
+        _assertClass(terrain, SiteTerrain);
+        const ret = wasm.site_withTerrain(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, inference_size_m, context_size_m, step_m, site_lon, site_lat, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12, ptr13, len13, !isLikeNone(terrain_margin_m), isLikeNone(terrain_margin_m) ? 0 : terrain_margin_m, terrain.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Site.__wrap(ret[0]);
+    }
 }
 if (Symbol.dispose) Site.prototype[Symbol.dispose] = Site.prototype.free;
+
+/**
+ * One site terrain, read once.
+ */
+export class SiteTerrain {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SiteTerrainFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_siteterrain_free(ptr, 0);
+    }
+    /**
+     * The kernel group hash of the whole terrain (`geometryGroupHash` of
+     * `ground-geometry` over the document), or `undefined` when a mesh cannot
+     * be read for the hash.
+     * @returns {string | undefined}
+     */
+    get groupHash() {
+        const ret = wasm.siteterrain_groupHash(this.__wbg_ptr);
+        let v1;
+        if (ret[0] !== 0) {
+            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v1;
+    }
+    /**
+     * Read one `ground-geometry` document (`{mesh_key: mesh}` JSON text).
+     * Only a document that is not a JSON object is refused here; a bad mesh
+     * is refused by the `Site` built on it, with the document path's text.
+     * @param {string} document
+     */
+    constructor(document) {
+        const ptr0 = passStringToWasm0(document, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.siteterrain_new(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        SiteTerrainFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) SiteTerrain.prototype[Symbol.dispose] = SiteTerrain.prototype.free;
 
 export class SurfaceArchive {
     static __wrap(ptr) {
@@ -660,6 +810,12 @@ export class SurfaceArchive {
         obj.__wbg_ptr = ptr;
         SurfaceArchiveFinalization.register(obj, obj.__wbg_ptr, obj);
         return obj;
+    }
+    static __unwrap(jsValue) {
+        if (!(jsValue instanceof SurfaceArchive)) {
+            return 0;
+        }
+        return jsValue.__destroy_into_raw();
     }
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -672,24 +828,22 @@ export class SurfaceArchive {
         wasm.__wbg_surfacearchive_free(ptr, 0);
     }
     /**
-     * One byte per surface: 0 absent, 1 `null`, 2 array.
-     * @returns {Uint8Array}
+     * Why a batch decode refused this archive; `undefined` otherwise.
+     * @returns {string | undefined}
      */
-    get cellAreaState() {
-        const ret = wasm.surfacearchive_cellAreaState(this.__wbg_ptr);
-        return ret;
+    get error() {
+        const ret = wasm.surfacearchive_error(this.__wbg_ptr);
+        let v1;
+        if (ret[0] !== 0) {
+            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v1;
     }
     /**
-     * One byte per surface: 0 absent, 1 `null`, 2 array.
-     * @returns {Uint8Array}
-     */
-    get cellTrisState() {
-        const ret = wasm.surfacearchive_cellTrisState(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * `"surface"`, or `"not-surface"` for a valid result of another shape
-     * (a grid, other JSON, another IRBF family).
+     * `"surface"`, `"not-surface"` for a valid result of another shape (a
+     * grid, other JSON, another IRBF family), or `"error"` for an archive a
+     * batch decode refused.
      * @returns {string}
      */
     get route() {
@@ -704,131 +858,39 @@ export class SurfaceArchive {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
     }
-    /**
-     * The `cell-area` cells, cut by `valueOffsets`; NaN is `null`.
-     * @returns {Float64Array}
-     */
-    takeCellArea() {
-        const ret = wasm.surfacearchive_takeCellArea(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * `[[id, fields], ...]`: each surface's fields without `values` and
-     * `cell-tris`; an array `cell-area` is the placeholder `0`.
-     * @returns {string}
-     */
-    takeFieldsJson() {
-        let deferred2_0;
-        let deferred2_1;
-        try {
-            const ret = wasm.surfacearchive_takeFieldsJson(this.__wbg_ptr);
-            var ptr1 = ret[0];
-            var len1 = ret[1];
-            if (ret[3]) {
-                ptr1 = 0; len1 = 0;
-                throw takeFromExternrefTable0(ret[2]);
-            }
-            deferred2_0 = ptr1;
-            deferred2_1 = len1;
-            return getStringFromWasm0(ptr1, len1);
-        } finally {
-            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-        }
-    }
-    /**
-     * Every root field except `surfaces`, as JSON object text.
-     * @returns {string}
-     */
-    takeRootJson() {
-        let deferred2_0;
-        let deferred2_1;
-        try {
-            const ret = wasm.surfacearchive_takeRootJson(this.__wbg_ptr);
-            var ptr1 = ret[0];
-            var len1 = ret[1];
-            if (ret[3]) {
-                ptr1 = 0; len1 = 0;
-                throw takeFromExternrefTable0(ret[2]);
-            }
-            deferred2_0 = ptr1;
-            deferred2_1 = len1;
-            return getStringFromWasm0(ptr1, len1);
-        } finally {
-            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-        }
-    }
-    /**
-     * @returns {Uint32Array}
-     */
-    get valueOffsets() {
-        const ret = wasm.surfacearchive_valueOffsets(this.__wbg_ptr);
-        return ret;
-    }
 }
 if (Symbol.dispose) SurfaceArchive.prototype[Symbol.dispose] = SurfaceArchive.prototype.free;
 
-export class SurfaceAreaMerger {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        SurfaceAreaMergerFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_surfaceareamerger_free(ptr, 0);
-    }
-    /**
-     * Finish with JS-owned COLUMNS, not one object per surface: `metadataJson`
-     * (`Uint8Array`), `ids` (one string) cut by `idOffsets` (UTF-16 units),
-     * `values` cut by `valueOffsets`, `hasCellTris` (one byte per surface),
-     * and — only when some surface has cell triangles — `triangleValues`,
-     * `triangleOffsets` and `triangleMask`, one entry per cell of every
-     * surface. No result borrows WASM memory.
-     * @returns {any}
-     */
-    finish() {
-        const ptr = this.__destroy_into_raw();
-        const ret = wasm.surfaceareamerger_finish(ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    constructor() {
-        const ret = wasm.surfaceareamerger_new();
-        this.__wbg_ptr = ret;
-        SurfaceAreaMergerFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * Add one job that `decodeSurfaceArchive` decoded. The handle is
-     * consumed: its values and triangles move into the merge. `rootJson` is
-     * the response root without `surfaces`, as the host holds it (the host
-     * `JSON.stringify` of its parsed root, which is what the retired `pushJob` read).
-     * @param {string} entry_id
-     * @param {string} root_json
-     * @param {SurfaceArchive} archive
-     * @param {number} sw_x
-     * @param {number} sw_y
-     */
-    pushArchive(entry_id, root_json, archive, sw_x, sw_y) {
-        const ptr0 = passStringToWasm0(entry_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+/**
+ * Read a gbXML document into the analytical building model v1 (JSON).
+ *
+ * `data` is the gbXML file as bytes (UTF-8, or UTF-16 with a byte-order
+ * mark). Returns the model as a JSON string: SI units, +Y = true north,
+ * every geometry default and export defect as a counted line in
+ * `warnings`. Throws only when `data` is not a gbXML document.
+ * @param {Uint8Array} data
+ * @returns {string}
+ */
+export function analyticalFromGbxml(data) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(root_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        _assertClass(archive, SurfaceArchive);
-        var ptr2 = archive.__destroy_into_raw();
-        const ret = wasm.surfaceareamerger_pushArchive(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, sw_x, sw_y);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
+        const ret = wasm.analyticalFromGbxml(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
         }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
-if (Symbol.dispose) SurfaceAreaMerger.prototype[Symbol.dispose] = SurfaceAreaMerger.prototype.free;
 
 /**
  * The 4 built-in low-poly tree templates → `{registry_id: {coordinates,
@@ -853,6 +915,41 @@ export function archetypeMeshes() {
     } finally {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
+}
+
+/**
+ * The `Idempotency-Key` header value of one tile submit (D224). See
+ * `ir_geo::area_retry`.
+ * @param {string} run_id
+ * @param {string} job_key
+ * @param {number} attempt
+ * @returns {string}
+ */
+export function areaIdempotencyKey(run_id, job_key, attempt) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(run_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(job_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.areaIdempotencyKey(ptr0, len0, ptr1, len1, attempt);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * The per-key attempt cap of an area retry, the first attempt included
+ * (D224). One kernel constant; a schedule does not store it.
+ * @returns {number}
+ */
+export function areaRetryMaxAttempts() {
+    const ret = wasm.areaRetryMaxAttempts();
+    return ret >>> 0;
 }
 
 /**
@@ -1023,6 +1120,17 @@ export function bboxMeetsRows(rows, west, south, east, north) {
     var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v2;
+}
+
+/**
+ * The body fields a binary geometry document carries: every geometry group
+ * plus the BYO `sensor-points` / `sensor-normals`. A host sends every other
+ * body field as control.
+ * @returns {Array<any>}
+ */
+export function binaryGeometryFields() {
+    const ret = wasm.binaryGeometryFields();
+    return ret;
 }
 
 /**
@@ -1268,6 +1376,82 @@ export function checkMaxSensorsPerJob(max_sensors_per_job) {
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
+}
+
+/**
+ * The next step after one keyed tile submit send (D224): `"resend"`,
+ * `"uncertain"`, `"definite_fail"` or `"accepted"`. `answer` is `"status"`
+ * (with `status`), `"before_send"`, `"after_send"` or `"unreadable_2xx"`.
+ * `sends_done` counts the sends of this key so far, at least 1. Throws on an
+ * unknown `answer`. See `ir_geo::area_retry`.
+ * @param {string} answer
+ * @param {number} sends_done
+ * @param {number | null} [status]
+ * @returns {string}
+ */
+export function classifySubmitSend(answer, sends_done, status) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(answer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.classifySubmitSend(ptr0, len0, sends_done, isLikeNone(status) ? 0xFFFFFF : status);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Clean ONE mesh: weld bit-identical positions, drop degenerate and exact
+ * duplicate triangles, make the winding consistent (the authored majority
+ * wins), and turn closed components outward.
+ *
+ * Returns `{ coordinates, indices, report }`. When nothing changed, the
+ * INPUT arrays come back as they are.
+ * @param {any} coordinates
+ * @param {Uint32Array} indices
+ * @returns {object}
+ */
+export function cleanMesh(coordinates, indices) {
+    const ret = wasm.cleanMesh(coordinates, indices);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Clean many meshes, each on its own. `vertOffsets` / `faceOffsets` hold
+ * `entities + 1` starts (in vertices and in triangles); each entity's indices
+ * are local to its own vertices. Returns
+ * `{ coordinates, vertOffsets, indices, faceOffsets, reports }`.
+ * @param {any} coordinates
+ * @param {Uint32Array} vert_offsets
+ * @param {Uint32Array} indices
+ * @param {Uint32Array} face_offsets
+ * @returns {object}
+ */
+export function cleanMeshes(coordinates, vert_offsets, indices, face_offsets) {
+    const ptr0 = passArray32ToWasm0(vert_offsets, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(face_offsets, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.cleanMeshes(coordinates, ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
@@ -1524,8 +1708,9 @@ export function coreVersion() {
  * constructing synthesis output arrays. The count never coarsens and a valid
  * zero-survivor scene returns `0n`.
  *
- * `workBudget` limits the conservative cell-work bound, not the retained
- * count. JavaScript receives the `u64` result as a lossless `BigInt`.
+ * `workBudget` limits the region grid cells the count walks, not the
+ * retained count (#603). JavaScript receives the `u64` result as a lossless
+ * `BigInt`.
  * @param {string} geometries_json
  * @param {string} mode
  * @param {number} grid_size
@@ -1535,9 +1720,10 @@ export function coreVersion() {
  * @param {Uint32Array | null} [terrain_indices]
  * @param {boolean | null} [partial_cells]
  * @param {number | null} [min_coverage]
+ * @param {string | null} [mesh_cleaning]
  * @returns {bigint}
  */
-export function countSurfaces(geometries_json, mode, grid_size, offset, work_budget, terrain_coordinates, terrain_indices, partial_cells, min_coverage) {
+export function countSurfaces(geometries_json, mode, grid_size, offset, work_budget, terrain_coordinates, terrain_indices, partial_cells, min_coverage, mesh_cleaning) {
     const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -1546,11 +1732,172 @@ export function countSurfaces(geometries_json, mode, grid_size, offset, work_bud
     var len2 = WASM_VECTOR_LEN;
     var ptr3 = isLikeNone(terrain_indices) ? 0 : passArray32ToWasm0(terrain_indices, wasm.__wbindgen_malloc);
     var len3 = WASM_VECTOR_LEN;
-    const ret = wasm.countSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage);
+    var ptr4 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len4 = WASM_VECTOR_LEN;
+    const ret = wasm.countSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr4, len4);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * The daylight-points frame of a worker JSON result. Throws when the result
+ * has no exact frame.
+ * @param {Uint8Array} result
+ * @returns {Uint8Array}
+ */
+export function daylightFrameFromJson(result) {
+    const ptr0 = passArray8ToWasm0(result, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.daylightFrameFromJson(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * The worker's JSON bytes of a daylight-points frame, byte for byte.
+ * @param {Uint8Array} frame
+ * @returns {Uint8Array}
+ */
+export function daylightJsonFromFrame(frame) {
+    const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.daylightJsonFromFrame(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * Join the part results (unzipped JSON bytes, in plan order) into the bytes
+ * of the single-request result. Throws when they do not join.
+ * @param {string} plan
+ * @param {Uint8Array[]} results
+ * @returns {Uint8Array}
+ */
+export function daylightMerge(plan, results) {
+    const ptr0 = passStringToWasm0(plan, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayJsValueToWasm0(results, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.daylightMerge(ptr0, len0, ptr1, len1);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v3;
+}
+
+/**
+ * Join the part results (each a daylight-points frame or the worker's JSON
+ * bytes, in plan order; `plan` as JSON) into the frame of the
+ * single-request result. Throws when they do not join or have no exact
+ * frame.
+ * @param {string} plan
+ * @param {Uint8Array[]} parts
+ * @returns {Uint8Array}
+ */
+export function daylightMergeBinary(plan, parts) {
+    const ptr0 = passStringToWasm0(plan, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayJsValueToWasm0(parts, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.daylightMergeBinary(ptr0, len0, ptr1, len1);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v3;
+}
+
+/**
+ * The request body of one part (`part`: one entry of the plan's `parts`,
+ * JSON): the request with only `floors` changed.
+ * @param {Uint8Array} request
+ * @param {string} part
+ * @returns {Uint8Array}
+ */
+export function daylightPartBody(request, part) {
+    const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(part, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.daylightPartBody(ptr0, len0, ptr1, len1);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v3;
+}
+
+/**
+ * Pack a request's floors into parts of whole floors of at most `target`
+ * sensors (default 300 000, `PART_SENSOR_TARGET`): the plan as JSON `{tier, target,
+ * total_sensors, parts: [{key, floors, floor_keys, sensors, range?}],
+ * unsplit_reason}`.
+ * @param {Uint8Array} request
+ * @param {number | null} [target]
+ * @returns {string}
+ */
+export function daylightParts(request, target) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.daylightParts(ptr0, len0, isLikeNone(target) ? Number.MAX_SAFE_INTEGER : (target) >>> 0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * The exact sensors per floor of a daylight-factor request body, as the
+ * worker makes them: JSON `{tier, floors: [{key, selector, sensors,
+ * sensors_sha256}], total}`. Throws the worker's 422 text for a floor the
+ * worker would refuse.
+ * @param {Uint8Array} request
+ * @returns {string}
+ */
+export function daylightSensorCounts(request) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.daylightSensorCounts(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
 }
 
 /**
@@ -1570,6 +1917,26 @@ export function countSurfaces(geometries_json, mode, grid_size, offset, work_bud
  */
 export function decodeBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values) {
     const ret = wasm.decodeBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Validate a daylight-points frame and describe it: `{schema_version,
+ * layout, sensor_count, legend, sections, groups, rooms, buildings,
+ * warnings, chunk}` (snake_case keys, as the Python binding). `sections`
+ * gives each per-sensor column's `{offset, count, dtype}` inside `frame`:
+ * copy the frame once into a fresh `Uint8Array` and build
+ * `new Float64Array(u8.buffer, u8.byteOffset + offset, count)` views.
+ * @param {Uint8Array} frame
+ * @returns {any}
+ */
+export function decodeDaylightResult(frame) {
+    const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.decodeDaylightResult(ptr0, len0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -1646,6 +2013,28 @@ export function decodeSurfaceArchive(archive, max_total_bytes, max_metadata_byte
         throw takeFromExternrefTable0(ret[1]);
     }
     return SurfaceArchive.__wrap(ret[0]);
+}
+
+/**
+ * Decode several downloaded archives in one call, in order: the threaded
+ * Node build (D205) decodes them on the pool, the default build one after
+ * the other. Same limits and handles as `decodeSurfaceArchive`, one per
+ * archive; an archive that fails gets route `"error"` and its `error`, so
+ * the host can name the job.
+ * @param {Uint8Array[]} archives
+ * @param {bigint} max_total_bytes
+ * @param {number} max_metadata_bytes
+ * @param {bigint} max_cells
+ * @param {bigint} max_triangle_values
+ * @returns {SurfaceArchive[]}
+ */
+export function decodeSurfaceArchives(archives, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values) {
+    const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.decodeSurfaceArchives(ptr0, len0, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values);
+    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v2;
 }
 
 /**
@@ -1770,6 +2159,28 @@ export function defaultPrecedence() {
 }
 
 /**
+ * The transport for `analysisType` when the caller names none (D196):
+ * `"binary"`, or `"json"` for an analysis with no binary route. See
+ * `ir_geo::transport_choice`.
+ * @param {string} analysis_type
+ * @returns {string}
+ */
+export function defaultTransport(analysis_type) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.defaultTransport(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Drop each mesh of a packed geometry group so its own lowest point is z = 0.
  *
  * `coordinates` is every mesh's flat `[x, y, z, ...]` array, concatenated, as
@@ -1834,32 +2245,22 @@ export function encodeCategoricalGrid(grid_json, cat_map_json) {
 }
 
 /**
- * Encode an owned canonical geometry frame.
- *
- * Lengths are checked before typed arrays are copied into WASM. Returned byte
- * arrays own JavaScript storage. The artifact digest covers the raw frame; an
- * archive transport must digest the exact archive bytes separately.
- * @param {string} metadata_json
- * @param {Uint8Array} coordinates_f32_le
- * @param {Uint8Array} indices_u32_le
- * @param {Uint8Array | null | undefined} instance_f32_le
- * @param {bigint} max_total_bytes
- * @param {number} max_metadata_bytes
- * @param {number} max_sections
- * @param {bigint} max_elements_per_section
- * @param {number} max_metadata_depth
- * @param {bigint} max_meshes
- * @param {bigint} max_instances
- * @returns {any}
+ * The surface schema 2 IRBF frame of one surface result archive (ZIP or
+ * GZIP, one entry, JSON or strict IRBF), written by the kernel's surface
+ * writer with `f64` sections. For tests and for converting stored results.
+ * @param {Uint8Array} archive
+ * @returns {Uint8Array}
  */
-export function encodeGeometryDocument(metadata_json, coordinates_f32_le, indices_u32_le, instance_f32_le, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_meshes, max_instances) {
-    const ptr0 = passStringToWasm0(metadata_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+export function encodeSurfaceArchive(archive) {
+    const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.encodeGeometryDocument(ptr0, len0, coordinates_f32_le, indices_u32_le, isLikeNone(instance_f32_le) ? 0 : addToExternrefTable0(instance_f32_le), max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_meshes, max_instances);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
+    const ret = wasm.encodeSurfaceArchive(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
     }
-    return takeFromExternrefTable0(ret[0]);
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
 }
 
 /**
@@ -1987,33 +2388,6 @@ export function entityHashMesh(coordinates, indices) {
     } finally {
         wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
-}
-
-/**
- * Return the request-wide upper bound on first-pass surfgrid cells.
- *
- * Uses the exact synthesis input parser. JavaScript receives a lossless
- * `BigInt` because wasm-bindgen maps the Rust `u64` return without narrowing.
- * @param {string} geometries_json
- * @param {string} mode
- * @param {number} grid_size
- * @param {number} offset
- * @param {bigint} max_sensors
- * @param {boolean | null} [partial_cells]
- * @param {number | null} [min_coverage]
- * @param {boolean | null} [emit_cell_tris]
- * @returns {bigint}
- */
-export function estimateCellsUpperBound(geometries_json, mode, grid_size, offset, max_sensors, partial_cells, min_coverage, emit_cell_tris) {
-    const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.estimateCellsUpperBound(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return BigInt.asUintN(64, ret[0]);
 }
 
 /**
@@ -2495,6 +2869,34 @@ export function geometryArtifact(body_json, box_trees, max_total_bytes, max_meta
 }
 
 /**
+ * Decode a geometry frame (schema 1 or 2) and return its content as JSON
+ * text: `{"metadata": <the schema 1 shape>, "sensors": {"points", "normals"}
+ * | null}`. For tests and diagnostics; the upload path never decodes.
+ * @param {Uint8Array} frame
+ * @returns {string}
+ */
+export function geometryDocumentJson(frame) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.geometryDocumentJson(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Hash one S1 geometry group from its wire JSON.
  *
  * Uses the registry's `HashKind` and existing leaf preimages. Returns null
@@ -2522,6 +2924,16 @@ export function geometryGroupHash(group_name, group_json) {
  */
 export function geometryGroups() {
     const ret = wasm.geometryGroups();
+    return ret;
+}
+
+/**
+ * The geometry schema this kernel writes. A host submits binary geometry
+ * only to a server whose capability document lists it.
+ * @returns {number}
+ */
+export function geometrySchemaVersion() {
+    const ret = wasm.geometrySchemaVersion();
     return ret;
 }
 
@@ -3028,6 +3440,73 @@ export function instancesFromPoints(features_json, reference_lon, reference_lat,
 }
 
 /**
+ * An interior request on the binary route (D228): the scene as ONE IRBF
+ * geometry archive, every other top-level value as control (raw bytes, the
+ * request's order). Every part of a split request uploads this one archive
+ * and sends `daylightPartBody(control, part)` as its control. Throws when the
+ * frame cannot carry the request exactly (a deferred field such as
+ * `buildings` or `vegetation`, a mesh with one arm, a coordinate over the
+ * frame limit): the caller then sends the request as JSON.
+ *
+ * The limits are the capability document's (`maxGeometryBytes`,
+ * `maxMetadataBytes`, `maxMeshes`, `maxInstances`); a frame over one of them
+ * throws before any upload.
+ *
+ * Returns `{archive: Uint8Array, artifactDigest, contentDigest, encoding,
+ * frameByteLength, control: Uint8Array}`.
+ * @param {Uint8Array} request
+ * @param {string} model
+ * @param {bigint} max_total_bytes
+ * @param {number} max_metadata_bytes
+ * @param {bigint} max_meshes
+ * @param {bigint} max_instances
+ * @returns {any}
+ */
+export function interiorArtifact(request, model, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+    const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.interiorArtifact(ptr0, len0, ptr1, len1, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Join every job of one surface area run, in the canonical job order
+ * (#579): the rows, the triangle groups, `triangles.positions` and each
+ * fallback's `job` follow the canonical order of `entryIds`, not the
+ * argument order; `jobOrder[g]` is the argument index of job `g`.
+ *
+ * `archives[i]` is job `i`'s `decodeSurfaceArchive` handle (consumed, also
+ * on an error), `entryIds[i]` its schedule entry, `anchors[2i..2i+2]` its
+ * tile SW offset, `captures[i]` its kept capture or `undefined`. Returns the
+ * columns: see `SurfaceJoin` in `ir-simprep` for every field. The triangle
+ * positions come back as `triangles.positions[i]`, one `Float32Array` per
+ * job in its tile-local frame (empty when the job has none).
+ * @param {SurfaceArchive[]} archives
+ * @param {string[]} entry_ids
+ * @param {Float64Array} anchors
+ * @param {Array<any>} captures_in
+ * @returns {any}
+ */
+export function joinSurfaceJobs(archives, entry_ids, anchors, captures_in) {
+    const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayJsValueToWasm0(entry_ids, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayF64ToWasm0(anchors, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.joinSurfaceJobs(ptr0, len0, ptr1, len1, ptr2, len2, captures_in);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Land-use classification — utilities-service
  * `app/maps/overture/landuse.py::fetch_landuse`.
  *
@@ -3075,6 +3554,33 @@ export function lawsonLabels() {
 }
 
 /**
+ * Measures the colour-scale range of one grid's FINITE cells (issue #390).
+ * Mirror of the Python wheel's `legend_range`.
+ *
+ * `values`: a `Float32Array` or a `Float64Array`. NaN and ±infinity cells
+ * are skipped; an empty or all-non-finite grid returns `undefined`.
+ * `mode` (default `"exact"`) is the true min/max; `"trimmed"` is the exact
+ * 2nd/98th percentile (numpy `linear`), falling back to `"exact"` when the
+ * trimmed ends collapse while the true extremes differ; `"fixed"` returns
+ * `[fixedMin, fixedMax]` WITHOUT reading `values` (both REQUIRED, finite,
+ * `min < max`). Returns `[min, max]` as a `Float64Array`.
+ * @param {any} values
+ * @param {string | null} [mode]
+ * @param {number | null} [fixed_min]
+ * @param {number | null} [fixed_max]
+ * @returns {Float64Array | undefined}
+ */
+export function legendRange(values, mode, fixed_min, fixed_max) {
+    var ptr0 = isLikeNone(mode) ? 0 : passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.legendRange(values, ptr0, len0, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Identity of the prettify mask that surface synthesis produces from the
  * geometry behind `geoHash` under these params — the key to cache a mask (or a
  * result carrying one) against.
@@ -3104,11 +3610,12 @@ export function lawsonLabels() {
  * @param {boolean | null} [partial_cells]
  * @param {number | null} [min_coverage]
  * @param {boolean | null} [emit_cell_tris]
+ * @param {string | null} [mesh_cleaning]
  * @returns {string}
  */
-export function maskHash(geo_hash, mode, grid_size, offset, max_sensors, terrain_hash, partial_cells, min_coverage, emit_cell_tris) {
-    let deferred5_0;
-    let deferred5_1;
+export function maskHash(geo_hash, mode, grid_size, offset, max_sensors, terrain_hash, partial_cells, min_coverage, emit_cell_tris, mesh_cleaning) {
+    let deferred6_0;
+    let deferred6_1;
     try {
         const ptr0 = passStringToWasm0(geo_hash, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
@@ -3116,18 +3623,20 @@ export function maskHash(geo_hash, mode, grid_size, offset, max_sensors, terrain
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(terrain_hash) ? 0 : passStringToWasm0(terrain_hash, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.maskHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0);
-        var ptr4 = ret[0];
-        var len4 = ret[1];
+        var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len3 = WASM_VECTOR_LEN;
+        const ret = wasm.maskHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, ptr3, len3);
+        var ptr5 = ret[0];
+        var len5 = ret[1];
         if (ret[3]) {
-            ptr4 = 0; len4 = 0;
+            ptr5 = 0; len5 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred5_0 = ptr4;
-        deferred5_1 = len4;
-        return getStringFromWasm0(ptr4, len4);
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
     }
 }
 
@@ -3140,6 +3649,16 @@ export function materialRank(name) {
     const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.materialRank(ptr0, len0);
+    return ret >>> 0;
+}
+
+/**
+ * The most sensors one surface job computes, BYO or synthesized
+ * (`ir_geo::consts::MAX_SENSORS_PER_JOB`).
+ * @returns {number}
+ */
+export function maxSensorsPerJob() {
+    const ret = wasm.maxSensorsPerJob();
     return ret >>> 0;
 }
 
@@ -3963,6 +4482,33 @@ export function partitionFacadeCoreContextF64(ids, coordinates, offsets, core_x_
 }
 
 /**
+ * The retry plan of an area schedule (D224): a `RetryPlanInput` JSON
+ * document in, a `RetryPlan` JSON document out. Throws on a bad input.
+ * @param {string} input
+ * @returns {string}
+ */
+export function planAreaRetry(input) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.planAreaRetry(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Return verified exact surface batches as JSON records.
  * @param {string} geometries_json
  * @param {string} mode
@@ -3973,11 +4519,12 @@ export function partitionFacadeCoreContextF64(ids, coordinates, offsets, core_x_
  * @param {boolean} auto_align
  * @param {boolean | null} [partial_cells]
  * @param {number | null} [min_coverage]
+ * @param {string | null} [mesh_cleaning]
  * @returns {string}
  */
-export function planExactSurfaceBatches(geometries_json, mode, grid_size, offset, work_budget, ground_geometry_json, auto_align, partial_cells, min_coverage) {
-    let deferred5_0;
-    let deferred5_1;
+export function planExactSurfaceBatches(geometries_json, mode, grid_size, offset, work_budget, ground_geometry_json, auto_align, partial_cells, min_coverage, mesh_cleaning) {
+    let deferred6_0;
+    let deferred6_1;
     try {
         const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
@@ -3985,18 +4532,20 @@ export function planExactSurfaceBatches(geometries_json, mode, grid_size, offset
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(ground_geometry_json) ? 0 : passStringToWasm0(ground_geometry_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.planExactSurfaceBatches(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage);
-        var ptr4 = ret[0];
-        var len4 = ret[1];
+        var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len3 = WASM_VECTOR_LEN;
+        const ret = wasm.planExactSurfaceBatches(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr3, len3);
+        var ptr5 = ret[0];
+        var len5 = ret[1];
         if (ret[3]) {
-            ptr4 = 0; len4 = 0;
+            ptr5 = 0; len5 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred5_0 = ptr4;
-        deferred5_1 = len4;
-        return getStringFromWasm0(ptr4, len4);
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
     }
 }
 
@@ -4013,11 +4562,12 @@ export function planExactSurfaceBatches(geometries_json, mode, grid_size, offset
  * @param {boolean | null} [partial_cells]
  * @param {number | null} [min_coverage]
  * @param {number | null} [max_sensors_per_job]
+ * @param {string | null} [mesh_cleaning]
  * @returns {string}
  */
-export function planExactSurfaceBatchesCapped(geometries_json, mode, grid_size, offset, work_budget, ground_geometry_json, auto_align, partial_cells, min_coverage, max_sensors_per_job) {
-    let deferred5_0;
-    let deferred5_1;
+export function planExactSurfaceBatchesCapped(geometries_json, mode, grid_size, offset, work_budget, ground_geometry_json, auto_align, partial_cells, min_coverage, max_sensors_per_job, mesh_cleaning) {
+    let deferred6_0;
+    let deferred6_1;
     try {
         const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
@@ -4025,7 +4575,42 @@ export function planExactSurfaceBatchesCapped(geometries_json, mode, grid_size, 
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(ground_geometry_json) ? 0 : passStringToWasm0(ground_geometry_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.planExactSurfaceBatchesCapped(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, !isLikeNone(max_sensors_per_job), isLikeNone(max_sensors_per_job) ? 0 : max_sensors_per_job);
+        var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len3 = WASM_VECTOR_LEN;
+        const ret = wasm.planExactSurfaceBatchesCapped(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, !isLikeNone(max_sensors_per_job), isLikeNone(max_sensors_per_job) ? 0 : max_sensors_per_job, ptr3, len3);
+        var ptr5 = ret[0];
+        var len5 = ret[1];
+        if (ret[3]) {
+            ptr5 = 0; len5 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
+    } finally {
+        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+    }
+}
+
+/**
+ * Return one kernel reuse plan as JSON.
+ * @param {string} current_json
+ * @param {string} state_json
+ * @param {number} now
+ * @param {string | null} [sizes_json]
+ * @returns {string}
+ */
+export function planGeometryReuse(current_json, state_json, now, sizes_json) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(current_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(state_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        var ptr2 = isLikeNone(sizes_json) ? 0 : passStringToWasm0(sizes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len2 = WASM_VECTOR_LEN;
+        const ret = wasm.planGeometryReuse(ptr0, len0, ptr1, len1, now, ptr2, len2);
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -4041,33 +4626,46 @@ export function planExactSurfaceBatchesCapped(geometries_json, mode, grid_size, 
 }
 
 /**
- * Return one kernel reuse plan as JSON.
- * @param {string} current_json
- * @param {string} state_json
- * @param {number} now
- * @returns {string}
+ * The default time a client waits for a job or an area run, seconds (D213).
+ * @returns {number}
  */
-export function planGeometryReuse(current_json, state_json, now) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const ptr0 = passStringToWasm0(current_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(state_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.planGeometryReuse(ptr0, len0, ptr1, len1, now);
-        var ptr3 = ret[0];
-        var len3 = ret[1];
-        if (ret[3]) {
-            ptr3 = 0; len3 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
+export function pollDefaultTimeoutSeconds() {
+    const ret = wasm.pollDefaultTimeoutSeconds();
+    return ret;
+}
+
+/**
+ * The wait before the next status sweep after a sweep that failed (HTTP 429,
+ * 5xx, network), seconds. See `ir_geo::poll_schedule` (D213).
+ * @param {number} consecutive_errors
+ * @param {number} jitter_unit
+ * @param {number | null} [retry_after_s]
+ * @returns {number}
+ */
+export function pollErrorDelaySeconds(consecutive_errors, jitter_unit, retry_after_s) {
+    const ret = wasm.pollErrorDelaySeconds(consecutive_errors, jitter_unit, !isLikeNone(retry_after_s), isLikeNone(retry_after_s) ? 0 : retry_after_s);
+    return ret;
+}
+
+/**
+ * The wait before the first status sweep of a wait, seconds (D213).
+ * @returns {number}
+ */
+export function pollFirstDelaySeconds() {
+    const ret = wasm.pollFirstDelaySeconds();
+    return ret;
+}
+
+/**
+ * The wait before the next status sweep after a sweep that answered,
+ * seconds. See `ir_geo::poll_schedule` (D213).
+ * @param {number} elapsed_s
+ * @param {number} sweep_requests
+ * @returns {number}
+ */
+export function pollIntervalSeconds(elapsed_s, sweep_requests) {
+    const ret = wasm.pollIntervalSeconds(elapsed_s, sweep_requests);
+    return ret;
 }
 
 /**
@@ -4152,6 +4750,29 @@ export function rectUnionSlabToleranceDeg(rectangles) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return ret[0];
+}
+
+/**
+ * The fixed colour-scale range one registry `visualConfigurations` entry
+ * declares, for `legendRange(values, "fixed", min, max)`. Mirror of the
+ * Python wheel's `registry_fixed_range`.
+ *
+ * `configJson`: one already-resolved entry — the host owns the registry
+ * fetch and key resolution, the same contract as `renderGridRegistry`. A
+ * numeric `steps` list gives `[steps[0], steps[-1]]`; a string
+ * (categorical) or an absent/empty `steps` gives `undefined`. Throws on
+ * malformed JSON or a non-increasing numeric range.
+ * @param {string} config_json
+ * @returns {Float64Array | undefined}
+ */
+export function registryFixedRange(config_json) {
+    const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.registryFixedRange(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
@@ -4372,6 +4993,30 @@ export function scalarUnproject(origin_lon, origin_lat, x, y) {
 }
 
 /**
+ * The total time allowed to send `byteLength` bytes of request body,
+ * seconds. See `ir_geo::send_budget`. A JavaScript byte length is a safe
+ * integer, so it is taken as `f64` and refused when it is not one.
+ * @param {number} byte_length
+ * @returns {number}
+ */
+export function sendBudgetSeconds(byte_length) {
+    const ret = wasm.sendBudgetSeconds(byte_length);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0];
+}
+
+/**
+ * The longest time no body byte may move before a send stops, seconds.
+ * @returns {number}
+ */
+export function sendStallSeconds() {
+    const ret = wasm.sendStallSeconds();
+    return ret;
+}
+
+/**
  * Identity of the sensor LAYOUT — the set AND its order — for reusing a
  * prettify mask across analyses.
  *
@@ -4403,11 +5048,12 @@ export function scalarUnproject(origin_lon, origin_lat, x, y) {
  * @param {string | null} [terrain_hash]
  * @param {boolean | null} [partial_cells]
  * @param {number | null} [min_coverage]
+ * @param {string | null} [mesh_cleaning]
  * @returns {string}
  */
-export function sensorLayoutHash(entity_hashes, mode, grid_size, offset, max_sensors, terrain_hash, partial_cells, min_coverage) {
-    let deferred5_0;
-    let deferred5_1;
+export function sensorLayoutHash(entity_hashes, mode, grid_size, offset, max_sensors, terrain_hash, partial_cells, min_coverage, mesh_cleaning) {
+    let deferred6_0;
+    let deferred6_1;
     try {
         const ptr0 = passArrayJsValueToWasm0(entity_hashes, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
@@ -4415,19 +5061,51 @@ export function sensorLayoutHash(entity_hashes, mode, grid_size, offset, max_sen
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(terrain_hash) ? 0 : passStringToWasm0(terrain_hash, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.sensorLayoutHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage);
-        var ptr4 = ret[0];
-        var len4 = ret[1];
+        var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len3 = WASM_VECTOR_LEN;
+        const ret = wasm.sensorLayoutHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr3, len3);
+        var ptr5 = ret[0];
+        var len5 = ret[1];
         if (ret[3]) {
-            ptr4 = 0; len4 = 0;
+            ptr5 = 0; len5 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred5_0 = ptr4;
-        deferred5_1 = len4;
-        return getStringFromWasm0(ptr4, len4);
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
     }
+}
+
+/**
+ * Measures ONE colour-scale range pooled across several grids' finite cells
+ * (issue #390): every grid's finite cells are pooled and `mode` is applied
+ * once, so `"trimmed"` is the percentile of the POOLED data, never a union
+ * of per-grid percentiles. Mirror of the Python wheel's
+ * `shared_legend_range`; same `mode`/`fixedMin`/`fixedMax` rules as
+ * `legendRange`.
+ *
+ * `grids`: an array of `Float32Array` / `Float64Array` (they may be mixed).
+ * Each `Float32Array` is widened to f64 HERE, exactly, because the kernel's
+ * pooling entry point takes f64 only — marshalling, not a second copy of the
+ * rule. `undefined` when `grids` is empty or no cell anywhere is finite.
+ * @param {any[]} grids
+ * @param {string | null} [mode]
+ * @param {number | null} [fixed_min]
+ * @param {number | null} [fixed_max]
+ * @returns {Float64Array | undefined}
+ */
+export function sharedLegendRange(grids, mode, fixed_min, fixed_max) {
+    const ptr0 = passArrayJsValueToWasm0(grids, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(mode) ? 0 : passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.sharedLegendRange(ptr0, len0, ptr1, len1, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
@@ -4494,6 +5172,20 @@ export function splitFacadeCoreContextReport(payload_json, inference_size_m, cor
     } finally {
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
+}
+
+/**
+ * The wait before the next same-key send of a keyed tile submit, seconds
+ * (D224). `retry_after_s` is `undefined` when the response had no
+ * `Retry-After`. See `ir_geo::area_retry::submit_resend_delay_seconds`.
+ * @param {number} sends_done
+ * @param {number} jitter_unit
+ * @param {number | null} [retry_after_s]
+ * @returns {number}
+ */
+export function submitResendDelaySeconds(sends_done, jitter_unit, retry_after_s) {
+    const ret = wasm.submitResendDelaySeconds(sends_done, jitter_unit, !isLikeNone(retry_after_s), isLikeNone(retry_after_s) ? 0 : retry_after_s);
+    return ret;
 }
 
 /**
@@ -4564,14 +5256,17 @@ export function surfgridVersion() {
  * @param {boolean | null} [emit_cell_tris]
  * @param {boolean | null} [return_buffers]
  * @param {boolean | null} [compact_cells]
+ * @param {string | null} [mesh_cleaning]
  * @returns {any}
  */
-export function synthesizeSurfaces(geometries_json, mode, grid_size, offset, max_sensors, partial_cells, min_coverage, emit_cell_tris, return_buffers, compact_cells) {
+export function synthesizeSurfaces(geometries_json, mode, grid_size, offset, max_sensors, partial_cells, min_coverage, emit_cell_tris, return_buffers, compact_cells, mesh_cleaning) {
     const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0);
+    var ptr2 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.synthesizeSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr2, len2);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4593,49 +5288,21 @@ export function synthesizeSurfaces(geometries_json, mode, grid_size, offset, max
  * @param {boolean | null} [emit_cell_tris]
  * @param {boolean | null} [return_buffers]
  * @param {boolean | null} [compact_cells]
+ * @param {string | null} [mesh_cleaning]
  * @returns {any}
  */
-export function synthesizeSurfacesFromCapture(capture, mode, grid_size, offset, max_sensors, partial_cells, min_coverage, emit_cell_tris, return_buffers, compact_cells) {
+export function synthesizeSurfacesFromCapture(capture, mode, grid_size, offset, max_sensors, partial_cells, min_coverage, emit_cell_tris, return_buffers, compact_cells, mesh_cleaning) {
     const ptr0 = passArray8ToWasm0(capture, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfacesFromCapture(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0);
+    var ptr2 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.synthesizeSurfacesFromCapture(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr2, len2);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * Rebuild many accepted facade sensor layouts in one call, one parameter set.
- *
- * `captures` is an array of `Uint8Array`. For each capture, in order, the
- * call runs `onAnswer(index, answer)`, where `answer` is the buffers
- * `synthesizeSurfacesFromCapture` gives with `returnBuffers`, or the `Error`
- * it throws, as a value (a refusal refuses only its capture). The captures
- * run one after the other; each one is copied into wasm memory only while it
- * is read, consecutive captures of one tile share its terrain, and no answer
- * is kept after `onAnswer` returns. When `onAnswer` throws, no later capture
- * is answered and the call throws that value.
- * @param {Array<any>} captures
- * @param {Function} on_answer
- * @param {string} mode
- * @param {number} grid_size
- * @param {number} offset
- * @param {bigint} max_sensors
- * @param {boolean | null} [partial_cells]
- * @param {number | null} [min_coverage]
- * @param {boolean | null} [emit_cell_tris]
- * @param {boolean | null} [compact_cells]
- */
-export function synthesizeSurfacesFromCaptures(captures, on_answer, mode, grid_size, offset, max_sensors, partial_cells, min_coverage, emit_cell_tris, compact_cells) {
-    const ptr0 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfacesFromCaptures(captures, on_answer, ptr0, len0, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0);
-    if (ret[1]) {
-        throw takeFromExternrefTable0(ret[0]);
-    }
 }
 
 /**
@@ -4659,9 +5326,10 @@ export function synthesizeSurfacesFromCaptures(captures, on_answer, mode, grid_s
  * @param {boolean | null} [emit_cell_tris]
  * @param {boolean | null} [return_buffers]
  * @param {boolean | null} [compact_cells]
+ * @param {string | null} [mesh_cleaning]
  * @returns {any}
  */
-export function synthesizeSurfacesOnTerrain(geometries_json, mode, grid_size, offset, max_sensors, terrain_coordinates, terrain_indices, partial_cells, min_coverage, emit_cell_tris, return_buffers, compact_cells) {
+export function synthesizeSurfacesOnTerrain(geometries_json, mode, grid_size, offset, max_sensors, terrain_coordinates, terrain_indices, partial_cells, min_coverage, emit_cell_tris, return_buffers, compact_cells, mesh_cleaning) {
     const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4670,7 +5338,9 @@ export function synthesizeSurfacesOnTerrain(geometries_json, mode, grid_size, of
     const len2 = WASM_VECTOR_LEN;
     const ptr3 = passArray32ToWasm0(terrain_indices, wasm.__wbindgen_malloc);
     const len3 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfacesOnTerrain(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0);
+    var ptr4 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len4 = WASM_VECTOR_LEN;
+    const ret = wasm.synthesizeSurfacesOnTerrain(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr4, len4);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5562,6 +6232,14 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
+        __wbg___wbindgen_is_null_ea9085d691f535d3: function(arg0) {
+            const ret = arg0 === null;
+            return ret;
+        },
+        __wbg___wbindgen_is_undefined_c05833b95a3cf397: function(arg0) {
+            const ret = arg0 === undefined;
+            return ret;
+        },
         __wbg___wbindgen_number_get_394265ed1e1b84ee: function(arg0, arg1) {
             const obj = arg1;
             const ret = typeof(obj) === 'number' ? obj : undefined;
@@ -5579,12 +6257,12 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbg_call_e3b662382210db98: function() { return handleError(function (arg0, arg1, arg2, arg3) {
-            const ret = arg0.call(arg1, arg2, arg3);
-            return ret;
-        }, arguments); },
         __wbg_from_13e323c65fc8f464: function(arg0) {
             const ret = Array.from(arg0);
+            return ret;
+        },
+        __wbg_get_507a50627bffa49b: function(arg0, arg1) {
+            const ret = arg0[arg1 >>> 0];
             return ret;
         },
         __wbg_get_78f252d074a84d0b: function() { return handleError(function (arg0, arg1) {
@@ -5593,6 +6271,26 @@ function __wbg_get_imports() {
         }, arguments); },
         __wbg_get_unchecked_6e0ad6d2a41b06f6: function(arg0, arg1) {
             const ret = arg0[arg1 >>> 0];
+            return ret;
+        },
+        __wbg_instanceof_Float32Array_0734a24e43081e98: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Float32Array;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
+        __wbg_instanceof_Float64Array_92032ec8f216bceb: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Float64Array;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
             return ret;
         },
         __wbg_instanceof_Uint8Array_309b927aaf7a3fc7: function(arg0) {
@@ -5625,6 +6323,10 @@ function __wbg_get_imports() {
             const ret = arg0.length;
             return ret;
         },
+        __wbg_length_98f10d1e2f4ea968: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
         __wbg_new_32b398fb48b6d94a: function() {
             const ret = new Array();
             return ret;
@@ -5649,10 +6351,22 @@ function __wbg_get_imports() {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_new_with_length_e1d8c8061ed4e317: function(arg0) {
+            const ret = new Float32Array(arg0 >>> 0);
+            return ret;
+        },
         __wbg_new_with_length_e6785c33c8e4cce8: function(arg0) {
             const ret = new Uint8Array(arg0 >>> 0);
             return ret;
         },
+        __wbg_new_with_length_f8cbc3a5b9ff9368: function(arg0) {
+            const ret = new Array(arg0 >>> 0);
+            return ret;
+        },
+        __wbg_parse_1c0d8a8656d7e016: function() { return handleError(function (arg0, arg1) {
+            const ret = JSON.parse(getStringFromWasm0(arg0, arg1));
+            return ret;
+        }, arguments); },
         __wbg_prototypesetcall_21a175a0a8157491: function(arg0, arg1, arg2) {
             Float64Array.prototype.set.call(getArrayF64FromWasm0(arg0, arg1), arg2);
         },
@@ -5661,6 +6375,9 @@ function __wbg_get_imports() {
         },
         __wbg_prototypesetcall_62396032bc038599: function(arg0, arg1, arg2) {
             Uint32Array.prototype.set.call(getArrayU32FromWasm0(arg0, arg1), arg2);
+        },
+        __wbg_prototypesetcall_ba9c9a7197c11933: function(arg0, arg1, arg2) {
+            Float32Array.prototype.set.call(getArrayF32FromWasm0(arg0, arg1), arg2);
         },
         __wbg_push_d2ae3af0c1217ae6: function(arg0, arg1) {
             const ret = arg0.push(arg1);
@@ -5673,8 +6390,19 @@ function __wbg_get_imports() {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
+        __wbg_set_8a16b38e4805b298: function(arg0, arg1, arg2) {
+            arg0[arg1 >>> 0] = arg2;
+        },
         __wbg_subarray_3ed232c8a6baee09: function(arg0, arg1, arg2) {
             const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
+            return ret;
+        },
+        __wbg_surfacearchive_new: function(arg0) {
+            const ret = SurfaceArchive.__wrap(arg0);
+            return ret;
+        },
+        __wbg_surfacearchive_unwrap: function(arg0) {
+            const ret = SurfaceArchive.__unwrap(arg0);
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0) {
@@ -5732,12 +6460,12 @@ const ResultArchiveDecodeFinalization = (typeof FinalizationRegistry === 'undefi
 const SiteFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_site_free(ptr, 1));
+const SiteTerrainFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_siteterrain_free(ptr, 1));
 const SurfaceArchiveFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_surfacearchive_free(ptr, 1));
-const SurfaceAreaMergerFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_surfaceareamerger_free(ptr, 1));
 
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();

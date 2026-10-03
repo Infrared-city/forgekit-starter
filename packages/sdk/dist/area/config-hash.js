@@ -69,13 +69,21 @@ export function foldGeometryGroup(name, value) {
     const hash = requireCore().geometryGroupHash(name, JSON.stringify(value));
     return typeof hash === "string" ? { "group-hash": hash } : value;
 }
-/** {@link FOLDED_HASH_GROUPS}, folded, in a shallow copy of `fields`. */
-export function foldHashFields(fields) {
+/**
+ * {@link FOLDED_HASH_GROUPS}, folded, in a shallow copy of `fields`.
+ *
+ * `terrain` is the kernel terrain read once for `ground-geometry`
+ * (`site-terrain.ts`, D200): its group hash is the value
+ * {@link foldGeometryGroup} would compute from the same document, without
+ * writing and parsing the whole terrain again on every run.
+ */
+export function foldHashFields(fields, terrain) {
     const output = { ...fields };
     for (const name of FOLDED_HASH_GROUPS) {
         if (output[name] === undefined)
             continue;
-        output[name] = foldGeometryGroup(name, output[name]);
+        const known = name === "ground-geometry" ? terrain?.groupHash : undefined;
+        output[name] = typeof known === "string" ? { "group-hash": known } : foldGeometryGroup(name, output[name]);
     }
     return output;
 }

@@ -1,42 +1,29 @@
+import type { KernelTerrain } from "./site-terrain.js";
 import type { FacadeArtifact } from "../internal/facade-artifact-guard.js";
+import { type FacadeSceneAnswer } from "./site-facade-scene.js";
 import type { ArtifactLimits, TileArtifact } from "../internal/binary-artifact.js";
 import type { AreaGeometryGroups, IndexedTile, Polygon, SupportedAreaGroup } from "./types.js";
 /**
  * The site, read by the kernel ONCE, answered for every tile in ONE crossing
- * (`docs/DEVIATIONS.md` D84, D90, D98, D101).
+ * (`docs/DEVIATIONS.md` D84, D90, D98, D101, WS2).
  *
- * Before D98 this host asked the kernel 98 times per site pass (`tileIds` and
- * `tileCoordinates` per tile), unboxed every coordinate into a JavaScript
- * number, re-anchored the occluders through a JSON round trip per tile, drove
- * the other groups through a second JSON round trip, and then canonicalised
- * and digested every group of every tile again in the submit loop. The kernel
- * now does all of it in `SiteAssignment.arena`: every tile's group bodies come
- * back as one byte arena of canonical JSON — sorted keys, JavaScript number
- * text, the exact bytes the wire carries and the reuse path digests — with an
- * offset table and each group's kernel hash beside it. This host slices the
- * arena and parses a group when it needs the object; it never copies or
- * re-anchors a group again, and the reuse identity is two native SHA-256 over
- * bytes and hash the kernel already produced, taken only when a run asks for
- * it — a binary-transport run never does.
+ * The kernel `Site` prepares every layer of the site in one crossing and
+ * keeps them. `SiteAssignment.arena` slices the kernel's one byte arena of
+ * canonical JSON per tile group; a tile artifact or facade job reads the SAME
+ * kept site, so a run never sends the site to the kernel twice.
  *
- * The binary transport takes every tile's IRBF artifact from the same site
- * (`artifacts`, D101): the kernel packs, describes, frames, zips and digests
- * each tile — and boxes its trees on a route whose capability carries no
- * `vegetation` (D70) — so nothing here encodes geometry. A facade BATCH takes
- * its own selection instead (`facadeFrames`, D156): the unsplit tile would
- * make the server synthesize sensors on every member of the tile.
+ * The binary transport takes every tile's IRBF artifact from this site
+ * (`tileArtifact`, D101): the kernel packs, describes, frames, zips and
+ * digests each tile, boxing its trees where the capability carries no
+ * `vegetation` (D70). A facade BATCH takes its own selection instead
+ * (`facadeFrames`, D156), or a shared scene and a target range (`facadeScenes`,
+ * #602): the unsplit tile would make the server synthesize sensors on every
+ * member of the tile.
  *
- * The site crosses ONCE (WS2): the packed coordinate buffers (`pack`) — what
- * the kernel assigns and re-anchors from, exact f64, and what `dropToGrade`
- * reads — and the group documents as JSON text, so the kernel can write every
- * other member of a mesh (a packed mesh crosses without its coordinates, the
- * bulk of the text). The kernel `Site` prepares every layer in that crossing
- * and KEEPS them: the arena and, on a binary run, every artifact come from
- * the same copy, and nothing reads the site into the kernel a second time.
- * A binary run keeps the kernel copy and frees it when this object is
- * unreachable (`FinalizationRegistry`); a JSON run, or a realm without the
- * registry, frees it before `read` returns and a later artifact request
- * reads the site again, as before WS2.
+ * A binary or facade run keeps the kernel copy and frees it when this object
+ * is unreachable (`FinalizationRegistry`); a JSON run, or a realm without the
+ * registry, frees it before `read` returns, and a later artifact or facade
+ * request reads the site again.
  */
 /** One tile's share of the site, by id. */
 export interface TileAnswer {
@@ -65,10 +52,12 @@ export interface SiteAnswer {
     /**
      * The parts of every facade BATCH of one tile, from one kernel call that
      * builds the tile once (`Site.facadeFrames`, WP3): each batch's targets in
-     * `geometries`, every other member of the tile in `context-geometry`
-     * (D156). One answer per batch, in batch order.
+     * `geometries`, every other member of the tile in `context-geometry` (D156).
      */
     facadeFrames?(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): FacadeFrame[];
+    /** One tile's facade SCENE (#602): a shared frame for `batches` plus each
+     * batch's job as a range into it, or its own frame (WP3, per-tile). */
+    facadeScenes?(index: number, batches: readonly (readonly string[])[], boxTrees: boolean, limits: ArtifactLimits): FacadeSceneAnswer;
     /** One tile's group as the kernel wrote it, when the answer holds the arena. */
     group?(tile: number, name: SupportedAreaGroup): TileGroup | undefined;
     /**
@@ -136,6 +125,8 @@ export interface KernelSite {
     artifacts(start: number, end: number, boxTrees: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
     facadeBatches(start: number, end: number, requestJson: string): string;
     facadeFrames(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], body: boolean, identity: boolean, capture: boolean, alignment: string | undefined, artifact: boolean, boxTrees: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown[];
+    /** One scene frame per tile and a target range per job (#602). */
+    facadeScenes(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], boxTrees: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
     checkTerrain(start: number, end: number): void;
     identity(start: number, end: number): unknown;
     free(): void;
@@ -159,8 +150,7 @@ export declare class SiteAssignment implements SiteAnswer {
     /**
      * Keep the kernel site from now on, reading it once more when a JSON run
      * built this answer without it. A facade run asks the kept site for its
-     * batches and its selected bodies (`area/site-facade.ts`), as the Python
-     * host does.
+     * batches and its selected bodies (`area/site-facade.ts`).
      */
     keepKernel(): boolean;
     /** Run `use` on the kept kernel site, or on a fresh read that is freed after. */
@@ -169,16 +159,13 @@ export declare class SiteAssignment implements SiteAnswer {
      * Read the site once: the kernel prepares every layer in one crossing and
      * answers the membership and the bodies from them.
      *
-     * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts
-     * it will encode at submit time, and a FACADE run for its batches and
-     * bodies (`area/site-facade.ts`), freed with this object. A grid JSON run
-     * frees it before this returns — its bodies are JavaScript-owned copies
-     * already — so a run that never encodes holds no wasm memory, as before
-     * WS2; a later binary or facade run on the same prepared site reads the
-     * site again. A realm without
-     * `FinalizationRegistry` always takes that second path.
+     * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it
+     * will encode at submit time, and a FACADE run for its batches and bodies
+     * (`area/site-facade.ts`), freed with this object. A grid JSON run frees it
+     * before this returns — a run that never encodes holds no wasm memory. A
+     * realm without `FinalizationRegistry` always frees it here.
      */
-    static read(groups: AreaGeometryGroups, tiles: readonly IndexedTile[], polygon: Polygon, analysisType: string | undefined, terrainContextMarginM: number | undefined, keepKernelSite?: boolean, texts?: ReadonlyMap<object, string>): SiteAssignment;
+    static read(groups: AreaGeometryGroups, tiles: readonly IndexedTile[], polygon: Polygon, analysisType: string | undefined, terrainContextMarginM: number | undefined, keepKernelSite?: boolean, texts?: ReadonlyMap<object, string>, terrain?: KernelTerrain): SiteAssignment;
     /** One tile's group, or `undefined` when the run does not carry it. */
     group(tile: number, name: SupportedAreaGroup): TileGroup | undefined;
     /**
@@ -189,19 +176,23 @@ export declare class SiteAssignment implements SiteAnswer {
      */
     identity(): TileIdentity;
     /**
-     * One tile's artifact (D101). The first ask under a given capability answer
-     * — whether the trees are boxed, and the four limits — encodes every tile in
-     * one crossing from the kept kernel site; the archives are kept, so the
-     * tiles of a family's repeat run share them. Never a facade batch's (D156).
+     * One tile's artifact (D101): the first ask under a capability answer
+     * encodes every tile in one crossing and keeps the archives. Never a
+     * facade batch's (D156).
      */
     tileArtifact(index: number, boxTrees: boolean, limits: ArtifactLimits): TileArtifact;
     /**
      * The parts of every facade batch of tile `index`, from ONE kernel call
-     * that builds the tile once (`Site.facadeFrames`, WP3). The artifact is the
-     * SAME kernel selection the Python host uploads (D156): the batch's targets
-     * in `geometries`, the rest of the tile in `context-geometry`. Nothing is
-     * kept here — `area/site-facade.ts` hands each part out once.
+     * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
+     * in `geometries`, the rest of the tile in `context-geometry` (D156).
+     * Nothing is kept here — `area/site-facade.ts` hands each part out once.
      */
     facadeFrames(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): FacadeFrame[];
+    /**
+     * One tile's facade scenes (#602): one shared frame for every batch of
+     * `batches`, and each batch's job as a range into it, or its own frame.
+     * `site-facade-scene.ts` shapes the kernel's raw answer.
+     */
+    facadeScenes(index: number, batches: readonly (readonly string[])[], boxTrees: boolean, limits: ArtifactLimits): FacadeSceneAnswer;
     private encode;
 }

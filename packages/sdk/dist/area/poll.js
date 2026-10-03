@@ -1,4 +1,5 @@
 import { JobStatus } from "../jobs.js";
+import { isTransientStatusError } from "../internal/poll-engine.js";
 import { computeAreaState } from "./schedule.js";
 const failures = new WeakMap();
 const FAILURE_LIMIT = 5;
@@ -28,7 +29,15 @@ function applySnapshot(job, snapshot) {
     else
         job.status = "pending";
 }
-async function pollOne(service, job, signal) {
+function noteFailure(record, error) {
+    if (!isTransientStatusError(error))
+        return;
+    record.failures += 1;
+    if (error.retryAfterS !== undefined) {
+        record.retryAfterS = Math.max(record.retryAfterS ?? 0, error.retryAfterS);
+    }
+}
+async function pollOne(service, job, record, signal) {
     if (job.invalidReference === true || !job.jobId || job.status === "completed" ||
         job.status === "failed" || job.status === "skipped")
         return;
@@ -42,6 +51,13 @@ async function pollOne(service, job, signal) {
     catch (error) {
         if (signal?.aborted)
             throw signal.reason ?? new DOMException("aborted", "AbortError");
+        // A transient failure (429, 5xx, network) is the engine's to back off
+        // on; it never counts toward retiring a job that is paid and may still
+        // succeed (D213). The breaker counts only answers a retry cannot fix.
+        if (isTransientStatusError(error)) {
+            noteFailure(record, error);
+            return;
+        }
         const now = performance.now();
         const previous = failures.get(job);
         const count = (previous?.count ?? 0) + 1;
@@ -91,7 +107,7 @@ export function revivePolledOut(schedule) {
  * path, not an error path — the sweep below is then exactly the sweep this
  * SDK has always done. `internal/status-batch.ts` has the detection rules.
  */
-async function pollBatched(service, pending, options) {
+async function pollBatched(service, pending, options, record) {
     const getStatusBatch = service.getStatusBatch;
     if (getStatusBatch === undefined)
         return pending;
@@ -115,6 +131,12 @@ async function pollBatched(service, pending, options) {
         // job is asked about per job, exactly as before.
         return pending;
     }
+    if (sweep.failedIds !== undefined) {
+        record.failures += 1;
+        if (sweep.retryAfterS !== undefined) {
+            record.retryAfterS = Math.max(record.retryAfterS ?? 0, sweep.retryAfterS);
+        }
+    }
     for (const [id, job] of byId) {
         const snapshot = sweep.statuses.get(id);
         if (snapshot === undefined)
@@ -124,30 +146,33 @@ async function pollBatched(service, pending, options) {
     }
     return sweep.unanswered.map((id) => byId.get(id)).filter((job) => job !== undefined);
 }
-/** Per-job status requests the last check of each schedule sent after its
- *  batched sweep. The poll interval reads it (D176): such a sweep is not a
- *  one-request sweep, so it gets no fast start. */
-const perJobRequests = new WeakMap();
-export function lastPerJobRequests(schedule) {
-    return perJobRequests.get(schedule) ?? 0;
+/** What the last check of each schedule met: its per-job requests and its
+ *  transient failures. The poll engine reads it (D213). */
+const lastSweeps = new WeakMap();
+export function lastSweepRecord(schedule) {
+    return lastSweeps.get(schedule) ?? { perJob: 0, failures: 0, retryAfterS: undefined };
 }
+/** Poll every open job of a schedule once. Reads only `jobs`: an area
+ * schedule and a daylight-factor parts schedule (D221) poll the same way. */
 export async function checkAreaState(service, schedule, options = {}) {
     const pending = [...schedule.jobs.values()].filter((job) => Boolean(job.jobId) && job.status !== "completed" && job.status !== "failed" && job.status !== "skipped");
     // Synchronously short-circuited, not awaited, when there is no batched
     // route to try: a service written against an earlier SDK — and every test
     // that hand-rolls one — must see the exact sweep it always saw, down to
     // when the first request is dispatched relative to an abort.
+    const record = { perJob: 0, failures: 0, retryAfterS: undefined };
     const remaining = service.getStatusBatch === undefined || pending.length === 0
         ? pending
-        : await pollBatched(service, pending, options);
-    perJobRequests.set(schedule, remaining.length);
+        : await pollBatched(service, pending, options, record);
+    record.perJob = remaining.length;
+    lastSweeps.set(schedule, record);
     const count = Math.min(workerCount(options.maxWorkers), Math.max(1, remaining.length));
     let cursor = 0;
     await Promise.all(Array.from({ length: count }, async () => {
         while (cursor < remaining.length) {
             const job = remaining[cursor++];
             if (job)
-                await pollOne(service, job, options.signal);
+                await pollOne(service, job, record, options.signal);
         }
     }));
     const state = computeAreaState(schedule);

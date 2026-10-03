@@ -74,7 +74,9 @@ export function beginCompose(groups, tiles, polygon, options = {}, keepKernelSit
  * prepared site, D96). `composeTilePayloads` hands its payloads to the
  * caller, who may change them before a submit, so it never remembers.
  */
-rememberWire = false) {
+rememberWire = false, 
+/** The terrain read once for `groups["ground-geometry"]` (D200). */
+terrain) {
     const tileInput = tiles.map((tile) => ({
         row: checkedIndex(tile.row, "tile row"),
         col: checkedIndex(tile.col, "tile col"),
@@ -94,7 +96,7 @@ rememberWire = false) {
     if (groups["ground-geometry"] !== undefined && options.terrainContext === undefined) {
         throw new TypeError("terrainContext is required for ground-geometry");
     }
-    const site = SiteAssignment.read(groups, tileInput, polygon, options.analysisType ?? undefined, options.terrainContext?.margin_m, keepKernelSite, texts);
+    const site = SiteAssignment.read(groups, tileInput, polygon, options.analysisType ?? undefined, options.terrainContext?.margin_m, keepKernelSite, texts, terrain);
     const payloads = {};
     return {
         site,

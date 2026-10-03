@@ -1,6 +1,7 @@
 import { rejectRetiredResultFields } from "./retired.js";
 import { decodeBinaryResultDocument } from "../internal/binary-result.js";
 import { requireCore } from "../internal/core.js";
+import { DaylightFactorResult, isDaylightFrame } from "../parts/daylight-result.js";
 import { decompressResultArchive } from "./archive.js";
 import { parseSurfaceRecord, parseValidatedIrBfSurfaceRecord } from "./surface-record.js";
 const IRBF_MAGIC = [73, 82, 66, 70, 13, 10, 26, 10];
@@ -59,6 +60,9 @@ export function parseResultDocument(document, options = {}) {
         && IRBF_MAGIC.every((value, index) => document[index] === value);
     if (!irbf)
         return jsonRoute(document, options);
+    // The binary daylight-factor result (family 7, D232): validated and viewed in place.
+    if (isDaylightFrame(document))
+        return { route: "daylight-points", value: new DaylightFactorResult(document) };
     const decoded = decodeBinaryResultDocument(document, RESULT_DECODE_LIMITS);
     if (decoded.family === "surfaces") {
         return options.surface === undefined

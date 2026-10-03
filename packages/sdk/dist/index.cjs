@@ -54,6 +54,7 @@ var init_node_loader = __esm({
 var node_exports = {};
 __export(node_exports, {
   AnalysesName: () => AnalysesName,
+  AnalysisPartsError: () => AnalysisPartsError,
   AnalysisService: () => AnalysisService,
   AreaGeometryProbeError: () => AreaGeometryProbeError,
   AreaGeometryReferenceError: () => AreaGeometryReferenceError,
@@ -67,12 +68,15 @@ __export(node_exports, {
   CoreNotReadyError: () => CoreNotReadyError,
   CoreTerminalError: () => CoreTerminalError,
   CoreVersionSkewError: () => CoreVersionSkewError,
+  DEFAULT_DAYLIGHT_RESULT_FORMAT: () => DEFAULT_DAYLIGHT_RESULT_FORMAT,
   DEFAULT_MAX_LONG_AXIS_PX: () => DEFAULT_MAX_LONG_AXIS_PX,
   DEFAULT_STATIC_BASE_URL: () => DEFAULT_STATIC_BASE_URL,
   DEFAULT_TOKENS_PER_JOB: () => DEFAULT_TOKENS_PER_JOB,
+  DaylightFactorResult: () => DaylightFactorResult,
   ESTIMATED_SECONDS_PER_TILE: () => ESTIMATED_SECONDS_PER_TILE,
   EpwParseError: () => EpwParseError,
   FacadeArtifactMismatchError: () => FacadeArtifactMismatchError,
+  FacadeCountContractError: () => FacadeCountContractError,
   GeodataDependencyError: () => GeodataDependencyError,
   GeodataError: () => GeodataError,
   GeodataFetchError: () => GeodataFetchError,
@@ -93,10 +97,12 @@ __export(node_exports, {
   LocalCleaner: () => LocalCleaner,
   MAX_REGISTRY_BYTES: () => MAX_REGISTRY_BYTES,
   MAX_STATIC_BYTES: () => MAX_STATIC_BYTES,
+  NO_ROOM: () => NO_ROOM,
   OvertureFileLimitError: () => OvertureFileLimitError,
   OvertureReadTooLargeError: () => OvertureReadTooLargeError,
   PER_JOB_MODEL_KEYS: () => PER_JOB_MODEL_KEYS,
   PHYSICS_TIERS: () => PHYSICS_TIERS,
+  PartsTimeoutError: () => PartsTimeoutError,
   REGISTRY_URL: () => REGISTRY_URL,
   ReadMarginError: () => ReadMarginError,
   RegistryFetchError: () => RegistryFetchError,
@@ -124,6 +130,7 @@ __export(node_exports, {
   areaScheduleToJSON: () => areaScheduleToJSON,
   buildAuthResolver: () => buildAuthResolver,
   checkAreaState: () => checkAreaState,
+  cleanMesh: () => cleanMesh,
   cleanV3Local: () => cleanV3Local,
   clearRegistryCache: () => clearRegistryCache,
   clearWeatherCatalogCache: () => clearWeatherCatalogCache,
@@ -144,10 +151,10 @@ __export(node_exports, {
   getTilingConfig: () => getTilingConfig,
   gridImageSize: () => gridImageSize,
   groundReadDistanceM: () => groundReadDistanceM,
-  hasCellGeometry: () => hasCellGeometry,
   initializeCore: () => initializeCore2,
   isVertical: () => isVertical,
   jobFromResponse: () => jobFromResponse,
+  legendRange: () => legendRange,
   mergeAreaJobs: () => mergeAreaJobs,
   mergeSurfaceAreaJobs: () => mergeSurfaceAreaJobs,
   normalizeGrid: () => normalizeGrid,
@@ -161,6 +168,7 @@ __export(node_exports, {
   preparedWeatherIdentity: () => preparedWeatherIdentity,
   previewAreaBatches: () => previewAreaBatches,
   readMarginM: () => readMarginM,
+  registryFixedRange: () => registryFixedRange,
   renderGridPng: () => renderGridPng,
   requiredMarginM: () => requiredMarginM,
   resolveBracketName: () => resolveBracketName,
@@ -170,13 +178,16 @@ __export(node_exports, {
   runArea: () => runArea,
   serializeToKebab: () => serializeToKebab,
   setOwnKey: () => setOwnKey,
+  sharedLegendRange: () => sharedLegendRange,
   silentLogger: () => silentLogger,
   submitAreaPlan: () => submitAreaPlan,
-  surfaceTriangles: () => surfaceTriangles,
+  surfaceId: () => surfaceId,
+  surfaceIndex: () => surfaceIndex,
   toCamelCase: () => toCamelCase,
   toKebabCase: () => toKebabCase,
   validatePolygon: () => validatePolygon,
   vegetationRegistryDocument: () => vegetationRegistryDocument,
+  vertexValues: () => vertexValues,
   windClassOrdinals: () => windClassOrdinals
 });
 module.exports = __toCommonJS(node_exports);
@@ -308,14 +319,19 @@ var CoreVersionSkewError = class extends Error {
   }
 };
 
-// src/internal/core.ts
-var core;
-var pending;
-var sourceIdentity;
-var terminalFailure;
+// src/internal/core-exports.ts
 var REQUIRED_FUNCTION_EXPORTS = [
   "coreVersion",
+  // The bundled kernel's roof-gate version (infrared-core #674): every
+  // surface request names it, so the worker runs the gate this SDK was
+  // tested against instead of guessing from an absent field.
+  "surfgridVersion",
   "geometryGroups",
+  // Geometry schema 2 (D206): the body fields the geometry document carries,
+  // the schema this kernel writes, and the one per-job sensor budget.
+  "binaryGeometryFields",
+  "geometrySchemaVersion",
+  "maxSensorsPerJob",
   "geometryGroupHash",
   // The schedule identity (audit M8b, D81): sha256 of the canonical config
   // JSON (sorted keys, 6dp half-away rounding, integral collapse). Replaces
@@ -338,6 +354,11 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // `tests/required-exports.wasm.test.ts` maps it onto these.
   "__wbg_site_free",
   "site_new",
+  // D200: the site's terrain read once per content, and the site built on it.
+  "__wbg_siteterrain_free",
+  "siteterrain_new",
+  "siteterrain_groupHash",
+  "site_withTerrain",
   "site_allTileIds",
   "site_bodies",
   // D101: every tile's IRBF artifact from the same site, and one body's for
@@ -389,14 +410,11 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "tileSwOffset",
   // Facade "pretty mode" (ADR 0008, D88): the SDK draws the per-cell render
   // geometry with the kernel it already bundles instead of downloading 12.6x
-  // the body from the server. `decodeSurfaceIdentity` reads the layout hash
-  // the synthesis is checked against. The terrain arm is the kernel's capture
-  // reader: it decodes and merges the terrain (D20) and seats the targets the
-  // way the server does before it synthesizes. One call answers every
-  // capture of a merge (D185).
-  "decodeSurfaceIdentity",
+  // the body from the server. The area merge synthesizes inside the one-call
+  // join (`joinSurfaceJobs`, below).
   "synthesizeSurfaces",
-  "synthesizeSurfacesFromCaptures",
+  // The public mesh utility `cleanMesh` (#555, D208).
+  "cleanMesh",
   // The exact per-tile re-anchor. It replaced the constant-offset loop the
   // host used to run per mesh (D48), which is why `transformBuildingCoords`
   // is no longer on this list: the kernel still exports it, both bindings
@@ -407,12 +425,36 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // compose calls (D57 / rect-union kernel port): `chunk ∩ union(tile
   // rectangles)`, replacing this package's own `geodata/rect-union.ts`.
   "rectUnionDecompose",
+  // Daylight-factor floor parts (`parts/`, D221): plan, part body, join.
+  "daylightParts",
+  "daylightPartBody",
+  "daylightMerge",
+  "interiorArtifact",
+  // The binary daylight-factor result (family 7, D232): views, binary join,
+  // JSON projection both ways.
+  "decodeDaylightResult",
+  "daylightMergeBinary",
+  "daylightJsonFromFrame",
+  "daylightFrameFromJson",
   // The same port's tolerance export, called by the public
   // `slabToleranceDeg` measurement helper (`geodata/rect-union-metrics.ts`).
   "rectUnionSlabToleranceDeg",
   // Trees as boxes on the binary wind routes (D70). Without these the SDK
   // cannot honour a binary wind/PWC body that carries vegetation at all.
   "vegetationTreeBoxDecision",
+  // The default transport (D196); the send budget (#556); the poll schedule (D213).
+  "defaultTransport",
+  "sendBudgetSeconds",
+  "sendStallSeconds",
+  "pollIntervalSeconds",
+  "pollErrorDelaySeconds",
+  "pollDefaultTimeoutSeconds",
+  "pollFirstDelaySeconds",
+  // The area retry plan and its idempotency key, and the same-key resend budget (D224). See `area/retry-plan.ts`.
+  "areaIdempotencyKey",
+  "planAreaRetry",
+  "submitResendDelaySeconds",
+  "classifySubmitSend",
   "windClassOrdinals",
   "overlayAoiIntersectsPolygon",
   "overlayBboxCandidates",
@@ -469,6 +511,9 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // all: the schedule records this value for every weather source.
   "weatherRunIdentity",
   "renderGridRegistry",
+  "legendRange",
+  "sharedLegendRange",
+  "registryFixedRange",
   "packMesh",
   // The canonical JSON writer behind every binary submission envelope. It
   // reached the kernel through a local `ReturnType<typeof requireCore> & {…}`
@@ -482,10 +527,11 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // archive and flatten a JSON grid in one crossing, or hand back an IRBF
   // document for `decodeBinaryResult`/`inspectBinaryResult` to decode.
   "decodeResultArchive",
-  // The area SURFACE merge's job decode (WP4): inflate, route, parse,
-  // validate and flatten a JSON or IRBF surface result in one call, handed
-  // to `SurfaceAreaMerger.pushArchive` without a second crossing.
+  // The area SURFACE merge: each download decoded as it arrives (WP4), then
+  // the whole run joined into columns in one call, triangles included (D197).
   "decodeSurfaceArchive",
+  "decodeSurfaceArchives",
+  "joinSurfaceJobs",
   // Brief J (D106): the deterministic `payload.json` ZIP writer every json
   // submit body and geometry-reference document uses. Replaces
   // `internal/zip.ts` (`fflate`), deleted in the same PR.
@@ -503,7 +549,6 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "griddocumentdecode_finiteNumbersValidated",
   "__wbg_areagridmerge_free",
   "__wbg_categoricalareadense_free",
-  "__wbg_surfaceareamerger_free",
   "__wbg_surfacearchive_free",
   "areagridmerge_values",
   "areagridmerge_shape",
@@ -511,16 +556,18 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "categoricalareadense_values",
   "categoricalareadense_legend",
   "surfacearchive_route",
-  "surfacearchive_takeRootJson",
-  "surfacearchive_takeFieldsJson",
-  "surfacearchive_takeCellArea",
-  "surfacearchive_valueOffsets",
-  "surfacearchive_cellAreaState",
-  "surfacearchive_cellTrisState",
-  "surfaceareamerger_new",
-  "surfaceareamerger_pushArchive",
-  "surfaceareamerger_finish"
+  "surfacearchive_error"
 ];
+
+// src/internal/core.ts
+var core;
+var pending;
+var sourceIdentity;
+var terminalFailure;
+var threadCount = 1;
+function coreThreads() {
+  return threadCount;
+}
 function terminal(error, message) {
   const failure2 = new CoreTerminalError(
     error instanceof CoreInitializationError ? error.message : message,
@@ -563,7 +610,7 @@ function requireCapabilities(output) {
 }
 async function loadCore(source) {
   const compiled = await compileSource(source.source);
-  const module2 = await import("../generated/infrared-core.js");
+  const module2 = source.threaded === void 0 ? await import("../generated/infrared-core.js") : await source.threaded.glue();
   let output;
   try {
     output = await module2.default({ module_or_path: compiled });
@@ -580,19 +627,45 @@ async function loadCore(source) {
         `incompatible Infrared core version ${module2.coreVersion()}`
       );
     }
-    core = module2;
   } catch (error) {
     throw terminal(
       error,
       "the loaded Infrared core failed its capability check"
     );
   }
+  if (source.threaded !== void 0) await startPool(module2, source.threaded.threads);
+  core = module2;
+}
+async function startPool(module2, threads) {
+  const threaded = module2;
+  const init = threaded.initThreadPool;
+  const abortOnPanic = threaded.installPanicAbort;
+  try {
+    if (typeof init !== "function" || typeof abortOnPanic !== "function") {
+      throw new CoreInitializationError(
+        "the threaded Infrared core has no initThreadPool or installPanicAbort export"
+      );
+    }
+    abortOnPanic();
+    await init(threads);
+  } catch (error) {
+    throw new CoreInitializationError(
+      "the threaded Infrared core could not start its worker threads",
+      { cause: error }
+    );
+  }
+  threadCount = threads;
 }
 function initializeCoreSource(source) {
   if (terminalFailure !== void 0) {
     return Promise.reject(terminalFailure);
   }
   if (core !== void 0) {
+    if (source?.threaded !== void 0 && source.threaded.threads !== threadCount) {
+      return Promise.reject(new CoreInitializationError(
+        `the Infrared core is already initialized with ${threadCount} thread(s)`
+      ));
+    }
     if (source?.source instanceof WebAssembly.Module && source.identity !== sourceIdentity) {
       const names = new Set(WebAssembly.Module.exports(source.source).map((entry) => entry.name));
       const missing = REQUIRED_FUNCTION_EXPORTS.find((name) => !names.has(name));
@@ -638,6 +711,9 @@ function resolveCoreSource(options) {
   const supplied = [options.url, options.bytes, options.module].filter(
     (value) => value !== void 0
   );
+  if (options.threads !== void 0 && options.threads !== 1) {
+    throw new CoreInitializationError("initializeCore({ threads }) above 1 is supported on Node only (D205)");
+  }
   if (supplied.length > 1) {
     throw new CoreInitializationError("initializeCore accepts exactly one core source");
   }
@@ -660,7 +736,7 @@ function initializeCore(options = {}) {
 }
 
 // src/version.ts
-var VERSION = "0.12.13-next.19";
+var VERSION = "0.14.0-next.0";
 
 // src/logger.ts
 var discard = (..._args) => void 0;
@@ -723,8 +799,236 @@ function buildAuthResolver(options) {
   };
 }
 
-// src/internal/deadline.ts
+// src/internal/fetch.ts
+var defaults = /* @__PURE__ */ new WeakSet();
+function resolveFetch(implementation) {
+  if (implementation != null) return implementation;
+  const native = globalThis.fetch;
+  if (typeof native !== "function") return void 0;
+  const bound2 = native.bind(globalThis);
+  defaults.add(bound2);
+  return bound2;
+}
+function isDefaultFetch(fetcher) {
+  return defaults.has(fetcher);
+}
+
+// src/internal/stream-sender.ts
+var BLOCK_BYTES = 64 * 1024;
+function streamSender(fetcher) {
+  return {
+    observesProgress: true,
+    async send(request, progress) {
+      const body = request.body;
+      const total = body.byteLength;
+      let offset = 0;
+      const stream = new ReadableStream({
+        pull(controller) {
+          progress.progress(offset);
+          if (offset >= total) {
+            controller.close();
+            return;
+          }
+          const end = Math.min(offset + BLOCK_BYTES, total);
+          controller.enqueue(body.subarray(offset, end));
+          offset = end;
+        }
+      }, { highWaterMark: 0 });
+      const headers = new Headers(request.headers);
+      headers.set("content-length", String(total));
+      const init = {
+        method: request.method,
+        headers,
+        body: stream,
+        duplex: "half",
+        credentials: request.credentials,
+        redirect: "manual",
+        signal: request.signal
+      };
+      const response = await fetcher(request.url, init);
+      progress.finished();
+      return response;
+    }
+  };
+}
+
+// src/internal/xhr-sender.ts
+var NULL_BODY_STATUS = /* @__PURE__ */ new Set([101, 204, 205, 304]);
+function responseHeaders(raw) {
+  const headers = new Headers();
+  for (const line of raw.split(/\r?\n/)) {
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    try {
+      headers.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
+    } catch {
+    }
+  }
+  return headers;
+}
+function sameUrl(a, b) {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return a === b;
+  }
+}
+var xhrSender = {
+  // A redirect is followed, and the body sent again, before this code sees
+  // it: `bodySenderFor` gives this sender only a body that is safe to resend.
+  observesProgress: true,
+  send(request, progress) {
+    return new Promise((resolve, reject) => {
+      if (request.signal.aborted) {
+        reject(new Error("request stopped"));
+        return;
+      }
+      const xhr = new XMLHttpRequest();
+      const total = request.body.byteLength;
+      const onAbort = () => xhr.abort();
+      const settled = () => request.signal.removeEventListener("abort", onAbort);
+      xhr.open(request.method, request.url);
+      xhr.responseType = "arraybuffer";
+      xhr.withCredentials = false;
+      request.headers.forEach((value, name) => xhr.setRequestHeader(name, value));
+      xhr.upload.onprogress = (event) => progress.progress(event.loaded);
+      xhr.upload.onload = () => progress.progress(total);
+      xhr.onload = () => {
+        settled();
+        progress.finished();
+        if (xhr.responseURL !== "" && !sameUrl(xhr.responseURL, request.url)) {
+          resolve(Response.error());
+          return;
+        }
+        const body = NULL_BODY_STATUS.has(xhr.status) ? null : xhr.response;
+        try {
+          resolve(new Response(body, {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            headers: responseHeaders(xhr.getAllResponseHeaders())
+          }));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      xhr.onerror = () => {
+        settled();
+        reject(new Error("the request failed"));
+      };
+      xhr.onabort = () => {
+        settled();
+        reject(new Error("request stopped"));
+      };
+      request.signal.addEventListener("abort", onAbort, { once: true });
+      xhr.send(request.body);
+    });
+  }
+};
+
+// src/internal/body-sender.ts
+function fetchSender(fetcher) {
+  return {
+    observesProgress: false,
+    send: (request) => fetcher(request.url, {
+      method: request.method,
+      headers: request.headers,
+      // Browser, Node 18+, and Workers accept ArrayBufferView bodies. The DOM
+      // declaration narrows the generic ArrayBufferLike parameter out, so the
+      // runtime object is kept and cast only at this seam.
+      body: request.body,
+      credentials: request.credentials,
+      redirect: "manual",
+      signal: request.signal
+    })
+  };
+}
+function streamedUploads() {
+  const runtime = globalThis;
+  const versions = runtime.process?.versions ?? {};
+  return runtime.process?.release?.name === "node" && typeof versions.node === "string" && versions.bun === void 0 && versions.deno === void 0 && versions.electron === void 0;
+}
+function crossOrigin(url) {
+  const page = globalThis.location?.origin;
+  try {
+    return typeof page !== "string" || new URL(url).origin !== page;
+  } catch {
+    return false;
+  }
+}
+function bodySenderFor(fetcher, presigned) {
+  if (!isDefaultFetch(fetcher)) return fetchSender(fetcher);
+  if (streamedUploads()) return streamSender(fetcher);
+  if (presigned !== void 0 && typeof XMLHttpRequest === "function" && crossOrigin(presigned.url)) {
+    return xhrSender;
+  }
+  return fetchSender(fetcher);
+}
+
+// src/internal/send-guard.ts
 var MAX_TIMEOUT_MS = 2147483647;
+var SendGuard = class {
+  constructor(limits, onStop) {
+    this.limits = limits;
+    this.onStop = onStop;
+  }
+  phase = "idle";
+  sent = 0;
+  stopped;
+  timers = /* @__PURE__ */ new Map();
+  /** Why the guard stopped the send, if it did. */
+  get stop() {
+    return this.stopped;
+  }
+  /**
+   * Arm the guard at dispatch. A sender that reports byte progress gets the
+   * stall guard and the budget; one that cannot gets one window for body and
+   * response together (see the module comment).
+   */
+  start(observesProgress) {
+    if (this.phase !== "idle") return;
+    this.phase = "sending";
+    if (observesProgress) {
+      this.arm("stall", this.limits.stallMs);
+      this.arm("budget", this.limits.budgetMs);
+    } else {
+      this.arm("window", this.limits.budgetMs + this.limits.responseMs);
+    }
+  }
+  progress(sentBytes) {
+    if (this.phase !== "sending") return;
+    if (sentBytes !== this.sent) this.arm("stall", this.limits.stallMs);
+    this.sent = sentBytes;
+    if (sentBytes >= this.limits.totalBytes) this.finished();
+  }
+  /** The last body byte is sent, or the server answered: end both rules, start the response window. */
+  finished() {
+    if (this.phase !== "sending") return;
+    this.phase = "sent";
+    this.clear("stall");
+    this.clear("budget");
+    this.arm("response", this.limits.responseMs);
+  }
+  close() {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+  }
+  arm(why, ms) {
+    this.clear(why);
+    this.timers.set(why, setTimeout(() => {
+      this.phase = "stopped";
+      this.stopped = why;
+      this.close();
+      this.onStop(why);
+    }, Math.min(ms, MAX_TIMEOUT_MS)));
+  }
+  clear(why) {
+    const timer = this.timers.get(why);
+    if (timer !== void 0) clearTimeout(timer);
+    this.timers.delete(why);
+  }
+};
+
+// src/internal/deadline.ts
 function requireTimeout(timeoutMs) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
     throw new TypeError(`timeoutMs must be in (0, ${MAX_TIMEOUT_MS}]`);
@@ -740,11 +1044,7 @@ var Deadline = class {
     };
     if (caller?.aborted) this.onCallerAbort();
     else caller?.addEventListener("abort", this.onCallerAbort, { once: true });
-    this.timer = setTimeout(() => {
-      this.timedOut = true;
-      this.timeout.abort();
-      this.controller.abort();
-    }, requireTimeout(timeoutMs));
+    this.timer = setTimeout(() => this.expire(), requireTimeout(timeoutMs));
   }
   controller = new AbortController();
   /** Aborts on the timeout only, never on the caller's signal. */
@@ -752,7 +1052,30 @@ var Deadline = class {
   timedOut = false;
   callerAborted = false;
   timer;
+  guard;
   onCallerAbort;
+  expire() {
+    this.timedOut = true;
+    this.timeout.abort();
+    this.controller.abort();
+  }
+  /**
+   * Hand the timeout to a send guard at the dispatch of a request body
+   * (`send-body.ts`): this deadline's own timer stops, and the guard's stall,
+   * budget and response rules end the request from here, as a timeout.
+   */
+  guardSend(limits, observesProgress) {
+    clearTimeout(this.timer);
+    this.timer = void 0;
+    this.guard?.close();
+    this.guard = new SendGuard(limits, () => this.expire());
+    if (!this.controller.signal.aborted) this.guard.start(observesProgress);
+    return this.guard;
+  }
+  /** Which send rule stopped the request, when a send guard did. */
+  sendStop() {
+    return this.guard?.stop;
+  }
   reason() {
     if (this.callerAborted) return "aborted";
     if (this.timedOut) return "timeout";
@@ -796,6 +1119,7 @@ var Deadline = class {
   }
   close() {
     clearTimeout(this.timer);
+    this.guard?.close();
     this.caller?.removeEventListener("abort", this.onCallerAbort);
   }
 };
@@ -815,11 +1139,36 @@ function delay(ms, signal) {
   });
 }
 
-// src/internal/fetch.ts
-function resolveFetch(implementation) {
-  if (implementation != null) return implementation;
-  const native = globalThis.fetch;
-  return typeof native === "function" ? native.bind(globalThis) : void 0;
+// src/internal/send-body.ts
+function sendLimits(totalBytes, responseMs) {
+  return {
+    totalBytes,
+    stallMs: requireCore().sendStallSeconds() * 1e3,
+    budgetMs: requireCore().sendBudgetSeconds(totalBytes) * 1e3,
+    responseMs
+  };
+}
+var NO_PROGRESS = { progress: () => void 0, finished: () => void 0 };
+function sendBody(sender, fetcher, request, limits, deadline) {
+  const signal = deadline.controller.signal;
+  if (limits.totalBytes === 0) return fetchSender(fetcher).send({ ...request, signal }, NO_PROGRESS);
+  const guard = deadline.guardSend(limits, sender.observesProgress);
+  return sender.send({ ...request, signal }, guard);
+}
+function stopDetail(deadline, limits) {
+  const seconds = (ms) => `${Math.round(ms / 1e3)} s`;
+  switch (deadline.sendStop()) {
+    case "stall":
+      return `no body byte moved for ${seconds(limits.stallMs)}`;
+    case "budget":
+      return `the ${seconds(limits.budgetMs)} send budget for ${limits.totalBytes} bytes ran out`;
+    case "response":
+      return `no answer ${seconds(limits.responseMs)} after the body was sent`;
+    case "window":
+      return `no answer within ${seconds(limits.budgetMs + limits.responseMs)} (the send budget for ${limits.totalBytes} bytes plus the request timeout)`;
+    default:
+      return "before the body was sent";
+  }
 }
 
 // src/internal/url-trim.ts
@@ -833,15 +1182,22 @@ function trimTrailingSlashes(value) {
 
 // src/internal/transport.ts
 var TransportError = class extends Error {
-  constructor(message, phase, reason2, method, status) {
+  constructor(message, phase, reason2, method, status, retryAfterS) {
     super(message);
     this.phase = phase;
     this.reason = reason2;
     this.method = method;
     this.status = status;
+    this.retryAfterS = retryAfterS;
   }
   name = "TransportError";
 };
+function retryAfterSeconds(headers) {
+  const raw = headers?.get?.("Retry-After") ?? null;
+  if (raw === null || raw.trim() === "") return void 0;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : void 0;
+}
 var DEFAULT_TIMEOUT_MS = 18e4;
 function cancelResponseBody(response) {
   try {
@@ -904,6 +1260,7 @@ var GatewayTransport = class {
   base;
   auth;
   fetch;
+  sender;
   timeoutMs;
   constructor(options) {
     this.base = normalizeBaseUrl(options.baseUrl);
@@ -911,6 +1268,7 @@ var GatewayTransport = class {
     const fetcher = resolveFetch(options.fetch);
     if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
     this.fetch = fetcher;
+    this.sender = bodySenderFor(fetcher);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     requireTimeout(this.timeoutMs);
   }
@@ -928,6 +1286,8 @@ var GatewayTransport = class {
       throw new TransportError("gateway request path is invalid", "pre-dispatch", "validation", method);
     }
     const url = `${this.base.origin}${this.base.path}${path}`;
+    const body = options.body;
+    const limits = body === void 0 ? void 0 : sendLimits(body.byteLength, this.timeoutMs);
     const deadline = new Deadline(options.signal, this.timeoutMs);
     let dispatched = false;
     try {
@@ -946,19 +1306,21 @@ var GatewayTransport = class {
       }
       const headers = new Headers(options.headers);
       for (const [name, value] of Object.entries(auth)) headers.set(name, value);
-      const request = {
-        method,
-        headers,
-        redirect: "manual",
-        signal: deadline.controller.signal
-      };
-      if (options.body !== void 0) request.body = options.body;
       const sent = options.beforeDispatch !== void 0 && mutation(method);
       if (deadline.controller.signal.aborted) throw new Error("request stopped");
       const response = await deadline.wait(() => {
         options.beforeDispatch?.();
         dispatched = true;
-        return this.fetch(url, request);
+        if (limits === void 0 || body === void 0) {
+          return this.fetch(url, { method, headers, redirect: "manual", signal: deadline.controller.signal });
+        }
+        return sendBody(
+          this.sender,
+          this.fetch,
+          { url, method, headers, body, credentials: "same-origin" },
+          limits,
+          deadline
+        );
       }, sent);
       if (response.status >= 300 && response.status < 400) {
         cancelResponseBody(response);
@@ -966,7 +1328,14 @@ var GatewayTransport = class {
       }
       if (!response.ok && options.acceptHttpErrors !== true) {
         cancelResponseBody(response);
-        throw new TransportError(`gateway request received HTTP ${response.status}`, "response", "http", method, response.status);
+        throw new TransportError(
+          `gateway request received HTTP ${response.status}`,
+          "response",
+          "http",
+          method,
+          response.status,
+          retryAfterSeconds(response.headers)
+        );
       }
       const buffer = await deadline.wait(() => response.arrayBuffer(), sent);
       return {
@@ -979,7 +1348,7 @@ var GatewayTransport = class {
       const stopped = deadline.reason();
       const reason2 = stopped ?? (dispatched ? "network" : "auth");
       const phase = safePhase(method, dispatched);
-      const message = stopped === "timeout" ? "gateway request timed out" : stopped === "aborted" ? "gateway request was aborted" : dispatched ? "gateway request failed after dispatch" : "gateway request failed before dispatch";
+      const message = stopped === "timeout" ? limits === void 0 ? "gateway request timed out" : `gateway request timed out (${stopDetail(deadline, limits)})` : stopped === "aborted" ? "gateway request was aborted" : dispatched ? "gateway request failed after dispatch" : "gateway request failed before dispatch";
       throw new TransportError(message, phase, reason2, method);
     } finally {
       deadline.close();
@@ -1716,7 +2085,7 @@ async function withRequest(url, headers, options, use, retry) {
   const deadline = new Deadline(options.signal, timeoutMs);
   const signal = deadline.controller.signal;
   const step = (work) => deadline.wait(work);
-  const stopped = (error) => new GeodataFetchError(checked, stopDetail(error, deadline, timeoutMs));
+  const stopped = (error) => new GeodataFetchError(checked, stopDetail2(error, deadline, timeoutMs));
   const stallMs = options.stallTimeoutMs ?? STALL_TIMEOUT_MS;
   try {
     for (; ; ) {
@@ -1763,7 +2132,7 @@ async function withRequest(url, headers, options, use, retry) {
     deadline.close();
   }
 }
-function stopDetail(error, deadline, timeoutMs) {
+function stopDetail2(error, deadline, timeoutMs) {
   const stopped = deadline.reason();
   if (stopped === "timeout") {
     return `the answer and its body did not complete within ${timeoutMs} ms`;
@@ -1876,8 +2245,8 @@ function requiredMarginM(layer, analysisType) {
   return derive(analysisType);
 }
 function checkReadMargin(acquired, layer, analysisTypes) {
-  const record4 = recordedMargin(acquired);
-  if (record4 === void 0) return;
+  const record3 = recordedMargin(acquired);
+  if (record3 === void 0) return;
   const names = analysisTypes.length === 0 ? [void 0] : analysisTypes;
   let widest = names[0];
   let required = requiredMarginM(layer, widest);
@@ -1888,11 +2257,11 @@ function checkReadMargin(acquired, layer, analysisTypes) {
       widest = name;
     }
   }
-  if (record4.readMarginM >= required) return;
+  if (record3.readMarginM >= required) return;
   throw new ReadMarginError({
     layer,
-    acquiredMarginM: record4.readMarginM,
-    ...record4.analysisType === void 0 ? {} : { acquiredAnalysisType: record4.analysisType },
+    acquiredMarginM: record3.readMarginM,
+    ...record3.analysisType === void 0 ? {} : { acquiredAnalysisType: record3.analysisType },
     requiredMarginM: required,
     ...widest == null ? {} : { requiredAnalysisType: widest }
   });
@@ -2130,9 +2499,9 @@ async function fetchOvertureManifest(collection, options = {}) {
     `${OVERTURE_INDEX_BASE}/${pointerKey(collection)}`,
     options
   );
-  const release3 = pinned ?? pointer.release;
-  if (cached !== void 0 && cached.release === release3) {
-    return { manifestJson: cached.manifestJson, release: release3 };
+  const release4 = pinned ?? pointer.release;
+  if (cached !== void 0 && cached.release === release4) {
+    return { manifestJson: cached.manifestJson, release: release4 };
   }
   const pointerPath = pointer.manifest_key.split("/").slice(1).join("/") || pointer.manifest_key;
   const key = pinned === void 0 ? pointerPath : pointerPath.replace(pointer.release, pinned);
@@ -2142,14 +2511,14 @@ async function fetchOvertureManifest(collection, options = {}) {
     );
   }
   const manifestJson = await fetchPublicText(`${OVERTURE_INDEX_BASE}/${key}`, options);
-  overtureCache.set(collection, { release: release3, manifestJson });
-  return { manifestJson, release: release3 };
+  overtureCache.set(collection, { release: release4, manifestJson });
+  return { manifestJson, release: release4 };
 }
 async function selectOvertureFiles(collection, bbox, options = {}) {
   if (!INDEXED_COLLECTIONS.includes(collection)) {
     return { urls: [], release: options.overtureRelease ?? "" };
   }
-  const { manifestJson, release: release3 } = await fetchOvertureManifest(collection, options);
+  const { manifestJson, release: release4 } = await fetchOvertureManifest(collection, options);
   const urls = requireCore().overtureSelectFiles(
     manifestJson,
     bbox.west,
@@ -2157,7 +2526,7 @@ async function selectOvertureFiles(collection, bbox, options = {}) {
     bbox.east,
     bbox.north
   );
-  return { urls: urls.map((url) => assertAllowedUrl(url)), release: release3 };
+  return { urls: urls.map((url) => assertAllowedUrl(url)), release: release4 };
 }
 
 // src/geodata/fgb-kernel.ts
@@ -2306,8 +2675,8 @@ async function readFgbBboxJson(url, bbox, options = {}) {
 // src/geodata/overture-cache.ts
 var OVERTURE_METADATA_CACHE_LIMIT = 50;
 var entries = /* @__PURE__ */ new Map();
-async function cachedOvertureMetadata(release3, url, load) {
-  const key = `${release3}${url}`;
+async function cachedOvertureMetadata(release4, url, load) {
+  const key = `${release4}${url}`;
   const cached = entries.get(key);
   if (cached !== void 0) {
     entries.delete(key);
@@ -2437,13 +2806,13 @@ async function loadRawGeometry() {
         "hyparquet/src/wkb.js"
       )
     ]);
-    const { DEFAULT_PARSERS: defaults } = convert;
+    const { DEFAULT_PARSERS: defaults2 } = convert;
     const { wkbToGeojson } = wkb;
-    if (defaults === void 0 || typeof wkbToGeojson !== "function") return void 0;
+    if (defaults2 === void 0 || typeof wkbToGeojson !== "function") return void 0;
     const keep = (bytes) => bytes;
     return {
       // hyparquet takes the parser set as given, so it must be complete.
-      parsers: { ...defaults, geometryFromBytes: keep, geographyFromBytes: keep },
+      parsers: { ...defaults2, geometryFromBytes: keep, geographyFromBytes: keep },
       toGeojson: (bytes) => wkbToGeojson({ view: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), offset: 0 })
     };
   } catch {
@@ -2492,15 +2861,15 @@ async function meetingSpan(parquet, file, compressors, group, bbox, meet) {
     rowEnd: group.end,
     columns: ["bbox"]
   });
-  const boxes = rows.map((row) => row["bbox"]);
-  const meets = meet(boxes, bbox);
+  const boxes2 = rows.map((row) => row["bbox"]);
+  const meets = meet(boxes2, bbox);
   const first = meets.indexOf(1);
   if (first < 0) return void 0;
   const last = meets.lastIndexOf(1);
   return {
     start: group.start + first,
     end: group.start + last + 1,
-    boxes: boxes.slice(first, last + 1)
+    boxes: boxes2.slice(first, last + 1)
   };
 }
 
@@ -2540,10 +2909,10 @@ function toFeature(row, collection, raw) {
     properties
   };
 }
-function keepRows(rows, boxes, meets, collection, raw, map) {
+function keepRows(rows, boxes2, meets, collection, raw, map) {
   const kept = [];
   for (const [index2, row] of rows.entries()) {
-    const box = boxes[index2];
+    const box = boxes2[index2];
     if (meets[index2] !== 1) continue;
     const feature = toFeature(row, collection, raw);
     if (feature === void 0) continue;
@@ -2585,7 +2954,7 @@ function statisticsFor(group) {
   return out;
 }
 function selectRowGroups(metadata, bbox) {
-  const boxes = metadata.row_groups.map((group) => {
+  const boxes2 = metadata.row_groups.map((group) => {
     const statistics = statisticsFor(group);
     const box = {};
     const xmin = numeric(statistics["bbox.xmin"]?.min_value);
@@ -2598,7 +2967,7 @@ function selectRowGroups(metadata, bbox) {
     if (ymax !== void 0) box.ymax = ymax;
     return box;
   });
-  const meets = boxesMeet(boxes, bbox);
+  const meets = boxesMeet(boxes2, bbox);
   const kept = [];
   let start = 0;
   for (const [index2, group] of metadata.row_groups.entries()) {
@@ -2613,9 +2982,9 @@ function numeric(value) {
   if (typeof value === "bigint") return Number(value);
   return void 0;
 }
-function boxesMeet(boxes, bbox) {
-  const rows = new Float64Array(boxes.length * 4);
-  for (const [index2, box] of boxes.entries()) {
+function boxesMeet(boxes2, bbox) {
+  const rows = new Float64Array(boxes2.length * 4);
+  for (const [index2, box] of boxes2.entries()) {
     rows[index2 * 4] = member(box?.xmin);
     rows[index2 * 4 + 1] = member(box?.ymin);
     rows[index2 * 4 + 2] = member(box?.xmax);
@@ -2634,26 +3003,26 @@ async function selectFiles(collection, bbox, options) {
     east: bbox.east + buffer,
     north: bbox.north + buffer
   };
-  const { urls, release: release3 } = await selectOvertureFiles(collection, fileBbox, options);
+  const { urls, release: release4 } = await selectOvertureFiles(collection, fileBbox, options);
   if (options.maxFiles !== void 0 && urls.length > options.maxFiles) {
     throw new OvertureFileLimitError(collection, urls.length, options.maxFiles);
   }
-  return { urls, release: release3 };
+  return { urls, release: release4 };
 }
 async function readOvertureRows(collection, bbox, options, map) {
   const columns = COLUMNS_BY_COLLECTION[collection];
   if (columns === void 0) {
     throw new GeodataError(`${collection} has no published Overture file index`);
   }
-  const { urls, release: release3 } = await selectFiles(collection, bbox, options);
-  if (urls.length === 0) return { rows: [], release: release3 };
+  const { urls, release: release4 } = await selectFiles(collection, bbox, options);
+  if (urls.length === 0) return { rows: [], release: release4 };
   const { parquet, compressors, geometry: raw } = await loadParquet();
   const transport3 = options.transport ?? httpRangeTransport(options);
   const plans2 = await mapLimit(
     urls,
     OVERTURE_FILE_CONCURRENCY,
     async (url) => {
-      const described = await cachedOvertureMetadata(release3, url, async () => {
+      const described = await cachedOvertureMetadata(release4, url, async () => {
         const byteLength = await transport3.byteLength(url);
         const metadata = await parquet.parquetMetadataAsync(
           asyncBufferOf(url, byteLength, transport3)
@@ -2701,12 +3070,12 @@ async function readOvertureRows(collection, bbox, options, map) {
         if (span.boxes !== void 0 && rows.length !== span.boxes.length) {
           throw new GeodataError(`${collection}: the span read gave ${span.boxes.length} boxes for ${rows.length} rows`);
         }
-        const boxes = span.boxes ?? rows.map((row) => row["bbox"]);
-        return keepRows(rows, boxes, boxesMeet(boxes, bbox), collection, raw, map);
+        const boxes2 = span.boxes ?? rows.map((row) => row["bbox"]);
+        return keepRows(rows, boxes2, boxesMeet(boxes2, bbox), collection, raw, map);
       })
     )
   );
-  return { rows: decoded.flat(), release: release3 };
+  return { rows: decoded.flat(), release: release4 };
 }
 
 // src/geodata/overture.ts
@@ -2714,19 +3083,19 @@ async function requireOvertureReader() {
   await loadParquet();
 }
 async function readOvertureCollection(collection, bbox, options = {}) {
-  const { rows, release: release3 } = await readOvertureRows(
+  const { rows, release: release4 } = await readOvertureRows(
     collection,
     bbox,
     options,
     (row) => row.feature
   );
-  return { features: rows, release: release3 };
+  return { features: rows, release: release4 };
 }
 async function readOvertureCollectionJson(collection, bbox, options = {}) {
-  const { features, release: release3 } = await readOvertureCollection(collection, bbox, options);
+  const { features, release: release4 } = await readOvertureCollection(collection, bbox, options);
   return {
     json: `[${features.map((feature) => JSON.stringify(feature)).join(",")}]`,
-    release: release3
+    release: release4
   };
 }
 
@@ -2835,11 +3204,11 @@ async function acquireGroundMaterials(bbox, options = {}) {
 }
 
 // src/geodata/overture-area.ts
-function unionBbox(boxes) {
-  const first = boxes[0];
+function unionBbox(boxes2) {
+  const first = boxes2[0];
   if (first === void 0) throw new TypeError("an area needs at least one tile rectangle");
   let { west, south, east, north } = first;
-  for (const box of boxes) {
+  for (const box of boxes2) {
     west = Math.min(west, box.west);
     south = Math.min(south, box.south);
     east = Math.max(east, box.east);
@@ -2848,13 +3217,13 @@ function unionBbox(boxes) {
   return { west, south, east, north };
 }
 async function readOvertureArea(collection, bbox, options = {}) {
-  const { rows, release: release3 } = await readOvertureRows(
+  const { rows, release: release4 } = await readOvertureRows(
     collection,
     bbox,
     options,
     (row) => row.box === void 0 ? { json: JSON.stringify(row.feature) } : { json: JSON.stringify(row.feature), box: row.box }
   );
-  return { features: rows, release: release3 };
+  return { features: rows, release: release4 };
 }
 function tileFeaturesJson(features, bbox) {
   const parts = [];
@@ -3374,13 +3743,38 @@ function foldGeometryGroup(name, value) {
   const hash = requireCore().geometryGroupHash(name, JSON.stringify(value));
   return typeof hash === "string" ? { "group-hash": hash } : value;
 }
-function foldHashFields(fields) {
+function foldHashFields(fields, terrain) {
   const output = { ...fields };
   for (const name of FOLDED_HASH_GROUPS) {
     if (output[name] === void 0) continue;
-    output[name] = foldGeometryGroup(name, output[name]);
+    const known = name === "ground-geometry" ? terrain?.groupHash : void 0;
+    output[name] = typeof known === "string" ? { "group-hash": known } : foldGeometryGroup(name, output[name]);
   }
   return output;
+}
+
+// src/area/count-contract.ts
+var FACADE_COUNT_CONTRACT_VERSION = 9;
+var COUNT_CHANGES = [
+  [6, "the kernel welds each building's vertices (infrared-core #555)"],
+  [7, "the kernel gives each wall a level grid (infrared-core #582)"],
+  [8, "the kernel cleans each building in a canonical order (infrared-core #630)"],
+  [9, "the kernel gives a terrace under an overhang roof sensors (infrared-core #674)"]
+];
+var FacadeCountContractError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "FacadeCountContractError";
+  }
+};
+function checkFacadeCountContract(retryFrom) {
+  if (retryFrom === void 0 || retryFrom.batchingPolicyVersion !== 2) return;
+  const version = retryFrom.scheduleContractVersion ?? 1;
+  if (version >= FACADE_COUNT_CONTRACT_VERSION) return;
+  const since = COUNT_CHANGES.filter(([at]) => at > version).map(([, change]) => change);
+  throw new FacadeCountContractError(
+    `retryFrom: this facade schedule was planned under schedule contract version ${String(version)}. Since then, ${since.join("; ")}. Its batches were sized with the old sensor counts, and this SDK counts under contract ${FACADE_COUNT_CONTRACT_VERSION}. The finished tiles of this schedule stay readable on their own; a fresh runArea runs (and bills) the whole area again under the new rule.`
+  );
 }
 
 // src/area/cooperative.ts
@@ -3497,7 +3891,6 @@ function groupHasContent(value) {
 }
 
 // src/request-validation.ts
-var MAX_SENSOR_POINTS = 1e5;
 var SURFACE_TYPES = /* @__PURE__ */ new Set([
   "sky-view-factors",
   "solar-radiation",
@@ -3518,7 +3911,9 @@ var SURFACE_FIELDS = [
   "context-geometry",
   "surface-grid-size",
   "surface-offset",
-  "emit-cell-tris"
+  "emit-cell-tris",
+  "mesh-cleaning",
+  "surfgrid-version"
 ];
 var TERRAIN_FIELDS = ["ground-geometry"];
 var ALIGNMENT_FIELDS = ["terrain-alignment"];
@@ -3526,6 +3921,13 @@ var ALIGNMENT_TYPES = /* @__PURE__ */ new Set([
   ...TERRAIN_TYPES,
   "wind-speed",
   "pedestrian-wind-comfort"
+]);
+var FAST_FIELDS = ["fast"];
+var FAST_TYPES = /* @__PURE__ */ new Set([
+  "direct-sun-hours",
+  "daylight-availability",
+  "thermal-comfort-index",
+  "thermal-comfort-statistics"
 ]);
 var TERRAIN_ALIGNMENT_MODES = /* @__PURE__ */ new Set(["as-is", "auto-align", "assume-aligned"]);
 var GRADE_ALIGNMENT_MODES = /* @__PURE__ */ new Set(["to-ground", "as-is"]);
@@ -3561,8 +3963,9 @@ function validateSensors(input) {
   if (pointsValue != null) {
     const points = vectors(pointsValue, "sensor-points");
     if (points.length === 0) throw new TypeError("sensor-points must not be empty");
-    if (points.length > MAX_SENSOR_POINTS) {
-      throw new TypeError(`sensor-points length exceeds the maximum of ${MAX_SENSOR_POINTS}`);
+    const maxSensors = requireCore().maxSensorsPerJob();
+    if (points.length > maxSensors) {
+      throw new TypeError(`sensor-points length exceeds the maximum of ${maxSensors}`);
     }
     points.forEach((point, index2) => validateVector(point, `sensor-points[${index2}]`, false));
     if (normalsValue != null) {
@@ -3586,6 +3989,22 @@ function validateSensors(input) {
   }
   if (emitCellTris != null && surfaces2 == null) {
     throw new TypeError("emit-cell-tris only applies to analysis-surfaces requests");
+  }
+  const cleaning = input["mesh-cleaning"];
+  if (cleaning != null && cleaning !== "auto" && cleaning !== "off") {
+    throw new TypeError('mesh-cleaning must be "auto" or "off"');
+  }
+  if (cleaning != null && surfaces2 == null) {
+    throw new TypeError("mesh-cleaning only applies to analysis-surfaces requests");
+  }
+  const surfgridVersion = input["surfgrid-version"];
+  if (surfgridVersion != null && surfaces2 == null) {
+    throw new TypeError("surfgrid-version only applies to analysis-surfaces requests");
+  }
+  if (surfgridVersion != null && surfgridVersion !== requireCore().surfgridVersion()) {
+    throw new TypeError(
+      `surfgrid-version must be the bundled kernel's (${requireCore().surfgridVersion()}); leave it unset`
+    );
   }
 }
 function validateCanonicalBase64(blob, key) {
@@ -3630,12 +4049,12 @@ function validateTerrain(input, enforceLimit) {
     if (!hasCoordinates || !hasIndices) {
       throw new TypeError(`ground-geometry[${JSON.stringify(key)}] must be a mesh`);
     }
-    const indices = mesh.indices;
+    const indices2 = mesh.indices;
     let indexCount = 0;
     if (typeof mesh.indices_bin === "string") indexCount = packedIndexCount(mesh, key) ?? 0;
-    else if (Array.isArray(indices)) indexCount = indices.length;
-    else if (ArrayBuffer.isView(indices) && "length" in indices && typeof indices.length === "number") {
-      indexCount = indices.length;
+    else if (Array.isArray(indices2)) indexCount = indices2.length;
+    else if (ArrayBuffer.isView(indices2) && "length" in indices2 && typeof indices2.length === "number") {
+      indexCount = indices2.length;
     }
     if (indexCount % 3 !== 0) throw new TypeError("terrain indices must contain complete triangles");
     indexLengths.push(indexCount);
@@ -3665,6 +4084,13 @@ function validatePreparedAnalysisRequest(input, options = {}) {
     if (typeof chosen !== "string" || !(grade ? GRADE_ALIGNMENT_MODES : TERRAIN_ALIGNMENT_MODES).has(chosen)) {
       throw new TypeError(grade ? "terrain-alignment must be to-ground or as-is on the wind models" : "terrain-alignment must be as-is, auto-align, or assume-aligned");
     }
+  }
+  const fast = present(input, FAST_FIELDS);
+  if (fast.length > 0 && !FAST_TYPES.has(type)) {
+    throw new TypeError(`${fast.join(", ")} not valid on '${type}'`);
+  }
+  if (input.fast != null && typeof input.fast !== "boolean") {
+    throw new TypeError("fast must be a Boolean");
   }
   if (typeof type !== "string" || INTERIOR_TYPES.has(type)) return;
   if (type === "thermal-comfort-statistics") {
@@ -3711,9 +4137,9 @@ var MAX_DAY_PER_MONTH = [
   31
 ];
 function integer(value, name) {
-  const number2 = typeof value === "number" ? value : Number(value);
-  if (!Number.isInteger(number2)) throw new TypeError(`${name} must be a whole number`);
-  return number2;
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(number)) throw new TypeError(`${name} must be a whole number`);
+  return number;
 }
 function endpoint(point, label) {
   const month = integer(point?.month, `${label} month`);
@@ -3874,11 +4300,11 @@ function rowsFromColumns(columns) {
   const rowCount = arrays.reduce((most, [, values]) => Math.max(most, values.length), 0);
   const rows = [];
   for (let index2 = 0; index2 < rowCount; index2 += 1) {
-    const record4 = {};
+    const record3 = {};
     for (const [field, values] of arrays) {
-      record4[field] = index2 < values.length ? values[index2] : null;
+      record3[field] = index2 < values.length ? values[index2] : null;
     }
-    rows.push(record4);
+    rows.push(record3);
   }
   return rows;
 }
@@ -3915,12 +4341,14 @@ var TOP_LEVEL_ALIASES = /* @__PURE__ */ new Map([
   ["emitCellTris", "emit-cell-tris"],
   ["groundGeometry", "ground-geometry"],
   ["groundMaterials", "ground-materials"],
+  ["meshCleaning", "mesh-cleaning"],
   ["pwcCriteria", "pwc-criteria"],
   ["sensorPoints", "sensor-points"],
   ["sensorNormals", "sensor-normals"],
   ["sensorSurfaces", "sensor-surfaces"],
   ["surfaceGridSize", "surface-grid-size"],
   ["surfaceOffset", "surface-offset"],
+  ["surfgridVersion", "surfgrid-version"],
   ["terrainAlignment", "terrain-alignment"],
   ["timePeriod", "time-period"],
   ["weatherFile", "weather-file"],
@@ -3971,9 +4399,12 @@ var SURFACE = [
   "contextGeometry",
   "surfaceGridSize",
   "surfaceOffset",
-  "emitCellTris"
+  "emitCellTris",
+  "meshCleaning",
+  "surfgridVersion"
 ];
 var TERRAIN = ["groundGeometry", "terrainAlignment"];
+var FAST = ["fast"];
 
 // src/area/thermal-controls.ts
 var THERMAL_CONTROLS = [
@@ -4017,6 +4448,18 @@ function validatePhysics(input) {
     throw new TypeError(
       `physics must be one of ${PHYSICS_TIERS.join(", ")} (got ${JSON.stringify(value)}). thermal-comfort-statistics does not reject an unknown tier server-side \u2014 it runs the advanced engine and bills for it \u2014 so the spelling is checked here.`
     );
+  }
+  if (value === "v1") warnPhysicsV1Deprecated();
+}
+var physicsV1WarningShown = false;
+function warnPhysicsV1Deprecated() {
+  if (physicsV1WarningShown) return;
+  physicsV1WarningShown = true;
+  const message = "The 'v1' physics tier is deprecated. Use the default tier (leave 'physics' unset). A later release will remove 'v1'.";
+  if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
+    process.emitWarning(message, "DeprecationWarning");
+  } else {
+    console.warn(`DeprecationWarning: ${message}`);
   }
 }
 
@@ -4158,7 +4601,11 @@ function modelTransform(input) {
       );
     }
     const raw = { ...input };
-    if (raw["analysis-surfaces"] != null) raw["emit-cell-tris"] = false;
+    if (raw["analysis-surfaces"] != null) {
+      raw["emit-cell-tris"] = false;
+      if (raw["surfgrid-version"] == null) raw["surfgrid-version"] = requireCore().surfgridVersion();
+    }
+    if (raw["mesh-cleaning"] === "auto") delete raw["mesh-cleaning"];
     return raw;
   }
   const type = input.analysisType ?? input["analysis-type"];
@@ -4166,7 +4613,11 @@ function modelTransform(input) {
   if (THERMAL_MODELS.has(type)) validatePhysics(input);
   else rejectThermalControls(input, type);
   let output = { ...input };
-  if (output.analysisSurfaces != null) output.emitCellTris = false;
+  if (output.analysisSurfaces != null) {
+    output.emitCellTris = false;
+    if (output.surfgridVersion == null) output.surfgridVersion = requireCore().surfgridVersion();
+  }
+  if (output.meshCleaning === "auto") delete output.meshCleaning;
   if (output.dateFilters === void 0) {
     if (byoWeather !== void 0) {
       throw new TypeError(
@@ -4183,7 +4634,7 @@ function modelTransform(input) {
         `${type} takes no weather arrays; a parsed EPW document is only an input to solar-radiation, thermal-comfort-index and thermal-comfort-statistics`
       );
     }
-    output = pick(output, [...BASE, ...LOCATION, "accuracy", ...SURFACE, ...TERRAIN]);
+    output = pick(output, [...BASE, ...LOCATION, "accuracy", ...SURFACE, ...TERRAIN, ...FAST]);
     output.timePeriod = period;
     return output;
   }
@@ -4202,7 +4653,7 @@ function modelTransform(input) {
     if (type === "solar-radiation") {
       output = pick(output, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]);
     } else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
-      output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS]);
+      output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]);
     } else {
       throw new TypeError(
         `${type} takes no weather arrays; a parsed EPW document is only an input to solar-radiation, thermal-comfort-index and thermal-comfort-statistics`
@@ -4225,7 +4676,7 @@ function modelTransform(input) {
     output.directNormalRadiation = series(rows, "directNormalRadiation");
     output.diffuseHorizontalRadiation = series(rows, "diffuseHorizontalRadiation");
   } else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
-    output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS]);
+    output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]);
     output.timePeriod = period;
     for (const key of [
       "horizontalInfraredRadiationIntensity",
@@ -4307,6 +4758,41 @@ function pack(meshes, keepUnreadable) {
   return { ids, bytes, offsets: Uint32Array.from(offsets), document: JSON.stringify(stripped) };
 }
 
+// src/area/site-terrain.ts
+var freed = /* @__PURE__ */ new WeakSet();
+function release2(terrain) {
+  freed.add(terrain);
+  terrain.free();
+}
+function liveTerrain(terrain) {
+  return terrain === void 0 || freed.has(terrain) ? void 0 : terrain;
+}
+var MAX_TERRAINS = 2;
+var byDigest = /* @__PURE__ */ new Map();
+function terrainDigest(siteKey) {
+  return siteKey?.match(/^ground-geometry=(.+)$/m)?.[1];
+}
+function siteTerrain(value, digest, texts) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
+  if (digest === void 0 || Object.keys(value).length === 0) return void 0;
+  let terrain = byDigest.get(digest);
+  if (terrain === void 0) {
+    try {
+      terrain = new (requireCore()).SiteTerrain(texts?.get(value) ?? JSON.stringify(value));
+    } catch {
+      return void 0;
+    }
+  }
+  byDigest.delete(digest);
+  byDigest.set(digest, terrain);
+  for (const [key, old] of byDigest) {
+    if (byDigest.size <= MAX_TERRAINS) break;
+    byDigest.delete(key);
+    release2(old);
+  }
+  return terrain;
+}
+
 // src/area/site-kernel.ts
 function document(value, texts) {
   if (value === void 0) return void 0;
@@ -4319,6 +4805,32 @@ function kernelSite(inputs, texts) {
   const context = pack(asMap(groups["context-geometry"]), true);
   const config = getTilingConfig(inputs.analysisType);
   const origin = kernelPolygonOrigin(polygon);
+  const terrain = liveTerrain(inputs.terrain);
+  if (terrain !== void 0) {
+    return requireCore().Site.withTerrain(
+      buildings.ids,
+      buildings.bytes,
+      buildings.offsets,
+      context.ids,
+      context.bytes,
+      context.offsets,
+      Uint32Array.from(tiles, (tile) => tile.row),
+      Uint32Array.from(tiles, (tile) => tile.col),
+      tiles.map((tile) => tile.tileId),
+      config.inferenceSizeM,
+      config.contextSizeM,
+      config.stepM,
+      origin.lon,
+      origin.lat,
+      groups.geometries === void 0 ? void 0 : buildings.document,
+      groups["context-geometry"] === void 0 ? void 0 : context.document,
+      document(groups.vegetation, texts),
+      document(groups["ground-materials"], texts),
+      JSON.stringify(polygon),
+      inputs.terrainContextMarginM,
+      terrain
+    );
+  }
   return new (requireCore()).Site(
     buildings.ids,
     buildings.bytes,
@@ -4343,12 +4855,47 @@ function kernelSite(inputs, texts) {
     inputs.terrainContextMarginM
   );
 }
-var release2 = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((inner) => inner.free()) : void 0;
+var release3 = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((inner) => inner.free()) : void 0;
 function asMap(value) {
   if (value === null || value === void 0 || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
   return value;
+}
+
+// src/area/site-facade-scene.ts
+function boxes(json) {
+  const counts = JSON.parse(json);
+  return counts === null ? void 0 : counts;
+}
+function mapFacadeScenes(raw) {
+  const scenes = raw.scenes.map((scene) => {
+    const treeBoxes = boxes(scene.treeBoxes);
+    return {
+      archive: scene.archive,
+      artifactDigest: scene.artifactDigest,
+      geometryContentDigest: scene.contentDigest,
+      encoding: scene.encoding,
+      ...treeBoxes === void 0 ? {} : { treeBoxes }
+    };
+  });
+  const jobs = raw.jobs.map((job) => {
+    if (job.error !== void 0) return { error: job.error };
+    if (job.targets !== void 0) return { targets: job.targets, targetIds: job.targetIds ?? [] };
+    const artifact = job.artifact;
+    const treeBoxes = boxes(artifact.treeBoxes);
+    return {
+      artifact: {
+        archive: artifact.archive,
+        artifactDigest: artifact.artifactDigest,
+        geometryContentDigest: artifact.contentDigest,
+        encoding: artifact.encoding,
+        targetIds: artifact.targetIds,
+        ...treeBoxes === void 0 ? {} : { treeBoxes }
+      }
+    };
+  });
+  return { scenes, jobs };
 }
 
 // src/area/site-assign.ts
@@ -4373,14 +4920,13 @@ var SiteAssignment = class _SiteAssignment {
   /**
    * Keep the kernel site from now on, reading it once more when a JSON run
    * built this answer without it. A facade run asks the kept site for its
-   * batches and its selected bodies (`area/site-facade.ts`), as the Python
-   * host does.
+   * batches and its selected bodies (`area/site-facade.ts`).
    */
   keepKernel() {
     if (this.inner !== void 0) return true;
-    if (release2 === void 0 || this.inputs === void 0) return false;
+    if (release3 === void 0 || this.inputs === void 0) return false;
     this.inner = kernelSite(this.inputs);
-    release2.register(this, this.inner);
+    release3.register(this, this.inner);
     this.inputs = void 0;
     return true;
   }
@@ -4397,17 +4943,21 @@ var SiteAssignment = class _SiteAssignment {
    * Read the site once: the kernel prepares every layer in one crossing and
    * answers the membership and the bodies from them.
    *
-   * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts
-   * it will encode at submit time, and a FACADE run for its batches and
-   * bodies (`area/site-facade.ts`), freed with this object. A grid JSON run
-   * frees it before this returns — its bodies are JavaScript-owned copies
-   * already — so a run that never encodes holds no wasm memory, as before
-   * WS2; a later binary or facade run on the same prepared site reads the
-   * site again. A realm without
-   * `FinalizationRegistry` always takes that second path.
+   * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it
+   * will encode at submit time, and a FACADE run for its batches and bodies
+   * (`area/site-facade.ts`), freed with this object. A grid JSON run frees it
+   * before this returns — a run that never encodes holds no wasm memory. A
+   * realm without `FinalizationRegistry` always frees it here.
    */
-  static read(groups, tiles, polygon, analysisType, terrainContextMarginM, keepKernelSite = false, texts) {
-    const inputs = { groups, tiles, polygon, analysisType, terrainContextMarginM };
+  static read(groups, tiles, polygon, analysisType, terrainContextMarginM, keepKernelSite = false, texts, terrain) {
+    const inputs = {
+      groups,
+      tiles,
+      polygon,
+      analysisType,
+      terrainContextMarginM,
+      ...terrain === void 0 ? {} : { terrain }
+    };
     const inner = kernelSite(inputs, texts);
     let kept = false;
     try {
@@ -4420,7 +4970,7 @@ var SiteAssignment = class _SiteAssignment {
       }));
       const present2 = new Set(ARENA_GROUPS.filter((group) => groups[group] !== void 0));
       const carried = Object.keys(groups).filter((group) => present2.has(group));
-      const keep = keepKernelSite && release2 !== void 0;
+      const keep = keepKernelSite && release3 !== void 0;
       const site = keep ? new _SiteAssignment(answers, inner.unowned(), void 0, present2, carried, inner, void 0) : new _SiteAssignment(
         answers,
         inner.unowned(),
@@ -4430,8 +4980,8 @@ var SiteAssignment = class _SiteAssignment {
         void 0,
         inputs
       );
-      if (keep && release2 !== void 0) {
-        release2.register(site, inner);
+      if (keep && release3 !== void 0) {
+        release3.register(site, inner);
         kept = true;
       }
       return site;
@@ -4461,10 +5011,9 @@ var SiteAssignment = class _SiteAssignment {
   }
   #identity;
   /**
-   * One tile's artifact (D101). The first ask under a given capability answer
-   * — whether the trees are boxed, and the four limits — encodes every tile in
-   * one crossing from the kept kernel site; the archives are kept, so the
-   * tiles of a family's repeat run share them. Never a facade batch's (D156).
+   * One tile's artifact (D101): the first ask under a capability answer
+   * encodes every tile in one crossing and keeps the archives. Never a
+   * facade batch's (D156).
    */
   tileArtifact(index2, boxTrees, limits) {
     const key = [
@@ -4485,10 +5034,9 @@ var SiteAssignment = class _SiteAssignment {
   }
   /**
    * The parts of every facade batch of tile `index`, from ONE kernel call
-   * that builds the tile once (`Site.facadeFrames`, WP3). The artifact is the
-   * SAME kernel selection the Python host uploads (D156): the batch's targets
-   * in `geometries`, the rest of the tile in `context-geometry`. Nothing is
-   * kept here — `area/site-facade.ts` hands each part out once.
+   * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
+   * in `geometries`, the rest of the tile in `context-geometry` (D156).
+   * Nothing is kept here — `area/site-facade.ts` hands each part out once.
    */
   facadeFrames(index2, batches, parts) {
     const limits = parts.artifact?.limits;
@@ -4527,6 +5075,24 @@ var SiteAssignment = class _SiteAssignment {
       };
     });
   }
+  /**
+   * One tile's facade scenes (#602): one shared frame for every batch of
+   * `batches`, and each batch's job as a range into it, or its own frame.
+   * `site-facade-scene.ts` shapes the kernel's raw answer.
+   */
+  facadeScenes(index2, batches, boxTrees, limits) {
+    const raw = this.withKernel((inner) => inner.facadeScenes(
+      Uint32Array.from(batches, () => index2),
+      Uint32Array.from(batches, (ids) => ids.length),
+      batches.flatMap((ids) => [...ids]),
+      boxTrees,
+      BigInt(limits.maxGeometryBytes),
+      limits.maxMetadataBytes,
+      BigInt(limits.maxMeshes),
+      BigInt(limits.maxInstances)
+    ));
+    return mapFacadeScenes(raw);
+  }
   encode(boxTrees, limits) {
     const encoded = this.withKernel((inner) => inner.artifacts(
       0,
@@ -4537,9 +5103,9 @@ var SiteAssignment = class _SiteAssignment {
       BigInt(limits.maxMeshes),
       BigInt(limits.maxInstances)
     ));
-    const boxes = JSON.parse(encoded.treeBoxes);
+    const boxes2 = JSON.parse(encoded.treeBoxes);
     return encoded.artifactDigests.map((artifactDigest, index2) => {
-      const counts = boxes[index2];
+      const counts = boxes2[index2];
       return {
         archive: encoded.bytes.subarray(encoded.offsets[index2], encoded.offsets[index2 + 1]),
         artifactDigest,
@@ -4550,6 +5116,26 @@ var SiteAssignment = class _SiteAssignment {
     });
   }
 };
+
+// src/area/site-facade-scene-frames.ts
+function pickSceneArtifact(cache2, fetched, key, wanted, index2, fetch2) {
+  let ready = cache2.get(key);
+  if (ready === void 0 && !fetched.has(key) && wanted.includes(index2)) {
+    ready = fetch2(wanted);
+    cache2.set(key, ready);
+    fetched.add(key);
+  }
+  let result = ready?.get(index2);
+  if (result === void 0) {
+    const indices2 = wanted.includes(index2) ? wanted : [index2];
+    result = fetch2(indices2).get(index2);
+  }
+  ready?.delete(index2);
+  if (ready?.size === 0) cache2.delete(key);
+  if (result === void 0) throw new Error(`facade scene: no job for batch ${index2}`);
+  if (result instanceof Error) throw result;
+  return result;
+}
 
 // src/area/site-facade.ts
 function savedBatches(schedule2, tiles) {
@@ -4573,7 +5159,9 @@ var CALLER_FIELDS = [
   ["surface-grid-size", "grid_size"],
   ["surface-offset", "offset"],
   ["partial-cells", "partial_cells"],
-  ["min-coverage", "min_coverage"]
+  ["min-coverage", "min_coverage"],
+  // #555: the plan counts with the same cleaning the server runs.
+  ["mesh-cleaning", "mesh_cleaning"]
 ];
 function facadeRequest(payload, tiles, retryFrom, maxSensorsPerJob) {
   const request = {
@@ -4631,21 +5219,25 @@ var TileFrames = class {
     this.site = site;
     this.tile = tile;
     this.records = records;
-    this.wanted = records.flatMap((record4, at) => submits(record4) ? [at] : []);
+    this.wanted = records.flatMap((record3, at) => submits(record3) ? [at] : []);
   }
   shared = /* @__PURE__ */ new Map();
   written;
   handed = /* @__PURE__ */ new Map();
+  /** Scene-mode (#602) answers, by limits key, handed out once like `handed`. */
+  scenes = /* @__PURE__ */ new Map();
+  /** Keys `scenes` already fetched the full `wanted` list for once (#602 review). */
+  scenesFetched = /* @__PURE__ */ new Set();
   /** The batches the plan submits, by index: only these are written ahead. */
   wanted;
   batch(index2, group) {
     if (this.written?.[index2] !== void 0) return this.read(index2, group);
-    const indices = this.wanted.includes(index2) ? this.wanted : [index2];
-    const answered = this.frames(indices, { body: true });
+    const indices2 = this.wanted.includes(index2) ? this.wanted : [index2];
+    const answered = this.frames(indices2, { body: true });
     this.written ??= [];
     for (const [at, frame] of answered.entries()) {
-      if (this.written[indices[at]] !== void 0) continue;
-      this.written[indices[at]] = this.texts(frame);
+      if (this.written[indices2[at]] !== void 0) continue;
+      this.written[indices2[at]] = this.texts(frame);
     }
     return this.read(index2, group);
   }
@@ -4678,7 +5270,14 @@ var TileFrames = class {
     return this.once(index2, `capture
 ${alignment}`, { capture: { alignment } }).capture;
   }
+  /**
+   * The batch's binary artifact. With `limits.facadeTargets` (#602), scene
+   * mode: the tile's jobs share ONE uploaded scene and each carries its own
+   * target range. Without it (an old server, no `facadeTargets`), one
+   * artifact per batch, as before.
+   */
   artifact(index2, boxTrees, limits) {
+    if ((limits.facadeTargets ?? 0) >= 1) return this.sceneArtifact(index2, boxTrees, limits);
     const key = [
       "artifact",
       boxTrees,
@@ -4688,6 +5287,58 @@ ${alignment}`, { capture: { alignment } }).capture;
       limits.maxInstances
     ].join("\n");
     return this.once(index2, key, { artifact: { boxTrees, limits } }).artifact;
+  }
+  /** Batch `index`'s facade-scene artifact (#602); the cache logic is
+   * {@link pickSceneArtifact} (`site-facade-scene-frames.ts`). */
+  sceneArtifact(index2, boxTrees, limits) {
+    const key = [
+      "scene",
+      boxTrees,
+      limits.maxGeometryBytes,
+      limits.maxMetadataBytes,
+      limits.maxMeshes,
+      limits.maxInstances
+    ].join("\n");
+    return pickSceneArtifact(
+      this.scenes,
+      this.scenesFetched,
+      key,
+      this.wanted,
+      index2,
+      (indices2) => this.scenesFor(indices2, boxTrees, limits)
+    );
+  }
+  /** One `facadeScenes` call over `indices`, mapped to this batch's artifact.
+   * A tile answer is uniform (D218): every job `targets` (scene), every job
+   * `artifact` (boxed trees, D70), or every job `error` (a refusal). The
+   * first job's shape decides which of the three this answer is. */
+  scenesFor(indices2, boxTrees, limits) {
+    if (this.site.facadeScenes === void 0) throw new Error("facade scenes need the kernel site");
+    const active3 = indices2.map((at) => this.records[at].active_ids);
+    const answer = this.site.facadeScenes(this.tile, active3, boxTrees, limits);
+    const out = /* @__PURE__ */ new Map();
+    if (answer.jobs[0]?.error !== void 0) {
+      indices2.forEach((at, position) => out.set(at, new Error(answer.jobs[position].error)));
+      return out;
+    }
+    if (answer.jobs[0]?.targets !== void 0) {
+      const scene = answer.scenes[0];
+      indices2.forEach((at, position) => {
+        const job = answer.jobs[position];
+        out.set(at, {
+          archive: scene.archive,
+          artifactDigest: scene.artifactDigest,
+          geometryContentDigest: scene.geometryContentDigest,
+          encoding: scene.encoding,
+          targetIds: job.targetIds ?? [],
+          targets: { start: job.targets.start, count: job.targets.count },
+          ...scene.treeBoxes === void 0 ? {} : { treeBoxes: scene.treeBoxes }
+        });
+      });
+      return out;
+    }
+    indices2.forEach((at, position) => out.set(at, answer.jobs[position].artifact));
+    return out;
   }
   /**
    * Batch `index`'s part under `key`. The first ask writes it for every
@@ -4710,9 +5361,9 @@ ${alignment}`, { capture: { alignment } }).capture;
     if (frame.error !== void 0) throw new Error(frame.error);
     return frame;
   }
-  frames(indices, parts) {
+  frames(indices2, parts) {
     if (this.site.facadeFrames === void 0) throw new Error("facade jobs need the kernel site");
-    return this.site.facadeFrames(this.tile, indices.map((at) => this.records[at].active_ids), parts);
+    return this.site.facadeFrames(this.tile, indices2.map((at) => this.records[at].active_ids), parts);
   }
 };
 function facadeTileBase(base, carried, location) {
@@ -4734,21 +5385,21 @@ function facadeBatchesForTile(value, tileId, tileIndex, records, site, answer, p
     if (TARGET_GROUPS.has(group) || !carried.includes(group)) continue;
     tileGroups.set(group, new KernelGroup(() => bodies.tileGroup(group), (present2 & 1 << slot) === 0));
   }
-  return records.map((record4, index2) => {
-    const count2 = record4.sensor_count;
+  return records.map((record3, index2) => {
+    const count2 = record3.sensor_count;
     if (count2 === null || !Number.isSafeInteger(count2) || count2 < 1) throw new Error("invalid exact sensor count");
-    if (record4.active_ids.length === 0) throw new Error(`exact batch membership does not match tile ${tileId}`);
+    if (record3.active_ids.length === 0) throw new Error(`exact batch membership does not match tile ${tileId}`);
     const payload = { ...value };
     for (const [group, kernel] of tileGroups) payload[group] = kernel;
-    payload.geometries = new KernelGroup(() => bodies.batch(index2, "geometries"), false, record4.active_ids);
-    const moved = answer.members.length > record4.active_ids.length;
+    payload.geometries = new KernelGroup(() => bodies.batch(index2, "geometries"), false, record3.active_ids);
+    const moved = answer.members.length > record3.active_ids.length;
     payload["context-geometry"] = new KernelGroup(
       () => bodies.batch(index2, "context-geometry"),
       !(answer.context.length > 0 || moved)
     );
     return {
-      key: record4.key,
-      buildingIds: [...record4.active_ids],
+      key: record3.key,
+      buildingIds: [...record3.active_ids],
       sensorCount: count2,
       payload,
       capture: (alignment) => bodies.capture(index2, alignment),
@@ -4757,6 +5408,28 @@ function facadeBatchesForTile(value, tileId, tileIndex, records, site, answer, p
       }
     };
   });
+}
+
+// src/internal/transport-choice.ts
+function defaultTransport(analysisType) {
+  return requireCore().defaultTransport(analysisType) === "json" ? "json" : "binary";
+}
+function areaTransport(options, analysisType) {
+  if (options.transport !== void 0) return options.transport;
+  if (options.retryFrom !== void 0) return options.retryFrom.transport ?? "json";
+  return defaultTransport(analysisType);
+}
+
+// src/area/retry-plan.ts
+function planAreaRetry(input) {
+  const raw = requireCore().planAreaRetry(JSON.stringify(input));
+  return JSON.parse(raw);
+}
+function areaIdempotencyKey(runId, jobKey, attempt) {
+  return requireCore().areaIdempotencyKey(runId, jobKey, attempt);
+}
+function freshRunId() {
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 }
 
 // src/area/plan-entries.ts
@@ -4786,7 +5459,7 @@ async function buildEntries(tiles, input, slice) {
     let payloads;
     if (surfaceFields && answer !== void 0) {
       const records = facadeRecords?.get(index2) ?? [];
-      ownership.observe(tile.tileId, answer, records.flatMap((record4) => record4.active_ids));
+      ownership.observe(tile.tileId, answer, records.flatMap((record3) => record3.active_ids));
       const value = facadeTileBase(base, site.carried ?? [], location);
       payloads = facadeBatchesForTile(
         value,
@@ -4796,7 +5469,7 @@ async function buildEntries(tiles, input, slice) {
         site,
         answer,
         site.identity().present[index2] ?? 0,
-        (record4) => input.retry === void 0 || input.retry.has(record4.key)
+        (record3) => input.retry === void 0 || input.retry.has(record3.key)
       );
     } else {
       const value = { ...base };
@@ -4818,7 +5491,7 @@ async function buildEntries(tiles, input, slice) {
       }
       if (input.retry !== void 0 && !input.retry.has(batch.key)) continue;
       const prepared = service.prepareSubmission(analysisType, batch.payload, {
-        ...options.transport === void 0 ? {} : { transport: options.transport },
+        transport: areaTransport(options, analysisType),
         ...options.webhookUrl === void 0 ? {} : { webhookUrl: options.webhookUrl },
         ...options.webhookEvents === void 0 ? {} : { webhookEvents: options.webhookEvents }
       });
@@ -4826,6 +5499,7 @@ async function buildEntries(tiles, input, slice) {
         key: batch.key,
         row: tile.row,
         col: tile.col,
+        idempotencyKey: areaIdempotencyKey(input.runId, batch.key, input.attemptFor(batch.key)),
         prepared: {
           ...prepared,
           reuseScope: input.reuseScope(batch.key),
@@ -4903,12 +5577,12 @@ function contentFingerprint(value) {
     const prototype = Object.getPrototypeOf(item);
     if (prototype !== Object.prototype && prototype !== null) return false;
     mix(8);
-    const record4 = item;
-    for (const key in record4) {
-      const field = Object.getOwnPropertyDescriptor(record4, key);
+    const record3 = item;
+    for (const key in record3) {
+      const field = Object.getOwnPropertyDescriptor(record3, key);
       if (field === void 0 || !("value" in field)) return false;
       mixString(key);
-      if (!walk(record4[key])) return false;
+      if (!walk(record3[key])) return false;
     }
     mix(9);
     return true;
@@ -5029,6 +5703,7 @@ function selectedDocumentParts(prepared, groups) {
   parts.push(CLOSE);
   return parts;
 }
+var GROUPS_FIELD = "geometry-$ref-groups";
 function bodyWithReference(body, groups, url) {
   const output = {};
   for (const [name, value] of Object.entries(body)) {
@@ -5045,6 +5720,15 @@ function bodyWithReference(body, groups, url) {
     value: url,
     writable: true
   });
+  const declared = Object.keys(groups).sort();
+  if (declared.length > 0) {
+    Object.defineProperty(output, GROUPS_FIELD, {
+      configurable: true,
+      enumerable: true,
+      value: declared,
+      writable: true
+    });
+  }
   return output;
 }
 
@@ -5173,7 +5857,7 @@ function checkedIndex(value, field) {
 }
 function registeredNames() {
   const records = Array.from(requireCore().geometryGroups());
-  return new Set(records.map((record4) => record4.name).filter((name) => typeof name === "string"));
+  return new Set(records.map((record3) => record3.name).filter((name) => typeof name === "string"));
 }
 function composeTilePayloads(groups, tiles, polygon, options = {}) {
   const run = beginCompose(groups, tiles, polygon, options);
@@ -5181,7 +5865,7 @@ function composeTilePayloads(groups, tiles, polygon, options = {}) {
   return run.payloads;
 }
 var decoder4 = new TextDecoder();
-function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = false, texts, rememberWire = false) {
+function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = false, texts, rememberWire = false, terrain) {
   const tileInput = tiles.map((tile) => ({
     row: checkedIndex(tile.row, "tile row"),
     col: checkedIndex(tile.col, "tile col"),
@@ -5207,7 +5891,8 @@ function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = fal
     options.analysisType ?? void 0,
     options.terrainContext?.margin_m,
     keepKernelSite,
-    texts
+    texts,
+    terrain
   );
   const payloads = {};
   return {
@@ -5240,9 +5925,9 @@ var GROUP_KEYS = [
 ];
 function acquiredLayer(value, attribute, layer, analysisTypes) {
   checkReadMargin(value, layer, analysisTypes);
-  const record4 = value;
-  const inner = record4[attribute];
-  return typeof record4.readMarginM === "number" && inner !== void 0 ? inner : value;
+  const record3 = value;
+  const inner = record3[attribute];
+  return typeof record3.readMarginM === "number" && inner !== void 0 ? inner : value;
 }
 function geometryGroups(payload, options, polygon, analysisTypes) {
   if (options.buildings?.fetch === true) {
@@ -5293,7 +5978,7 @@ async function composeTiles(groups, tiles, polygon, options, slice) {
   const run = beginCompose(groups, tiles, polygon, {
     analysisType: options.analysisType,
     terrainContext: { margin_m: options.terrainContextMarginM }
-  }, options.keepKernelSite ?? false, options.texts, true);
+  }, options.keepKernelSite ?? false, options.texts, true, options.terrain);
   let parsed;
   const composed = (tileSlice) => parsed ??= (async () => {
     for (let index2 = 0; index2 < tiles.length; index2 += 1) {
@@ -5389,15 +6074,15 @@ var encoder6 = new TextEncoder();
 var groupDigestMemo = /* @__PURE__ */ new WeakMap();
 function sourceBytes(source, inner, texts) {
   if (texts === void 0) return encoder6.encode(JSON.stringify(source));
-  const record4 = source;
-  const document2 = inner === void 0 ? void 0 : record4[inner];
+  const record3 = source;
+  const document2 = inner === void 0 ? void 0 : record3[inner];
   if (document2 === null || typeof document2 !== "object" || Array.isArray(source)) {
     const text = JSON.stringify(source);
     texts.set(source, text);
     return encoder6.encode(text);
   }
   let innerBytes;
-  const bytes = spliceJsonBytes(record4, (value) => {
+  const bytes = spliceJsonBytes(record3, (value) => {
     if (value !== document2) return void 0;
     const text = JSON.stringify(document2);
     texts.set(document2, text);
@@ -5420,14 +6105,14 @@ async function sourceDigest(source, inner, texts) {
 }
 function acquisitionContent(name, value, inner) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
-  const record4 = value;
-  const margin = [record4.readMarginM ?? null, record4.analysisType ?? null];
+  const record3 = value;
+  const margin = [record3.readMarginM ?? null, record3.analysisType ?? null];
   if (name === "buildings") {
     const acquired = acquiredBuildings(value);
     return acquired === void 0 ? void 0 : { document: acquired.buildings, meta: JSON.stringify([acquired.origin, ...margin]) };
   }
-  const document2 = inner === void 0 ? void 0 : record4[inner];
-  if (typeof record4.readMarginM !== "number" || document2 === null || typeof document2 !== "object") {
+  const document2 = inner === void 0 ? void 0 : record3[inner];
+  if (typeof record3.readMarginM !== "number" || document2 === null || typeof document2 !== "object") {
     return void 0;
   }
   return { document: document2, meta: JSON.stringify(margin) };
@@ -5461,7 +6146,7 @@ async function preparedSiteKey(inputs, texts, legacy = false) {
   );
   return parts.join("\n");
 }
-async function buildPreparedSite(inputs, analysisType, tiles, slice, texts) {
+async function buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain) {
   const { payload, options, polygon } = inputs;
   const groups = dropSiteToGrade(
     geometryGroups(payload, options, polygon, [analysisType]),
@@ -5477,8 +6162,9 @@ async function buildPreparedSite(inputs, analysisType, tiles, slice, texts) {
       // A binary run encodes artifacts from the kernel site (WS2, D136); a
       // facade run plans its batches and writes its bodies from it
       // (`area/site-facade.ts`).
-      keepKernelSite: options.transport === "binary" || payload["analysis-surfaces"] != null,
-      ...texts === void 0 ? {} : { texts }
+      keepKernelSite: areaTransport(options, analysisType) === "binary" || payload["analysis-surfaces"] != null,
+      ...texts === void 0 ? {} : { texts },
+      ...terrain === void 0 ? {} : { terrain }
     },
     slice
   );
@@ -5583,686 +6269,2715 @@ function checkFacadeSensorCap(options) {
   }
 }
 
-// src/area/facade-ownership.ts
-var FacadeOwnership = class {
-  /** `unowned` is the site pass's own answer, computed before any seeding. */
-  constructor(unowned) {
-    this.unowned = unowned;
+// src/internal/job-response.ts
+function requiredString(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError("invalid job response");
   }
-  savedOwner = /* @__PURE__ */ new Map();
-  demoted = [];
-  /**
-   * Ids some visited tile ANALYSES, and the tiles this pass visited. A saved
-   * owner is the only thing that can leave a building unclaimed, and whether
-   * that is a defect depends on whether its tile was rebuilt — see
-   * {@link FacadeOwnership.finish}.
-   */
-  claimed = /* @__PURE__ */ new Set();
-  visited = /* @__PURE__ */ new Set();
-  /**
-   * Adopt the ownership a saved schedule already recorded.
-   *
-   * A retry rebuilds SOME tiles. The kernel's answer is a property of the GRID
-   * and not of one pass over it, so a fresh run and a retry agree by
-   * construction — but a schedule saved by an older SDK, or one whose grid was
-   * planned under a different tile list, may not. Where it disagrees the SAVED
-   * answer wins: those sensors are already billed.
-   *
-   * "Wins" means it SELECTS a tile, not merely that it rejects the kernel's.
-   * Using it only to reject loses the building in both — the saved tile never
-   * had it in `core`, and the kernel's tile gives it up — and the kernel's own
-   * `unowned` cannot see that, because it is computed before this filter.
-   * {@link FacadeOwnership.finish} carries the host's own check for it.
-   */
-  seedFromSchedule(membership) {
-    for (const [key, ids] of Object.entries(membership ?? {})) {
-      const tileId = key.split("#batch")[0] ?? key;
-      for (const id of ids) if (!this.savedOwner.has(id)) this.savedOwner.set(id, tileId);
-    }
-  }
-  /**
-   * Record what the kernel selected for this tile (`area/site-facade.ts`).
-   *
-   * The kernel applies the rule this class used to apply here — a saved owner
-   * wins where the tile still carries the mesh, else the tile's post-resolution
-   * `core` — so this host only records what was claimed and which duplicates
-   * the site pass resolved. The Python twin is `observe_native`.
-   */
-  observe(tileId, answer, activeIds) {
-    this.visited.add(tileId);
-    for (const id of activeIds) this.claimed.add(id);
-    for (const id of answer.demoted) {
-      this.demoted.push({ id, kept: this.savedOwner.get(id) ?? "an earlier tile", later: tileId });
-    }
-  }
-  /**
-   * Refuse a building nobody analyses.
-   *
-   * Two ways to end up analysed by nobody. The kernel's `unowned` is one: a
-   * shrink-band building no core took. The other is a saved owner whose tile
-   * this pass DID visit and which no longer carries the mesh — and the visited
-   * set is what keeps that apart from the ordinary retry, where the owning tile
-   * simply was not rebuilt and its existing job still analyses the building.
-   * Raising on the second would fail a legitimate retry for geometry that is
-   * already billed.
-   *
-   * `complete` is `false` when only SOME tiles were visited (a retry).
-   */
-  finish(complete) {
-    const stale = [...this.savedOwner.entries()].filter(([id, tile]) => this.visited.has(tile) && !this.claimed.has(id)).map(([id]) => id);
-    const orphaned = [.../* @__PURE__ */ new Set([...this.unowned, ...stale])].sort();
-    if (orphaned.length === 0 || !complete) return;
-    throw new Error(
-      `facade ownership left ${orphaned.length} building(s) analysed by no tile: ${orphaned.slice(0, 8).join(", ")}${orphaned.length > 8 ? " ..." : ""}. The re-anchored core box (DEVIATIONS D63) gave them up and no neighbouring tile claimed them. This is a bug in the core-extent rule, not in the payload.`
-    );
-  }
-  /** `{id, kept, later}` per duplicate the kernel resolved, in tile order. */
-  get resolved() {
-    return this.demoted;
-  }
-};
-
-// src/area/weather-guard.ts
-var SCHEDULE_CONTRACT_VERSION = 5;
-var WEATHER_IDENTITY_CONTRACT_VERSION = 4;
-var MIGRATION = "Start a fresh run, or re-run the finished tiles yourself. The SDK will not assign the current weather to jobs it cannot prove were run with it, and it will not start a billed run on your behalf. Build the retry payload from the SAME weather \u2014 the same file, the same catalog window or the same arrays \u2014 and the resume is admitted.";
-var WeatherIdentityError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "WeatherIdentityError";
-  }
-};
-var WIRE_TO_COLUMN = Object.fromEntries(
-  Object.entries(MODEL_INPUT_NAMES).map(([column, camel]) => [
-    TOP_LEVEL_ALIASES.get(camel) ?? camel,
-    column
-  ])
-);
-var WINDOW_KEYS = [
-  ["start-month", "start_month"],
-  ["start-day", "start_day"],
-  ["start-hour", "start_hour"],
-  ["end-month", "end_month"],
-  ["end-day", "end_day"],
-  ["end-hour", "end_hour"]
-];
-function numbers(value) {
-  if (!Array.isArray(value)) return void 0;
-  const out = [];
-  for (const item of value) {
-    if (typeof item !== "number" || !Number.isFinite(item)) return void 0;
-    out.push(item);
-  }
-  return out;
+  return value;
 }
-function preparedWeatherIdentity(payload) {
-  const refuse = (detail) => {
-    throw new WeatherIdentityError(
-      `this payload's weather cannot be identified: ${detail}. The SDK does not submit a weather-bearing run it cannot describe, because a run with no identity cannot be resumed and cannot be shown to be the run a retry carries.`
-    );
-  };
-  const latitude = payload.latitude;
-  const longitude = payload.longitude;
-  const period = payload["time-period"];
-  if (typeof latitude !== "number" || typeof longitude !== "number") {
-    refuse("it carries no location");
-  }
-  if (period === null || typeof period !== "object") refuse("it carries no window");
-  const source = period;
-  const window = {};
-  for (const [wire, kernel] of WINDOW_KEYS) {
-    const value = source[wire];
-    if (typeof value !== "number" || !Number.isInteger(value)) {
-      refuse("its window is incomplete");
-    }
-    window[kernel] = value;
-  }
-  const columns = {};
-  for (const [wire, kernel] of Object.entries(WIRE_TO_COLUMN)) {
-    if (!Object.hasOwn(payload, wire)) continue;
-    const values = numbers(payload[wire]);
-    if (values === void 0) refuse(`column ${wire} holds a value that is not a number`);
-    columns[kernel] = values;
-  }
-  if (Object.keys(columns).length === 0) refuse("it carries no weather column");
-  return requireCore().weatherRunIdentity(
-    JSON.stringify({ latitude, longitude, window, columns })
-  );
+function optionalString(value) {
+  return typeof value === "string" ? value : void 0;
 }
-function isWeatherBearing(analysisType) {
-  return WEATHER_BEARING_ANALYSES.has(analysisType);
-}
-function checkResumeWeather(retryFrom, currentIdentity) {
-  if (retryFrom === void 0 || !isWeatherBearing(retryFrom.analysisType)) return;
-  const version = retryFrom.scheduleContractVersion;
-  if (version === void 0 || version < WEATHER_IDENTITY_CONTRACT_VERSION) {
-    throw new WeatherIdentityError(
-      `retryFrom schedule predates the weather run identity (schedule contract version ${String(version)}, this SDK writes ${WEATHER_IDENTITY_CONTRACT_VERSION}). An earlier version records either no weather at all, or the identity of an EPW FILE, which is computed over a different preimage under a different version tag and can never equal this SDK's value \u2014 so comparing them would report a weather change that did not happen, and skipping the comparison could submit the failed tiles with one climate and carry the succeeded tiles forward with another, in one grid. ${MIGRATION}`
-    );
+function binaryAcknowledgement(value) {
+  if (value === void 0) return void 0;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("invalid binary acknowledgement");
   }
-  const recorded = retryFrom.weatherIdentity;
-  if (recorded === void 0) {
-    throw new WeatherIdentityError(
-      `retryFrom schedule has no weather identity: it describes a weather-bearing run whose weather this SDK cannot name, so it cannot show that your retry carries the same readings at the same location. ${MIGRATION}`
-    );
+  const raw = value;
+  const resultFormat = raw.resultFormat;
+  if (raw.inputFormat !== "irbf" || resultFormat !== "irbf" && resultFormat !== "json" || raw.wireVersion !== 1) {
+    throw new TypeError("invalid binary acknowledgement");
   }
-  if (currentIdentity === void 0) {
-    throw new WeatherIdentityError(
-      `this retry's weather cannot be identified, and the schedule it resumes carries an identity (${recorded.slice(0, 19)}...). The prepared payload reads no weather array, or carries no location or window. ${MIGRATION}`
-    );
-  }
-  if (currentIdentity !== recorded) {
-    throw new WeatherIdentityError(
-      `retryFrom weather identity mismatch: the schedule was created with ${recorded.slice(0, 19)}..., this retry computes ${currentIdentity.slice(0, 19)}.... The window is unchanged, so configHash matches and every other guard passes \u2014 but the readings, or the latitude and longitude, differ, so the resubmitted tiles and the carried-forward ones would hold two different climates. ${MIGRATION}`
-    );
-  }
-}
-
-// src/area/planning.ts
-async function retrySiteIdentity(current, inputs, prior) {
-  const recorded = prior?.siteIdentity;
-  if (current === void 0 || recorded === void 0 || recorded === current || prior === void 0 || prior.failedSubmissions.length === 0) return current;
-  const legacyKey = await preparedSiteKey(inputs, void 0, true);
-  return legacyKey !== void 0 && `sha256:${kernelConfigHash({ siteKey: legacyKey })}` === recorded ? recorded : current;
-}
-async function planAreaSubmission(service, input, polygonInput, options = {}) {
-  const slice = new Slice(options);
-  slice.check();
-  if (input.vegetationInstances != null || input["vegetation-instances"] != null) {
-    throw new TypeError("vegetation-instances have no area tiling policy");
-  }
-  const payload = prepareAreaPayload(input);
-  if (payload["vegetation-instances"] != null) {
-    throw new TypeError("vegetation-instances have no area tiling policy");
-  }
-  const analysisType = payload["analysis-type"];
-  const weatherIdentity = isWeatherBearing(analysisType) ? preparedWeatherIdentity(payload) : void 0;
-  const surfaceFields = payload["analysis-surfaces"] != null;
-  if (payload["sensor-points"] !== void 0) {
-    throw new TypeError("sensor-points are not supported for area analysis");
-  }
-  if (surfaceFields && options.retryFrom !== void 0 && options.retryFrom.batchingPolicyVersion !== 2) {
-    throw new Error("legacy facade schedules can be polled and merged but cannot be retried safely");
-  }
-  if (surfaceFields) checkFacadeSensorCap(options);
-  const polygon = validatePolygon(polygonInput);
-  const grid = generateTilesForPolygon(polygon, {
-    analysisType,
-    ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
-  });
-  const { tiles, byId } = indexed(grid);
-  const config = getTilingConfig(analysisType);
-  const requestedMargin = options.terrainContextMarginM ?? 128;
-  const terrainContextMarginM = Math.max(
-    (config.contextSizeM - config.inferenceSizeM) / 2,
-    requestedMargin
-  );
-  if (options.retryFrom?.terrainContextMarginM !== void 0 && options.retryFrom.terrainContextMarginM !== terrainContextMarginM) {
-    throw new Error("retryFrom terrainContextMarginM mismatch");
-  }
-  validateRetryGrid(options.retryFrom, polygon, analysisType, tiles, grid);
-  if (options.terrainContext !== void 0) throw new TypeError("terrainContext is internal; use terrainContextMarginM");
-  const inputs = {
-    payload,
-    options,
-    polygon,
-    config,
-    terrainContextMarginM,
-    grade: consumeGradeOption(payload)
-  };
-  const texts = /* @__PURE__ */ new Map();
-  const siteKey = await preparedSiteKey(inputs, texts);
-  const currentSiteIdentity = await retrySiteIdentity(
-    siteKey === void 0 ? void 0 : `sha256:${kernelConfigHash({ siteKey })}`,
-    inputs,
-    options.retryFrom
-  );
-  const siteIdentity = options.retryFrom === void 0 ? currentSiteIdentity : options.retryFrom.siteIdentity;
-  const site = await preparedSites().get(
-    siteKey,
-    () => buildPreparedSite(inputs, analysisType, tiles, slice, texts),
-    options.signal
-  );
-  texts.clear();
-  slice.check();
-  const composed = surfaceFields ? void 0 : await composedTiles(site, slice, options.signal);
-  const ownership = new FacadeOwnership(site.answers.unowned);
-  ownership.seedFromSchedule(options.retryFrom?.batchMembership);
-  const base = { ...payload };
-  for (const key of GROUP_KEYS) delete base[key];
-  const hashFields = { ...payload };
-  if (Object.hasOwn(hashFields, "geometries")) hashFields.geometries = {};
-  delete hashFields["ground-materials"];
-  const foldedFields = foldHashFields(hashFields);
-  const hashInput = Object.hasOwn(foldedFields, "ground-geometry") ? { ...foldedFields, terrain_slicing: { v: 1 } } : foldedFields;
-  if (analysisType === "sky-view-factors") hashInput.tile_location_policy = { v: 1 };
-  const configHash = surfaceFields ? kernelFacadeConfigHash(hashInput, site.tileBuildingFolds ??= await foldTileBuildings(tiles, slice, site.answers)) : kernelConfigHash(hashInput);
-  checkResumeWeather(options.retryFrom, weatherIdentity);
-  if (options.retryFrom !== void 0) {
-    requireFoldedSchedule(options.retryFrom);
-    if (options.retryFrom.configHash !== configHash) {
-      throw new Error("retryFrom schedule configHash mismatch");
-    }
-    checkPaidRetrySiteIdentity(
-      options.retryFrom,
-      currentSiteIdentity,
-      options.retryFrom.failedSubmissions.length > 0
-    );
-  }
-  const retry = options.retryFrom === void 0 ? void 0 : new Set(options.retryFrom.failedSubmissions);
-  const tilePositions = options.retryFrom === void 0 ? tiles.map((tile) => ({ ...tile })) : options.retryFrom.tilePositions.map((position) => ({ ...position }));
-  const built = await buildEntries(tiles, {
-    service,
-    options,
-    analysisType,
-    base,
-    byId,
-    ownership,
-    site: site.answers,
-    surfaceFields,
-    retry,
-    ...composed === void 0 ? {} : { composed },
-    ...surfaceFields ? { facadeRequest: facadeRequest(base, tiles, options.retryFrom, options.maxSensorsPerJob) } : {},
-    reuseScope: (key) => [
-      "area-v1",
-      key,
-      config.inferenceSizeM,
-      config.contextSizeM,
-      config.stepM,
-      terrainContextMarginM,
-      surfaceFields ? 2 : 0
-    ].join(":")
-  }, slice);
-  tilePositions.push(...built.extraPositions);
-  if (surfaceFields) ownership.finish(options.retryFrom === void 0);
   return {
-    polygon,
-    analysisType,
-    configHash,
-    ...siteIdentity === void 0 ? {} : { siteIdentity },
-    gridShape: [grid.length, grid.reduce((width, line) => Math.max(width, line.length), 0)],
-    tilePositions,
-    entries: built.entries,
-    surfaceFields,
-    // Read off the CALLER input, not the payload: every path pins
-    // `emit-cell-tris` false on the wire (the server arm is 12x the bytes and
-    // is never requested), so asking for triangles is what selects LOCAL
-    // synthesis in the merge. `docs/DEVIATIONS.md` D88.
-    ...surfaceFields && (input.emitCellTris === true || input["emit-cell-tris"] === true) ? { localCellTris: true } : {},
-    // The real planned job count (WP-6, `infrared-core#240` / `#209`): one
-    // entry per tile on a grid run, but one per facade sub-batch on a
-    // surface run -- `tilePositions.length` is NOT this (it also carries a
-    // base entry for every empty-of-batches tile). `previewAreaBatches`
-    // (`area/preview.ts`) reads this so a caller prices from the plan, not
-    // from the tile count.
-    plannedJobCount: built.entries.length,
-    terrainContextMarginM,
-    ...weatherIdentity === void 0 ? {} : { weatherIdentity },
-    ...surfaceFields ? {
-      batchingPolicyVersion: 2,
-      batchMembership: built.batchMembership,
-      batchSensorCounts: built.batchSensorCounts
-    } : {}
+    inputFormat: "irbf",
+    resultFormat,
+    wireVersion: 1,
+    artifactDigest: requiredString(raw.artifactDigest),
+    contentDigest: requiredString(raw.contentDigest)
   };
 }
-async function composedTiles(site, slice, signal) {
+function parseJobStatus(value) {
+  switch (value.toLowerCase()) {
+    case "pending":
+      return "pending";
+    case "running":
+      return "running";
+    case "succeeded":
+    case "succeded":
+      return "succeeded";
+    case "failed":
+      return "failed";
+    default:
+      return "unknown";
+  }
+}
+function jobFromResponse(input) {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new TypeError("invalid job response");
+  }
+  const value = input;
+  const statusValue = value.jobStatus ?? value.status;
+  if (statusValue !== void 0 && statusValue !== null && typeof statusValue !== "string") {
+    throw new TypeError("invalid job response");
+  }
+  const startedAt = optionalString(value.startedAt);
+  const finishedAt = optionalString(value.finishedAt);
+  const resultsUrl = optionalString(value.resultsUrl ?? value.results);
+  const error = optionalString(value.error);
+  const binary = binaryAcknowledgement(value.binary);
+  return {
+    jobId: requiredString(value.jobId),
+    modelName: optionalString(value.modelName) ?? "",
+    status: parseJobStatus(optionalString(statusValue) ?? "Unknown"),
+    requestedAt: optionalString(value.requestedAt) ?? "",
+    ...startedAt === void 0 ? {} : { startedAt },
+    ...finishedAt === void 0 ? {} : { finishedAt },
+    ...resultsUrl === void 0 ? {} : { resultsUrl },
+    ...error === void 0 ? {} : { error },
+    ...binary === void 0 ? {} : { binary }
+  };
+}
+
+// src/internal/poll-notify.ts
+async function notifyPoll(deadline, callback, job, attempt, elapsed, nextDelay) {
+  if (callback === void 0) return void 0;
   try {
-    return await site.composed(slice);
+    return await deadline.wait(() => Promise.resolve(callback(job, attempt, elapsed, nextDelay)));
   } catch (error) {
-    if (signal?.aborted) throw error;
-    return site.composed(slice);
+    if (deadline.reason() !== void 0) throw error;
+    return void 0;
   }
 }
-function validateRetryGrid(retry, polygon, analysisType, tiles, grid) {
-  if (retry === void 0) return;
-  if (retry.analysisType !== analysisType) throw new Error("retryFrom analysisType mismatch");
-  if (JSON.stringify(retry.polygon) !== JSON.stringify(polygon)) throw new Error("retryFrom polygon mismatch");
-  const shape = [grid.length, grid.reduce((width, line) => Math.max(width, line.length), 0)];
-  if (retry.gridShape[0] !== shape[0] || retry.gridShape[1] !== shape[1]) throw new Error("retryFrom gridShape mismatch");
-  const expected = new Map(tiles.map((tile) => [tile.tileId, `${tile.row}:${tile.col}`]));
-  for (const position of retry.tilePositions) {
-    if (position.tileId.includes("#batch")) continue;
-    if (expected.get(position.tileId) !== `${position.row}:${position.col}`) {
-      throw new Error("retryFrom tilePositions mismatch");
-    }
-    expected.delete(position.tileId);
-  }
-  if (expected.size !== 0) throw new Error("retryFrom tilePositions mismatch");
+
+// src/internal/poll-engine.ts
+function defaultPollTimeoutS() {
+  return requireCore().pollDefaultTimeoutSeconds();
 }
-function requireFoldedSchedule(retryFrom) {
-  const version = retryFrom.scheduleContractVersion ?? 1;
-  if (version >= CONFIG_HASH_FOLD_CONTRACT_VERSION) return;
-  throw new ConfigHashPolicyError(
-    `retryFrom schedule predates this SDK's configHash (schedule contract version ${String(version)}, this SDK writes ${CONFIG_HASH_FOLD_CONTRACT_VERSION}). An older SDK either hashed the whole terrain, context-geometry and vegetation documents instead of the kernel's group hash of each (D51), or took the hash itself through this package's own rounding fold instead of the kernel's configHash primitive (D81) \u2014 either way the two identities cannot be compared and a mismatch here would say nothing about your inputs. Start a fresh run with the same inputs: the tiles that already succeeded are unaffected on the server, and this SDK will not resume a schedule whose identity it cannot verify.`
+function isTransientStatusError(error) {
+  if (!(error instanceof TransportError)) return false;
+  if (error.reason === "network" || error.reason === "timeout") return true;
+  return error.reason === "http" && error.status !== void 0 && (error.status === 429 || error.status >= 500);
+}
+async function poll(sweep, options) {
+  const now2 = options.now ?? (() => performance.now());
+  const random = options.random ?? Math.random;
+  const started = now2();
+  const deadline = started + options.timeoutS * 1e3;
+  let errors = 0;
+  const firstS = Math.min(
+    requireCore().pollFirstDelaySeconds(),
+    options.timeoutS,
+    options.fixedIntervalS ?? Infinity,
+    options.maxIntervalS ?? Infinity
   );
+  if (options.firstSweepNow !== true) await options.sleep(firstS * 1e3);
+  for (let attempt = 0; ; attempt += 1) {
+    const outcome = await sweep();
+    const elapsedS = (now2() - started) / 1e3;
+    let delayS = 0;
+    if (outcome.done) {
+      delayS = 0;
+    } else if (outcome.failed === true) {
+      errors += 1;
+      delayS = Math.max(
+        requireCore().pollErrorDelaySeconds(errors, random(), outcome.retryAfterS),
+        requireCore().pollIntervalSeconds(elapsedS, Math.max(1, outcome.nextRequests ?? 1))
+      );
+    } else {
+      errors = 0;
+      delayS = options.fixedIntervalS ?? requireCore().pollIntervalSeconds(elapsedS, Math.max(1, outcome.nextRequests ?? 1));
+      if (options.maxIntervalS !== void 0) delayS = Math.min(delayS, options.maxIntervalS);
+    }
+    if (options.observe !== void 0 && await options.observe(outcome, attempt, elapsedS, delayS) === false) return outcome;
+    if (outcome.done) return outcome;
+    const remainingMs = deadline - now2();
+    if (remainingMs <= 0) throw options.onTimeout(elapsedS);
+    await options.sleep(Math.min(delayS * 1e3, remainingMs));
+  }
 }
-var ConfigHashPolicyError = class extends Error {
-  constructor(message) {
+
+// src/job-errors.ts
+var JobFailedError = class extends Error {
+  constructor(jobId, errorMessage) {
+    super("job failed");
+    this.jobId = jobId;
+    this.errorMessage = errorMessage;
+  }
+  name = "JobFailedError";
+};
+var JobTimeoutError = class extends Error {
+  constructor(jobId) {
+    super("job polling timed out");
+    this.jobId = jobId;
+  }
+  name = "JobTimeoutError";
+};
+var JobAbortedError = class extends Error {
+  constructor(jobId) {
+    super("job polling was aborted");
+    this.jobId = jobId;
+  }
+  name = "JobAbortedError";
+};
+var JobNotCompletedError = class extends Error {
+  constructor(jobId, status) {
+    super("job is not completed");
+    this.jobId = jobId;
+    this.status = status;
+  }
+  name = "JobNotCompletedError";
+};
+
+// src/job-model.ts
+var JobStatus = {
+  Pending: "pending",
+  Running: "running",
+  Succeeded: "succeeded",
+  Failed: "failed",
+  Unknown: "unknown"
+};
+function withTreeBoxes(job, binary) {
+  return binary?.treeBoxes === void 0 ? job : { ...job, treeBoxes: binary.treeBoxes };
+}
+function requireJobId(jobId) {
+  if (typeof jobId !== "string" || jobId.length === 0) throw new TypeError("jobId must be a non-empty string");
+  return jobId;
+}
+
+// src/internal/wait-job.ts
+async function waitForJob(id, options, deps) {
+  const timeoutSeconds = options.timeout ?? defaultPollTimeoutS();
+  requireTimeout(timeoutSeconds * 1e3);
+  const deadline = new Deadline(options.signal, timeoutSeconds * 1e3);
+  let last;
+  let stopped = false;
+  try {
+    await poll(async () => {
+      try {
+        last = await deadline.wait(() => deps.status(id, deadline.controller.signal));
+      } catch (error) {
+        if (deadline.reason() === void 0 && isTransientStatusError(error)) {
+          return { done: false, failed: true, retryAfterS: error.retryAfterS };
+        }
+        throw error;
+      }
+      return { done: last.status === JobStatus.Succeeded || last.status === JobStatus.Failed };
+    }, {
+      timeoutS: timeoutSeconds,
+      sleep: (ms) => deadline.wait(() => delay(ms, deadline.controller.signal)),
+      onTimeout: () => new JobTimeoutError(id),
+      observe: async (outcome, attempt, elapsed, nextDelay) => {
+        if (outcome.failed === true || last === void 0) return true;
+        const keepGoing = await notifyPoll(deadline, options.onPoll, last, attempt, elapsed, nextDelay);
+        if (keepGoing === false) stopped = true;
+        return keepGoing !== false;
+      },
+      fixedIntervalS: deps.fixedIntervalS,
+      maxIntervalS: deps.maxIntervalS
+    });
+  } catch (error) {
+    const reason2 = deadline.reason();
+    if (reason2 !== void 0) {
+      throw reason2 === "timeout" ? new JobTimeoutError(id) : new JobAbortedError(id);
+    }
+    throw error;
+  } finally {
+    deadline.close();
+  }
+  const job = last;
+  if (!stopped && job.status === JobStatus.Failed) throw new JobFailedError(id, job.error ?? "");
+  return job;
+}
+
+// src/internal/download.ts
+async function downloadPresigned(input, options = {}) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new TypeError("presigned download URL must be an absolute HTTPS URL");
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new TypeError("presigned download URL must be uncredentialed HTTPS");
+  }
+  const fetcher = resolveFetch(options.fetch);
+  if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
+  const timeoutMs = options.timeoutMs ?? 18e4;
+  requireTimeout(timeoutMs);
+  const deadline = new Deadline(options.signal, timeoutMs);
+  let dispatched = false;
+  try {
+    const response = await deadline.wait(() => {
+      dispatched = true;
+      return fetcher(url.href, {
+        method: "GET",
+        credentials: "omit",
+        redirect: "manual",
+        signal: deadline.controller.signal
+      });
+    });
+    if (response.status >= 300 && response.status < 400) {
+      cancelResponseBody(response);
+      throw new TransportError("presigned download received a redirect", "response", "http", "GET", response.status);
+    }
+    if (!response.ok) {
+      cancelResponseBody(response);
+      throw new TransportError(`presigned download received HTTP ${response.status}`, "response", "http", "GET", response.status);
+    }
+    return {
+      content: new Uint8Array(await deadline.wait(() => response.arrayBuffer())),
+      contentType: response.headers.get("Content-Type") ?? ""
+    };
+  } catch (error) {
+    if (error instanceof TransportError) throw error;
+    const reason2 = deadline.reason() ?? (dispatched ? "network" : "validation");
+    const phase = dispatched ? "after-dispatch" : "pre-dispatch";
+    const message = reason2 === "timeout" ? "presigned download timed out" : reason2 === "aborted" ? "presigned download was aborted" : "presigned download failed";
+    throw new TransportError(message, phase, reason2, "GET");
+  } finally {
+    deadline.close();
+  }
+}
+
+// src/internal/download-retry.ts
+function isRetryableDownloadError(error) {
+  if (!(error instanceof TransportError)) return false;
+  if (error.status === void 0) return error.reason === "network";
+  return error.status === 403 || error.status === 429 || error.status >= 500 && error.status < 600;
+}
+function shouldRetryDownload(error, sendsDone) {
+  if (!isRetryableDownloadError(error)) return false;
+  const status = error.status;
+  const next = status === 429 || status !== void 0 && status >= 500 ? requireCore().classifySubmitSend("status", sendsDone, status) : requireCore().classifySubmitSend("after_send", sendsDone);
+  return next === "resend";
+}
+async function pauseBeforeRetry(sendsDone, error, signal) {
+  const retryAfterS = error instanceof TransportError ? error.retryAfterS : void 0;
+  const seconds = requireCore().submitResendDelaySeconds(sendsDone, Math.random(), retryAfterS);
+  try {
+    await delay(seconds * 1e3, signal ?? new AbortController().signal);
+  } catch {
+    throw new TransportError(
+      "presigned download was aborted",
+      "after-dispatch",
+      "aborted",
+      "GET"
+    );
+  }
+}
+
+// src/internal/link.ts
+var TOKEN = /[!#$%&'*+\-.^_`|~0-9A-Za-z]/;
+function splitLinkValues(header) {
+  const values = [];
+  let start = 0;
+  let quoted = false;
+  let escaped = false;
+  let angled = false;
+  for (let index2 = 0; index2 < header.length; index2 += 1) {
+    const character = header[index2];
+    if (escaped) {
+      escaped = false;
+    } else if (quoted) {
+      if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+    } else if (angled) {
+      if (character === ">") angled = false;
+      else if (character === "<" || character === '"') return void 0;
+    } else if (character === '"') {
+      quoted = true;
+    } else if (character === "<") {
+      angled = true;
+    } else if (character === ">") {
+      return void 0;
+    } else if (character === ",") {
+      const value = header.slice(start, index2).trim();
+      if (value.length === 0) return void 0;
+      values.push(value);
+      start = index2 + 1;
+    }
+  }
+  if (quoted || escaped || angled) return void 0;
+  const last = header.slice(start).trim();
+  if (last.length === 0) return void 0;
+  values.push(last);
+  return values;
+}
+function readParameters(input) {
+  let index2 = 0;
+  let relations;
+  const skipWhitespace = () => {
+    while (input[index2] === " " || input[index2] === "	") index2 += 1;
+  };
+  while (index2 < input.length) {
+    skipWhitespace();
+    if (index2 === input.length) break;
+    if (input[index2] !== ";") return null;
+    index2 += 1;
+    skipWhitespace();
+    const nameStart = index2;
+    while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
+    if (nameStart === index2) return null;
+    const name = input.slice(nameStart, index2).toLowerCase();
+    skipWhitespace();
+    if (input[index2] !== "=") return null;
+    index2 += 1;
+    skipWhitespace();
+    let parameter = "";
+    if (input[index2] === '"') {
+      index2 += 1;
+      let closed = false;
+      while (index2 < input.length) {
+        const character = input[index2++];
+        if (character === "\\") {
+          if (index2 === input.length) return null;
+          parameter += input[index2++];
+        } else if (character === '"') {
+          closed = true;
+          break;
+        } else {
+          parameter += character;
+        }
+      }
+      if (!closed) return null;
+    } else {
+      const valueStart = index2;
+      while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
+      if (valueStart === index2) return null;
+      parameter = input.slice(valueStart, index2);
+    }
+    skipWhitespace();
+    if (index2 < input.length && input[index2] !== ";") return null;
+    if (name === "rel") {
+      if (relations !== void 0) return null;
+      relations = parameter.split(/[ \t]+/).filter((item) => item.length > 0);
+    }
+  }
+  return relations;
+}
+function parseResultsLink(header) {
+  const values = header === null ? void 0 : splitLinkValues(header);
+  if (values === void 0) throw new Error("results response has no usable Link header");
+  const matches = [];
+  let unqualified;
+  for (const value of values) {
+    if (!value.startsWith("<")) {
+      if (values.length === 1 && value.startsWith("https://")) unqualified = value;
+      else throw new Error("results response has no usable Link header");
+      continue;
+    }
+    const end = value.indexOf(">");
+    if (end <= 1) throw new Error("results response has no usable Link header");
+    const url = value.slice(1, end);
+    const relations = readParameters(value.slice(end + 1));
+    if (relations === null) throw new Error("results response has no usable Link header");
+    if (relations?.some((item) => item.toLowerCase() === "results")) matches.push(url);
+    else if (relations === void 0 && values.length === 1) unqualified = url;
+  }
+  const selected = matches.length === 1 ? matches[0] : matches.length === 0 ? unqualified : void 0;
+  if (selected === void 0 || !selected.startsWith("https://")) {
+    throw new Error("results response has no usable Link header");
+  }
+  return selected;
+}
+
+// src/internal/submit-body.ts
+var INTERIOR_ANALYSES = /* @__PURE__ */ new Set([
+  "daylight-factor",
+  "energy-balance",
+  "spatial-daylight-autonomy"
+]);
+var UNSUPPORTED_TOP_LEVEL_ALIASES = /* @__PURE__ */ new Set([
+  "analysisType",
+  "analysis_type",
+  "analysisSurfaces",
+  "analysis_surfaces",
+  "binaryResults",
+  "binary_results",
+  "contextGeometry",
+  "context_geometry",
+  "emitCellTris",
+  "emit_cell_tris",
+  "groundMaterials",
+  "ground_materials",
+  "groundGeometry",
+  "ground_geometry",
+  "meshCleaning",
+  "mesh_cleaning",
+  "sensorSurfaces",
+  "sensor_surfaces",
+  "surfaceGridSize",
+  "surface_grid_size",
+  "surfaceOffset",
+  "surface_offset",
+  "surfgridVersion",
+  "surfgrid_version",
+  "terrainAlignment",
+  "terrain_alignment",
+  "webhookEvents",
+  "webhook_events",
+  "webhookUrl",
+  "webhook_url"
+]);
+function prepareSubmissionBody(analysisType, payload, options) {
+  if (typeof analysisType !== "string" || analysisType.length === 0) {
+    throw new TypeError("analysisType must be a non-empty string");
+  }
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new TypeError("analysis payload must be an object");
+  }
+  for (const name of UNSUPPORTED_TOP_LEVEL_ALIASES) {
+    if (Object.prototype.hasOwnProperty.call(payload, name)) {
+      throw new TypeError(`analysis payload must use wire-keyed fields; unsupported ${name}`);
+    }
+  }
+  const bodyType = payload["analysis-type"];
+  if (bodyType !== void 0 && bodyType !== analysisType) {
+    throw new TypeError("payload analysis-type does not match analysisType");
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
+    throw new TypeError("unsupported option binaryResults; use transport instead");
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "binary-results")) {
+    throw new TypeError("unsupported payload field binary-results; use transport instead");
+  }
+  const hasAlignment = Object.prototype.hasOwnProperty.call(payload, "terrain-alignment");
+  const body = { ...payload, "analysis-type": analysisType };
+  validatePreparedAnalysisRequest(body, { enforceTerrainTriangleLimit: true });
+  if (body["analysis-surfaces"] != null && body["surfgrid-version"] == null) {
+    body["surfgrid-version"] = requireCore().surfgridVersion();
+  }
+  if (takesGradeDrop(analysisType)) delete body["terrain-alignment"];
+  if (options.webhookUrl !== void 0) body["webhook-url"] = options.webhookUrl;
+  if (options.webhookEvents !== void 0) body["webhook-events"] = [...options.webhookEvents];
+  const suppliedScene = [
+    "geometries",
+    "context-geometry",
+    "vegetation",
+    "vegetation-instances"
+  ].some((name) => groupHasContent(body[name]));
+  if (!INTERIOR_ANALYSES.has(analysisType) && !hasAlignment && groupHasContent(body["ground-geometry"]) && suppliedScene) body["terrain-alignment"] = "as-is";
+  return body;
+}
+
+// src/internal/idempotent-dispatch.ts
+function unreadableBody(response) {
+  try {
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(response.content));
+    return false;
+  } catch {
+    return true;
+  }
+}
+async function resendDelay(sendsDone, retryAfterS, signal) {
+  const seconds = requireCore().submitResendDelaySeconds(sendsDone, Math.random(), retryAfterS);
+  try {
+    await delay(seconds * 1e3, signal ?? new AbortController().signal);
+  } catch {
+    throw new SubmissionUncertainError([]);
+  }
+}
+async function dispatchKeyed(options) {
+  const keyed = options.idempotencyKey !== void 0;
+  const core2 = requireCore();
+  for (let sendsDone = 1; ; sendsDone += 1) {
+    let response;
+    try {
+      response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
+        method: "POST",
+        headers: options.headers,
+        body: options.body,
+        acceptHttpErrors: true,
+        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+        ...options.signal === void 0 ? {} : { signal: options.signal }
+      });
+    } catch (error) {
+      if (!keyed || !(error instanceof TransportError)) throw error;
+      if (error.reason === "aborted") throw sendsDone > 1 ? new SubmissionUncertainError([]) : error;
+      const answer = error.phase === "pre-dispatch" ? "before_send" : "after_send";
+      const next2 = core2.classifySubmitSend(answer, sendsDone);
+      if (next2 === "uncertain") throw new SubmissionUncertainError([]);
+      if (next2 !== "resend") throw error;
+      await resendDelay(sendsDone, void 0, options.signal);
+      continue;
+    }
+    if (!keyed) return response;
+    const ok2xx = response.status >= 200 && response.status < 300;
+    const next = ok2xx && unreadableBody(response) ? core2.classifySubmitSend("unreadable_2xx", sendsDone) : core2.classifySubmitSend("status", sendsDone, response.status);
+    if (next === "uncertain") throw new SubmissionUncertainError([], response.status);
+    if (next !== "resend") return response;
+    await resendDelay(sendsDone, retryAfterSeconds(response.headers), options.signal);
+  }
+}
+
+// src/internal/upload.ts
+function signedHttps(input) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new TypeError("presigned upload URL must be an absolute HTTPS URL");
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+    throw new TypeError("presigned upload URL must be uncredentialed HTTPS without a fragment");
+  }
+  return url.href;
+}
+async function uploadPresignedZip(input, content, options) {
+  const url = signedHttps(input);
+  requireTimeout(options.timeoutMs);
+  const limits = sendLimits(content.byteLength, options.timeoutMs);
+  const sender = bodySenderFor(options.fetch, { url });
+  const deadline = new Deadline(options.signal, options.timeoutMs);
+  let dispatched = false;
+  try {
+    const response = await deadline.wait(() => {
+      dispatched = true;
+      return sendBody(sender, options.fetch, {
+        url,
+        method: "PUT",
+        headers: new Headers({ "Content-Type": "application/zip" }),
+        body: content,
+        credentials: "omit"
+      }, limits, deadline);
+    });
+    if (response.status >= 300 && response.status < 400) {
+      cancelResponseBody(response);
+      throw new TransportError("presigned upload received a redirect", "response", "http", "PUT", response.status);
+    }
+    if (!response.ok) {
+      cancelResponseBody(response);
+      throw new TransportError(`presigned upload received HTTP ${response.status}`, "response", "http", "PUT", response.status);
+    }
+    await deadline.wait(() => response.arrayBuffer());
+  } catch (error) {
+    if (error instanceof TransportError) throw error;
+    const stopped = deadline.reason();
+    throw new TransportError(
+      stopped === "timeout" ? `presigned upload timed out (${stopDetail(deadline, limits)})` : stopped === "aborted" ? "presigned upload was aborted" : "presigned upload failed",
+      dispatched ? "unknown-acceptance" : "pre-dispatch",
+      stopped ?? (dispatched ? "network" : "validation"),
+      "PUT"
+    );
+  } finally {
+    deadline.close();
+  }
+}
+
+// src/internal/submission.ts
+var SubmissionUncertainError = class extends Error {
+  constructor(acceptedJobIds2, status) {
+    super(status === void 0 ? "job submission returned an invalid accepted response" : `job submission received HTTP ${status}; the job may already exist`);
+    this.acceptedJobIds = acceptedJobIds2;
+    this.status = status;
+  }
+  name = "SubmissionUncertainError";
+  phase = "unknown-acceptance";
+  /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
+  status;
+};
+var AcceptedResponseError = class extends Error {
+  name = "AcceptedResponseError";
+};
+var GeometryReferenceRejectedError = class extends Error {
+  constructor(code) {
+    super("geometry reference was rejected before job acceptance");
+    this.code = code;
+  }
+  name = "GeometryReferenceRejectedError";
+};
+var GATEWAY_SIZE_MESSAGES = /* @__PURE__ */ new Set([
+  "Request Too Long",
+  "HTTP content length exceeded 10485760 bytes"
+]);
+var PRE_ACCEPT_REF_REJECTIONS = /* @__PURE__ */ new Map([
+  [400, /* @__PURE__ */ new Set(["REF_INVALID_ENVELOPE", "REF_HOST_NOT_ALLOWED"])],
+  [413, /* @__PURE__ */ new Set(["REF_TOO_LARGE"])],
+  [415, /* @__PURE__ */ new Set(["REF_CONTENT_TYPE_REJECTED"])],
+  [422, /* @__PURE__ */ new Set([
+    "REF_GEOMETRY_OVERLAP",
+    "REF_GEOMETRY_UNKNOWN_GROUP",
+    "REF_GEOMETRY_NESTED",
+    "REF_GEOMETRY_EMPTY"
+  ])],
+  [502, /* @__PURE__ */ new Set(["REF_NOT_FOUND", "REF_EXPIRED", "REF_DECODE_FAILED"])],
+  [504, /* @__PURE__ */ new Set(["REF_FETCH_TIMEOUT"])]
+]);
+function parseJson2(content) {
+  if (content.byteLength === 0) return void 0;
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(content);
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function signedHttps2(value, label) {
+  if (typeof value !== "string") throw new TypeError(`presign response has no ${label}`);
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError(`presign response ${label} is invalid`);
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+    throw new TypeError(`presign response ${label} is invalid`);
+  }
+  return url.href;
+}
+async function presign(options) {
+  const response = await options.uploadGateway.requestJson("/uploads/presign", {
+    method: "POST",
+    body: { content_length: options.archive.byteLength },
+    ...options.signal === void 0 ? {} : { signal: options.signal }
+  });
+  if (response === null || typeof response !== "object" || Array.isArray(response)) {
+    throw new TypeError("presign response is invalid");
+  }
+  const value = response;
+  return {
+    uploadUrl: signedHttps2(value["upload-url"], "upload-url"),
+    getUrl: signedHttps2(value["get-url"], "get-url")
+  };
+}
+async function presignAndUpload(options) {
+  const pair = await presign(options);
+  await uploadPresignedZip(pair.uploadUrl, options.archive, {
+    fetch: options.fetch,
+    timeoutMs: options.timeoutMs,
+    ...options.signal === void 0 ? {} : { signal: options.signal }
+  });
+  return pair.getUrl;
+}
+function uploadArchive(options) {
+  return presignAndUpload(options);
+}
+function exactGatewaySizeRejection(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const body = value;
+  const keys = Object.keys(body);
+  return keys.length === 1 && keys[0] === "message" && typeof body.message === "string" && GATEWAY_SIZE_MESSAGES.has(body.message);
+}
+function acceptedJobIds(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+  const jobId = value.jobId;
+  return typeof jobId === "string" && jobId.length > 0 ? [jobId] : [];
+}
+async function post(options, body, contentType, allowExpired, allowGatewaySizeFallback) {
+  let response;
+  try {
+    response = await dispatchKeyed({
+      gateway: options.gateway,
+      endpointPath: options.endpointPath,
+      body,
+      headers: {
+        "Content-Type": contentType,
+        ...options.idempotencyKey === void 0 ? {} : { "Idempotency-Key": options.idempotencyKey }
+      },
+      ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey },
+      ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+      ...options.signal === void 0 ? {} : { signal: options.signal }
+    });
+  } catch (error) {
+    if (error instanceof SubmissionUncertainError) throw error;
+    if (error instanceof TransportError && error.phase === "response" && error.status !== void 0 && error.status >= 300 && error.status < 400) {
+      throw new SubmissionUncertainError([], error.status);
+    }
+    throw error;
+  }
+  const parsed = parseJson2(response.content);
+  const ok = response.status >= 200 && response.status < 300;
+  if (!ok) {
+    const reportedIds = acceptedJobIds(parsed);
+    if (reportedIds.length > 0) throw new SubmissionUncertainError(reportedIds);
+    if (allowGatewaySizeFallback && response.status === 413 && exactGatewaySizeRejection(parsed)) {
+      return { kind: "too-large" };
+    }
+    if (allowExpired && response.status === 502 && parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.code === "REF_EXPIRED") return { kind: "expired" };
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const code = parsed.code;
+      if (typeof code === "string" && PRE_ACCEPT_REF_REJECTIONS.get(response.status)?.has(code)) {
+        throw new GeometryReferenceRejectedError(code);
+      }
+    }
+    if (response.status < 400 || response.status >= 500) {
+      throw new SubmissionUncertainError([], response.status);
+    }
+    throw new TransportError(
+      `job submission received HTTP ${response.status}`,
+      "response",
+      "http",
+      "POST",
+      response.status
+    );
+  }
+  try {
+    return { kind: "accepted", value: options.parseAccepted(parsed) };
+  } catch (error) {
+    if (error instanceof AcceptedResponseError) throw error;
+    throw new SubmissionUncertainError(acceptedJobIds(parsed));
+  }
+}
+async function submitArchive(options) {
+  if (options.archive.byteLength <= options.thresholdBytes) {
+    const result2 = await post(options, options.archive, "application/zip", false, true);
+    if (result2.kind === "expired") throw new Error("unreachable inline reference state");
+    if (result2.kind === "accepted") return result2.value;
+  }
+  let getUrl = await presignAndUpload(options);
+  let envelope = new TextEncoder().encode(JSON.stringify({ $ref: getUrl }));
+  let result = await post(options, envelope, "application/json", true, false);
+  if (result.kind === "accepted") return result.value;
+  getUrl = await presignAndUpload(options);
+  envelope = new TextEncoder().encode(JSON.stringify({ $ref: getUrl }));
+  result = await post(options, envelope, "application/json", false, false);
+  if (result.kind !== "accepted") throw new Error("unreachable reference retry state");
+  return result.value;
+}
+
+// src/internal/prepared-json.ts
+function preparedJsonBytes(prepared) {
+  if (prepared.json !== void 0) return prepared.json();
+  try {
+    const bytes = jsonWireBytes(prepared.body, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value) : value);
+    if (bytes === void 0) throw new TypeError("request has no JSON wire form");
+    return bytes;
+  } catch {
+    throw new TransportError("job request is not JSON serializable", "pre-dispatch", "validation", "POST");
+  }
+}
+
+// src/internal/geometry-reuse/expiry.ts
+var DEFAULT_REF_TTL_MS = 24 * 60 * 60 * 1e3;
+var EXPIRY_MARGIN_MS = 15 * 60 * 1e3;
+function expiryFromUrl(value, now2 = Date.now()) {
+  let signedAt = now2;
+  let ttl = DEFAULT_REF_TTL_MS;
+  try {
+    const url = new URL(value);
+    const expires = Number(url.searchParams.get("X-Amz-Expires"));
+    if (Number.isFinite(expires) && expires > 0) ttl = expires * 1e3;
+    const stamp = url.searchParams.get("X-Amz-Date");
+    if (stamp !== null && /^\d{8}T\d{6}Z$/.test(stamp)) {
+      const iso = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`;
+      const parsed = Date.parse(iso);
+      if (Number.isFinite(parsed)) signedAt = parsed;
+    }
+  } catch {
+  }
+  return signedAt + ttl - EXPIRY_MARGIN_MS;
+}
+
+// src/internal/geometry-reuse/cache.ts
+var MAX_PARTITIONS = 64;
+var MAX_SCOPES = 256;
+var MAX_DOCUMENTS = 256;
+var MAX_IN_FLIGHT_FIRST_USES = 64;
+var MAX_SCOPE_LOCKS = 64;
+var MAX_SHARED_UPLOADS = 64;
+var UNSUPPORTED_TTL_MS = 24 * 60 * 60 * 1e3;
+var GeometryReuseCapacityError = class extends Error {
+  name = "GeometryReuseCapacityError";
+};
+function emptyState() {
+  return { schema_version: 1, last_hashes: {}, documents: [] };
+}
+function cloneSnapshot(scope) {
+  if (scope === void 0) return { state: emptyState(), urls: {} };
+  return {
+    state: structuredClone(scope.state),
+    urls: { ...scope.urls }
+  };
+}
+function liveCapability(value, now2) {
+  if (value === void 0) return void 0;
+  return value.expiresAt === void 0 || now2 < value.expiresAt ? value.outcome : void 0;
+}
+var GeometryReuseCache = class {
+  constructor(now2 = Date.now) {
+    this.now = now2;
+  }
+  partitions = /* @__PURE__ */ new Map();
+  firstUses = /* @__PURE__ */ new Map();
+  scopeLocks = /* @__PURE__ */ new Map();
+  uploads = /* @__PURE__ */ new Map();
+  /** Upload entries whose PUT has finished: the only ones the bound evicts. */
+  settledUploads = /* @__PURE__ */ new Set();
+  getCapability(partitionKey) {
+    const partition = this.partitions.get(partitionKey);
+    if (partition === void 0) return void 0;
+    const outcome = liveCapability(partition.capability, this.now());
+    if (outcome === void 0) delete partition.capability;
+    return outcome;
+  }
+  setCapability(partitionKey, outcome) {
+    const now2 = this.now();
+    const partition = this.partition(partitionKey, now2);
+    partition.capability = outcome === "supported" ? { outcome } : { outcome, expiresAt: now2 + UNSUPPORTED_TTL_MS };
+  }
+  /**
+   * Single-flight the FIRST reference-carrying submission of a partition.
+   *
+   * There is no probe job any more: the verdict is learned from a real
+   * customer submission (D71). One submission therefore has to go first and
+   * alone, or a 49-tile run against a deployment that ignores the field would
+   * discard 49 billed jobs where one is enough. `owned` marks the caller that
+   * ran it, and only that caller may use the returned job. A waiter learns
+   * nothing except that the question has been answered; it reads the verdict.
+   */
+  async firstUse(partitionKey, task, signal) {
+    const existing = this.firstUses.get(partitionKey);
+    if (existing !== void 0) {
+      await waitFor(existing.then(ignore, ignore), signal);
+      if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
+      return { owned: false };
+    }
+    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
+    if (this.firstUses.size >= MAX_IN_FLIGHT_FIRST_USES) return { owned: false };
+    let pending2;
+    pending2 = task().finally(() => {
+      if (this.firstUses.get(partitionKey) === pending2) this.firstUses.delete(partitionKey);
+    });
+    this.firstUses.set(partitionKey, pending2);
+    return { owned: true, value: await pending2 };
+  }
+  snapshot(partitionKey, scopeKey) {
+    const now2 = this.now();
+    const partition = this.partitions.get(partitionKey);
+    const scope = partition?.scopes.get(scopeKey);
+    if (scope === void 0) return cloneSnapshot(void 0);
+    const documents = scope.state.documents.filter((item) => now2 / 1e3 < item.expires_at && scope.urls[item.key] !== void 0);
+    if (documents.length !== scope.state.documents.length) {
+      const keys = new Set(documents.map((item) => item.key));
+      scope.state = { ...scope.state, documents };
+      scope.urls = Object.fromEntries(Object.entries(scope.urls).filter(([key]) => keys.has(key)));
+    }
+    scope.touchedAt = now2;
+    if (partition !== void 0) partition.touchedAt = now2;
+    return cloneSnapshot(scope);
+  }
+  acknowledge(partitionKey, scopeKey, value) {
+    const now2 = this.now();
+    if (!Number.isFinite(value.expiresAt) || value.expiresAt <= now2) return;
+    const partition = this.partition(partitionKey, now2);
+    const prior = partition.scopes.get(scopeKey);
+    const documents = (prior?.state.documents ?? []).filter((item) => item.key !== value.key);
+    const document2 = {
+      key: value.key,
+      groups: { ...value.groups },
+      acknowledged_at: now2 / 1e3,
+      expires_at: value.expiresAt / 1e3
+    };
+    partition.scopes.delete(scopeKey);
+    partition.scopes.set(scopeKey, {
+      state: {
+        schema_version: 1,
+        last_hashes: { ...value.current },
+        documents: [...documents, document2]
+      },
+      urls: { ...prior?.urls ?? {}, [value.key]: value.url },
+      touchedAt: now2
+    });
+    this.trim();
+  }
+  /**
+   * Record `current` as the last group hashes of an inline submission (D189).
+   * Only an acknowledgement recorded them before, so a group that changed
+   * while no reference was sent never became "unchanged since the last run"
+   * and stayed inline on every later run. A scope with no history is left
+   * absent: empty state is a first use, which uploads every eligible group.
+   */
+  observe(partitionKey, scopeKey, current) {
+    const scope = this.partitions.get(partitionKey)?.scopes.get(scopeKey);
+    if (scope === void 0) return;
+    scope.state = { ...scope.state, last_hashes: { ...current } };
+  }
+  invalidate(partitionKey, scopeKey, key, url) {
+    const scope = this.partitions.get(partitionKey)?.scopes.get(scopeKey);
+    if (scope === void 0 || scope.urls[key] !== url) return;
+    delete scope.urls[key];
+    scope.state = {
+      ...scope.state,
+      documents: scope.state.documents.filter((item) => item.key !== key)
+    };
+  }
+  /**
+   * The URL of the document `key` names, PUT at most once per partition
+   * (D201). The key is the document's CONTENT, not a job's scope, so every
+   * job that sends the same document — the grid job and the facade job of
+   * one tile, the next design edit — shares one upload: the first caller
+   * PUTs, callers that arrive meanwhile await it, and later callers get its
+   * URL until the URL expires. `fresh` is true only for the caller whose
+   * `put` ran. A failed PUT is its caller's: it is not kept. A waiter stops
+   * waiting when its own `signal` aborts.
+   */
+  async sharedUpload(partitionKey, key, put, signal) {
+    const id = `${partitionKey}
+${key}`;
+    for (; ; ) {
+      const pending2 = this.uploads.get(id);
+      if (pending2 === void 0) {
+        const created = put().then((url) => ({ url, expiresAt: expiryFromUrl(url) }));
+        this.uploads.set(id, created);
+        this.settledUploads.delete(id);
+        try {
+          const { url } = await created;
+          if (this.uploads.get(id) === created) this.settledUploads.add(id);
+          for (const old of [...this.settledUploads]) {
+            if (this.uploads.size <= MAX_SHARED_UPLOADS) break;
+            this.uploads.delete(old);
+            this.settledUploads.delete(old);
+          }
+          return { url, fresh: true };
+        } catch (error) {
+          if (this.uploads.get(id) === created) this.uploads.delete(id);
+          throw error;
+        }
+      }
+      let value;
+      try {
+        value = await waitFor(pending2, signal);
+      } catch (error) {
+        if (signal?.aborted) throw error;
+      }
+      if (value !== void 0 && this.now() < value.expiresAt) return { url: value.url, fresh: false };
+      if (this.uploads.get(id) === pending2) {
+        this.uploads.delete(id);
+        this.settledUploads.delete(id);
+      }
+    }
+  }
+  /** Forget `key`'s upload when its URL is `url` (a dead reference). */
+  async dropUpload(partitionKey, key, url) {
+    const id = `${partitionKey}
+${key}`;
+    const pending2 = this.uploads.get(id);
+    if (pending2 === void 0) return;
+    const value = await pending2.catch(ignore);
+    if (value?.url === url && this.uploads.get(id) === pending2) {
+      this.uploads.delete(id);
+      this.settledUploads.delete(id);
+    }
+  }
+  async withScope(partitionKey, scopeKey, task, signal) {
+    const key = `${partitionKey}
+${scopeKey}`;
+    const prior = this.scopeLocks.get(key) ?? Promise.resolve();
+    if (!this.scopeLocks.has(key) && this.scopeLocks.size >= MAX_SCOPE_LOCKS) {
+      throw new GeometryReuseCapacityError("geometry reuse scope capacity is full");
+    }
+    let release4;
+    const next = new Promise((resolve) => {
+      release4 = resolve;
+    });
+    const tail = prior.then(() => next);
+    this.scopeLocks.set(key, tail);
+    const wait = signal === void 0 ? prior : new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+        return;
+      }
+      const abort = () => reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+      signal.addEventListener("abort", abort, { once: true });
+      void prior.then(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      });
+    });
+    try {
+      await wait;
+    } catch (error) {
+      release4();
+      void tail.then(() => {
+        if (this.scopeLocks.get(key) === tail) this.scopeLocks.delete(key);
+      });
+      throw error;
+    }
+    try {
+      return await task();
+    } finally {
+      release4();
+      if (this.scopeLocks.get(key) === tail) this.scopeLocks.delete(key);
+    }
+  }
+  counts() {
+    const scopes = [...this.partitions.values()].flatMap((item) => [...item.scopes.values()]);
+    return {
+      partitions: this.partitions.size,
+      scopes: scopes.length,
+      documents: scopes.reduce((sum, item) => sum + item.state.documents.length, 0)
+    };
+  }
+  partition(key, now2) {
+    const found = this.partitions.get(key);
+    if (found !== void 0) {
+      found.touchedAt = now2;
+      this.partitions.delete(key);
+      this.partitions.set(key, found);
+      return found;
+    }
+    const created = { scopes: /* @__PURE__ */ new Map(), touchedAt: now2 };
+    this.partitions.set(key, created);
+    this.trim();
+    return created;
+  }
+  trim() {
+    while (this.partitions.size > MAX_PARTITIONS) this.partitions.delete(this.partitions.keys().next().value);
+    const allScopes = () => [...this.partitions].flatMap(
+      ([partition, value]) => [...value.scopes].map(
+        ([scope, state]) => [partition, scope, state]
+      )
+    );
+    while (allScopes().length > MAX_SCOPES) {
+      const [partition, scope] = allScopes().sort((left, right) => left[2].touchedAt - right[2].touchedAt)[0];
+      this.partitions.get(partition)?.scopes.delete(scope);
+    }
+    while (allScopes().reduce((sum, item) => sum + item[2].state.documents.length, 0) > MAX_DOCUMENTS) {
+      const candidates = allScopes().flatMap(([partition, scope, value2]) => value2.state.documents.map((document2) => ({ partition, scope, document: document2 })));
+      candidates.sort((left, right) => left.document.acknowledged_at - right.document.acknowledged_at);
+      const oldest = candidates[0];
+      if (oldest === void 0) break;
+      const value = this.partitions.get(oldest.partition)?.scopes.get(oldest.scope);
+      if (value !== void 0) {
+        value.state = { ...value.state, documents: value.state.documents.filter((item) => item !== oldest.document) };
+        delete value.urls[oldest.document.key];
+      }
+    }
+  }
+};
+function ignore() {
+  return void 0;
+}
+function waitFor(pending2, signal) {
+  if (signal === void 0) return pending2;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    void pending2.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+var sharedCache = new GeometryReuseCache();
+function getGeometryReuseCache() {
+  return sharedCache;
+}
+
+// src/internal/geometry-reuse/credentials.ts
+function activeCredential(headers) {
+  let apiKey;
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() === "authorization") {
+      const match = /^\s*Bearer\s+(.+)$/i.exec(value);
+      if (match?.[1]?.trim()) return { kind: "bearer", value: match[1].trim() };
+    }
+    if (name.toLowerCase() === "x-api-key" && value.trim()) apiKey = value.trim();
+  }
+  return apiKey === void 0 ? void 0 : { kind: "api-key", value: apiKey };
+}
+async function credentialPartition(baseUrl, headers) {
+  const credential = activeCredential(headers);
+  if (credential === void 0) return void 0;
+  const material = canonicalJsonBytes(`${credential.kind}\0${credential.value}`);
+  const digest = material === void 0 ? void 0 : await sha256Hex(material);
+  return digest === void 0 ? void 0 : `${trimTrailingSlashes(baseUrl)}
+${credential.kind}:${digest}`;
+}
+async function exactAuthHeadersDigest(headers) {
+  if (activeCredential(headers) === void 0) return void 0;
+  const normalized = Object.entries(normalizeAuthHeaders(headers));
+  const material = canonicalJsonBytes(normalized);
+  return material === void 0 ? void 0 : sha256Hex(material);
+}
+function normalizeAuthHeaders(headers) {
+  const normalized = new Headers();
+  for (const [name, value] of Object.entries(headers)) normalized.set(name, value);
+  return Object.fromEntries(normalized.entries());
+}
+
+// src/internal/geometry-reuse/errors.ts
+function unique(ids) {
+  return Object.freeze([...new Set(ids.filter((value) => typeof value === "string" && value.length > 0))]);
+}
+var GeometryReferenceSubmissionError = class extends AcceptedResponseError {
+  constructor(acceptedJobIds2 = [], reason2 = "geometry-reference-outcome-uncertain", message = "geometry-reference submission cannot be used or retried safely") {
     super(message);
-    this.name = "ConfigHashPolicyError";
+    this.reason = reason2;
+    this.acceptedJobIds = unique(acceptedJobIds2);
+  }
+  name = "GeometryReferenceSubmissionError";
+  acceptedJobIds;
+  invalidReference = true;
+  nonRetryable = true;
+};
+var GeometryReferenceAcknowledgementError = class extends GeometryReferenceSubmissionError {
+  name = "GeometryReferenceAcknowledgementError";
+  constructor(acceptedJobIds2 = [], reason2 = "invalid-geometry-acknowledgement") {
+    super(
+      acceptedJobIds2,
+      reason2,
+      "accepted geometry-reference submission had no valid acknowledgement"
+    );
   }
 };
 
-// src/vegetation-mesh.ts
-var VegetationMeshError = class extends Error {
-  name = "VegetationMeshError";
-};
-function referencePoint(collection) {
-  const point = collection["referencePoint"];
-  const valid = Array.isArray(point) && point.length === 2 && point.every((value) => typeof value === "number" && Number.isFinite(value));
-  if (!valid) {
-    throw new VegetationMeshError(
-      "featureCollection must carry referencePoint [lon, lat] (the metric frame origin)"
+// src/internal/geometry-reuse/observer.ts
+function safeLog(logger, level, event, reason2) {
+  try {
+    logger[level]({ event, reason: reason2 });
+  } catch {
+  }
+}
+function notifyCapability(options, outcome, ids) {
+  const event = Object.freeze({ outcome, acceptedJobIds: Object.freeze([...ids]) });
+  try {
+    const pending2 = options.onProbe?.(event);
+    if (pending2 !== void 0) void Promise.resolve(pending2).catch(() => void 0);
+  } catch {
+  }
+  safeLog(
+    options.logger,
+    outcome === "supported" ? "info" : "warn",
+    "geometry_ref_capability",
+    `${outcome}; accepted job IDs: ${ids.length} reported`
+  );
+}
+
+// src/internal/geometry-reuse/submit.ts
+function expectedAck(value, groups) {
+  const job = jobFromResponse(value);
+  let acknowledged = false;
+  let reason2 = "geometry acknowledgement verifier failed";
+  try {
+    const verdict = JSON.parse(requireCore().verifyGeometryAck(JSON.stringify(value), [...groups]));
+    acknowledged = verdict.status === "acknowledged";
+    if (typeof verdict.reason === "string") reason2 = verdict.reason;
+  } catch {
+  }
+  if (!acknowledged) throw new GeometryReferenceAcknowledgementError([job.jobId], reason2);
+  return job;
+}
+function bound(options, partitionKey, signal, beforeDispatch, idempotencyKey) {
+  const auth = async () => {
+    const headers = await options.auth();
+    if (await credentialPartition(options.baseUrl, headers) !== partitionKey) {
+      throw new AuthPartitionChangedError();
+    }
+    return headers;
+  };
+  return {
+    gateway: new GatewayTransport({ baseUrl: options.baseUrl, auth, fetch: options.fetch, timeoutMs: options.timeoutMs }),
+    uploadGateway: new GatewayTransport({
+      baseUrl: options.gatewayBaseUrl,
+      auth,
+      fetch: options.fetch,
+      timeoutMs: options.timeoutMs
+    }),
+    fetch: options.fetch,
+    thresholdBytes: options.thresholdBytes,
+    timeoutMs: options.timeoutMs,
+    ...signal === void 0 ? {} : { signal },
+    ...beforeDispatch === void 0 ? {} : { beforeDispatch },
+    ...idempotencyKey === void 0 ? {} : { idempotencyKey }
+  };
+}
+async function submitBody(analysisType, body, transport3, groups = []) {
+  const json = jsonWireBytes(body);
+  if (json === void 0) throw new TypeError("request has no JSON wire form");
+  return submitArchive({
+    endpointPath: `/async/${encodeURIComponent(analysisType)}`,
+    archive: requireCore().zipPayloadJson(json),
+    gateway: transport3.gateway,
+    uploadGateway: transport3.uploadGateway,
+    fetch: transport3.fetch,
+    thresholdBytes: transport3.thresholdBytes,
+    timeoutMs: transport3.timeoutMs,
+    ...transport3.beforeDispatch === void 0 ? {} : { beforeDispatch: transport3.beforeDispatch },
+    parseAccepted: groups.length === 0 ? jobFromResponse : (value) => expectedAck(value, groups),
+    ...transport3.signal === void 0 ? {} : { signal: transport3.signal },
+    ...transport3.idempotencyKey === void 0 ? {} : { idempotencyKey: transport3.idempotencyKey }
+  });
+}
+async function uploadGeometry(bytes, transport3) {
+  return uploadArchive({
+    archive: requireCore().zipPayloadJson(bytes),
+    uploadGateway: transport3.uploadGateway,
+    fetch: transport3.fetch,
+    timeoutMs: transport3.timeoutMs,
+    ...transport3.signal === void 0 ? {} : { signal: transport3.signal }
+  });
+}
+
+// src/internal/geometry-reuse/controller.ts
+var DIRECT_SCOPE = "direct-v1";
+var DEAD_REF_CODES = /* @__PURE__ */ new Set(["REF_EXPIRED", "REF_NOT_FOUND"]);
+var INTERIOR_ANALYSES2 = /* @__PURE__ */ new Set([
+  "daylight-factor",
+  "energy-balance",
+  "spatial-daylight-autonomy"
+]);
+var planning = { withSizes: true };
+function parsePlan(prepared, snapshot) {
+  const sizes = {};
+  for (const name of Object.keys(prepared.identities)) {
+    const bytes = prepared.bytes[name];
+    if (bytes !== void 0) sizes[name] = bytes.byteLength;
+  }
+  return JSON.parse(requireCore().planGeometryReuse(
+    JSON.stringify(prepared.identities),
+    JSON.stringify(snapshot.state),
+    Date.now() / 1e3,
+    planning.withSizes ? JSON.stringify(sizes) : void 0
+  ));
+}
+async function referenceFromPlan(planValue, prepared, snapshot) {
+  if (planValue === null || typeof planValue !== "object" || Array.isArray(planValue)) return void 0;
+  const plan = planValue;
+  if (typeof plan.reference === "string") {
+    const matches = snapshot.state.documents.filter((item) => item.key === plan.reference);
+    if (matches.length !== 1) return void 0;
+    const document2 = matches[0];
+    const url = snapshot.urls[document2.key];
+    if (Object.entries(document2.groups).some(
+      ([name, identity]) => prepared.identities[name] !== identity
+    )) return void 0;
+    const parts2 = selectedDocumentParts(prepared, document2.groups);
+    if (url === void 0 || parts2 === void 0) return void 0;
+    return { key: document2.key, groups: document2.groups, parts: parts2, url, cached: true };
+  }
+  if (plan.upload === null || typeof plan.upload !== "object" || Array.isArray(plan.upload)) return void 0;
+  const groups = plan.upload.groups;
+  if (groups === null || typeof groups !== "object" || Array.isArray(groups) || Object.keys(groups).length === 0) {
+    return void 0;
+  }
+  const selected = groups;
+  if (Object.entries(selected).some(([name, identity]) => prepared.identities[name] !== identity)) return void 0;
+  const parts = selectedDocumentParts(prepared, selected);
+  if (parts === void 0) return void 0;
+  const digest = await sha256HexParts(parts);
+  return digest === void 0 ? void 0 : { key: `gref1:${digest}`, groups: selected, parts, cached: false };
+}
+function unsafeCandidate(error) {
+  if (error instanceof GeometryReferenceAcknowledgementError) throw error;
+  if (error instanceof GeometryReferenceRejectedError) throw error;
+  if (error instanceof TransportError && error.reason === "aborted") throw error;
+  if (error instanceof SubmissionUncertainError) {
+    throw new GeometryReferenceSubmissionError(
+      error.acceptedJobIds,
+      error.status === void 0 ? "accepted-response-invalid" : "endpoint-response-uncertain"
     );
   }
-  return [point[0], point[1]];
-}
-function convertPointsToMeshesLocal(featureCollection, options = {}) {
-  if (featureCollection === null || typeof featureCollection !== "object" || Array.isArray(featureCollection)) {
-    throw new VegetationMeshError("featureCollection must be an object");
+  if (error instanceof TransportError && error.phase === "unknown-acceptance") {
+    throw new GeometryReferenceSubmissionError([], "endpoint-post-failed");
   }
-  const [lon, lat] = referencePoint(featureCollection);
-  const features = featureCollection["features"];
-  if (!Array.isArray(features)) {
-    throw new VegetationMeshError("featureCollection.features must be an array");
+  if (error instanceof TransportError && error.status !== void 0 && (error.status >= 300 && error.status < 400 || error.status >= 500)) {
+    throw new GeometryReferenceSubmissionError([], "endpoint-response-uncertain");
+  }
+  throw error;
+}
+async function executePlan(prepared, analysisType, partitionKey, scopeKey, transport3, recover, logger) {
+  const cache2 = getGeometryReuseCache();
+  try {
+    return await cache2.withScope(partitionKey, scopeKey, async () => {
+      const snapshot = cache2.snapshot(partitionKey, scopeKey);
+      let reference;
+      try {
+        reference = await referenceFromPlan(parsePlan(prepared, snapshot), prepared, snapshot);
+      } catch {
+        safeLog(logger, "warn", "geometry_ref_fallback", "planning failed");
+        return { kind: "prepost" };
+      }
+      if (reference === void 0) {
+        cache2.observe(partitionKey, scopeKey, prepared.identities);
+        return { kind: "prepost" };
+      }
+      const shared2 = async (planned) => {
+        const { url, fresh } = await cache2.sharedUpload(
+          partitionKey,
+          planned.key,
+          () => uploadGeometry(joinParts(planned.parts), transport3),
+          transport3.signal
+        );
+        return { ...planned, url, cached: !fresh };
+      };
+      if (reference.url === void 0) {
+        try {
+          reference = await shared2(reference);
+        } catch {
+          safeLog(logger, "warn", "geometry_ref_fallback", "geometry upload failed");
+          return { kind: "prepost" };
+        }
+      }
+      let referenceUrl = reference.url;
+      if (referenceUrl === void 0) return { kind: "prepost" };
+      let refreshed = false;
+      while (true) {
+        try {
+          const job = await submitBody(
+            analysisType,
+            bodyWithReference(prepared.body, reference.groups, referenceUrl),
+            transport3,
+            Object.keys(reference.groups).sort()
+          );
+          try {
+            cache2.acknowledge(partitionKey, scopeKey, {
+              key: reference.key,
+              groups: reference.groups,
+              url: referenceUrl,
+              current: prepared.identities,
+              expiresAt: expiryFromUrl(referenceUrl)
+            });
+          } catch {
+            safeLog(logger, "warn", "geometry_ref_state", "accepted state could not be saved");
+          }
+          return { kind: "job", job };
+        } catch (error) {
+          if (error instanceof GeometryReferenceAcknowledgementError) {
+            cache2.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
+            await cache2.dropUpload(partitionKey, reference.key, referenceUrl);
+          }
+          if (!(error instanceof GeometryReferenceRejectedError)) unsafeCandidate(error);
+          if (!recover) return { kind: "ref-rejected", code: error.code };
+          if (reference.cached && !refreshed && DEAD_REF_CODES.has(error.code)) {
+            cache2.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
+            await cache2.dropUpload(partitionKey, reference.key, referenceUrl);
+            try {
+              reference = await shared2(reference);
+              referenceUrl = reference.url;
+              refreshed = true;
+              continue;
+            } catch {
+              safeLog(logger, "warn", "geometry_ref_fallback", "geometry refresh failed");
+              return { kind: "prepost" };
+            }
+          }
+          safeLog(logger, "warn", "geometry_ref_fallback", `server rejected ${error.code}`);
+          return { kind: "ref-rejected", code: error.code };
+        }
+      }
+    }, transport3.signal);
+  } catch (error) {
+    if (!(error instanceof GeometryReuseCapacityError)) throw error;
+    safeLog(logger, "warn", "geometry_ref_fallback", "scope capacity is full");
+    return { kind: "prepost" };
+  }
+}
+async function tryGeometryReuse(preparedSubmission, options, signal, beforeDispatch, idempotencyKey) {
+  if (INTERIOR_ANALYSES2.has(preparedSubmission.analysisType)) return void 0;
+  const prepared = await prepareGeometryGroups(preparedSubmission.body);
+  if (Object.keys(prepared.identities).length === 0) return void 0;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const headers = await options.auth();
+    const partitionKey = await credentialPartition(options.baseUrl, headers);
+    if (partitionKey === void 0) return void 0;
+    const transport3 = bound(options, partitionKey, signal, beforeDispatch, idempotencyKey);
+    try {
+      return await submitInPartition(preparedSubmission, prepared, partitionKey, transport3, options);
+    } catch (error) {
+      if (!(error instanceof AuthPartitionChangedError) || attempt === 1) throw error;
+    }
+  }
+  throw new Error("unreachable credential partition state");
+}
+async function submitInPartition(preparedSubmission, prepared, partitionKey, transport3, options) {
+  const cache2 = getGeometryReuseCache();
+  if (cache2.getCapability(partitionKey) === void 0) {
+    const first = await cache2.firstUse(
+      partitionKey,
+      () => establish(preparedSubmission, prepared, partitionKey, transport3, options),
+      transport3.signal
+    );
+    if (first.owned) return first.value;
+  }
+  if (cache2.getCapability(partitionKey) !== "supported") {
+    return submitBody(preparedSubmission.analysisType, prepared.body, transport3);
+  }
+  return referenced(preparedSubmission, prepared, partitionKey, transport3, options);
+}
+async function establish(preparedSubmission, prepared, partitionKey, transport3, options) {
+  const cache2 = getGeometryReuseCache();
+  try {
+    const outcome = await executePlan(
+      prepared,
+      preparedSubmission.analysisType,
+      partitionKey,
+      preparedSubmission.reuseScope ?? DIRECT_SCOPE,
+      transport3,
+      true,
+      options.logger
+    );
+    if (outcome.kind === "job") {
+      cache2.setCapability(partitionKey, "supported");
+      notifyCapability(options, "supported", [outcome.job.jobId]);
+      return outcome.job;
+    }
+    return await submitBody(preparedSubmission.analysisType, prepared.body, transport3);
+  } catch (error) {
+    if (error instanceof GeometryReferenceAcknowledgementError) {
+      cache2.setCapability(partitionKey, "unsupported");
+      notifyCapability(options, "unsupported", error.acceptedJobIds);
+      throw error;
+    }
+    if (error instanceof AuthPartitionChangedError) throw error;
+    if (error instanceof TransportError && (error.status === 400 || error.status === 422)) {
+      safeLog(options.logger, "warn", "geometry_ref_fallback", `server rejected ${error.status}`);
+      return await submitBody(preparedSubmission.analysisType, prepared.body, transport3);
+    }
+    throw error;
+  }
+}
+async function referenced(preparedSubmission, prepared, partitionKey, transport3, options) {
+  const cache2 = getGeometryReuseCache();
+  try {
+    const outcome = await executePlan(
+      prepared,
+      preparedSubmission.analysisType,
+      partitionKey,
+      preparedSubmission.reuseScope ?? DIRECT_SCOPE,
+      transport3,
+      true,
+      options.logger
+    );
+    if (outcome.kind === "job") return outcome.job;
+    return submitBody(preparedSubmission.analysisType, prepared.body, transport3);
+  } catch (error) {
+    if (error instanceof GeometryReferenceAcknowledgementError) {
+      cache2.setCapability(partitionKey, "unsupported");
+      notifyCapability(options, "unsupported", error.acceptedJobIds);
+    }
+    throw error;
+  }
+}
+
+// src/internal/geometry-reuse/options.ts
+function buildGeometryReuseOptions(options, fetch2, thresholdBytes, timeoutMs) {
+  return {
+    baseUrl: trimTrailingSlashes(String(options.baseUrl)),
+    gatewayBaseUrl: trimTrailingSlashes(String(options.gatewayBaseUrl ?? options.baseUrl)),
+    auth: options.auth,
+    fetch: fetch2,
+    thresholdBytes,
+    timeoutMs,
+    logger: options.logger ?? consoleLogger,
+    ...options.onGeometryReuseProbe === void 0 ? {} : {
+      onProbe: options.onGeometryReuseProbe
+    }
+  };
+}
+
+// src/internal/binary-artifact.ts
+function bodyArtifact(body, boxTrees, limits) {
+  for (const [name, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value < 0 || value > 4294967295) {
+      throw new RangeError(`${name} must be a non-negative uint32 integer`);
+    }
   }
   const core2 = requireCore();
-  const registry = options.registryJson ?? core2.vegetationRegistryDocument();
-  let meshes;
-  try {
-    meshes = JSON.parse(
-      core2.vegetationPointsToMeshes(JSON.stringify(features), lon, lat, registry)
-    );
-  } catch (error) {
-    throw new VegetationMeshError(
-      `local geojson-to-mesh failed: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
-    );
-  }
-  if (!Array.isArray(meshes)) {
-    throw new VegetationMeshError(
-      `local geojson-to-mesh returned ${typeof meshes}, expected an array`
-    );
-  }
-  return meshes;
-}
-function vegetationRegistryDocument() {
-  return requireCore().vegetationRegistryDocument();
-}
-
-// src/vegetation.ts
-var VegetationService = class {
-  request;
-  constructor(options) {
-    this.request = {
-      ...options.fetch === void 0 ? {} : { fetch: options.fetch },
-      ...options.timeoutMs === void 0 ? {} : { timeoutMs: options.timeoutMs },
-      // A retry of a public read reports through the client's logger.
-      ...options.logger === void 0 ? {} : { logger: options.logger }
-    };
-  }
-  /**
-   * One tile's trees, read straight from the public data hosts.
-   *
-   * Returns `null` for a genuinely empty tile.
-   */
-  async getGeoJson(lat, lon, distance) {
-    const result = await acquireTrees(pointToBbox(lat, lon, distance), { ...this.request });
-    if (result.features.length === 0) return null;
-    return {
-      type: "FeatureCollection",
-      features: result.features,
-      ...result.warnings.length === 0 ? {} : { _warnings: [...result.warnings] }
-    };
-  }
-  /**
-   * One tile's trees as FeatureCollection JSON text.
-   *
-   * The area path uses this rather than the object form: the per-tile texts
-   * are spliced into the array the deduplicator takes, so no tile's features
-   * are ever built as host objects (bulk-data rule 1).
-   */
-  async tileJsonDirect(lat, lon, distance, options) {
-    const { featuresJson } = await acquireTreesJson(pointToBbox(lat, lon, distance), options);
-    return featureCollectionJson(featuresJson);
-  }
-  /**
-   * Convert tree Point features to dotbim meshes in the local WASM kernel.
-   *
-   * `converter` accepts only `"local"`: the TypeScript SDK has no remote
-   * convert route, so a remote value is a typed error rather than a silent
-   * local run (D39). Mirrors Python
-   * `VegetationServiceClient.convert_to_mesh(converter="local")`.
-   */
-  toMeshes(featureCollection, options = {}) {
-    const converter = options.converter ?? "local";
-    if (converter !== "local") {
-      throw new VegetationMeshError(
-        `converter must be "local"; the TypeScript SDK has no remote convert route`
-      );
-    }
-    return convertPointsToMeshesLocal(
-      featureCollection,
-      options.registryJson === void 0 ? {} : { registryJson: options.registryJson }
-    );
-  }
-  /**
-   * Trees over an area, tile by tile.
-   */
-  async getArea(polygon, options = {}) {
-    rejectRemovedOption(
-      options,
-      "acquisition",
-      "trees are read from the public data hosts only; remove the option"
-    );
-    const started = performance.now();
-    const analysisType = resolveReadAnalysisType(options.analysisType);
-    const readDistanceM = groundReadDistanceM(analysisType);
-    const tiles = generateTilesForPolygon(polygon, {
-      analysisType,
-      ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
-    });
-    const active3 = tiles.flat().filter((tile) => !tile.empty);
-    const failedTiles = [];
-    const workers = options.maxWorkers ?? 10;
-    const request = {
-      ...this.request,
-      ...options.signal === void 0 ? {} : { signal: options.signal }
-    };
-    const direct = { ...request, transport: httpRangeTransport(request) };
-    const stopIfAborted = () => {
-      if (options.signal?.aborted === true) {
-        throw options.signal.reason ?? new DOMException("aborted", "AbortError");
-      }
-    };
-    const tilesJson = jsonArrayOf(
-      await mapLimit(active3, workers, async (tile) => {
-        stopIfAborted();
-        try {
-          return await this.tileJsonDirect(
-            tile.centroid.latitude,
-            tile.centroid.longitude,
-            readDistanceM,
-            direct
-          );
-        } catch {
-          stopIfAborted();
-          failedTiles.push(tile.tileId);
-          return void 0;
-        }
-      })
-    );
-    stopIfAborted();
-    if (active3.length > 0 && failedTiles.length === active3.length) {
-      throw new Error(`Vegetation fetch failed for all ${active3.length} area tiles`);
-    }
-    const features = JSON.parse(requireCore().dedupVegetationFeatures(tilesJson));
-    return {
-      features,
-      polygon,
-      totalTrees: Object.keys(features).length,
-      executionTime: (performance.now() - started) / 1e3,
-      failedTiles,
-      readMarginM: readDistanceM,
-      analysisType
-    };
-  }
-};
-
-// src/internal/ground-merge.ts
-function resolveCleaner(requested) {
-  if (requested === void 0) return "local";
-  if (typeof requested === "string") {
-    throw new InvalidOptionError(
-      `cleaner ${JSON.stringify(requested)} was removed; leave cleaner unset for the bundled kernel cleaner, or pass a GroundMaterialCleaner object`
-    );
-  }
-  return requested;
-}
-function cleaningExtent(polygon, fetchDistanceM) {
-  const ring = polygon.coordinates[0];
-  if (!ring || ring.length === 0) throw new TypeError("polygon exterior ring is empty");
-  let minLatitude = Number.POSITIVE_INFINITY;
-  let maxLatitude = Number.NEGATIVE_INFINITY;
-  let minLongitude = Number.POSITIVE_INFINITY;
-  let maxLongitude = Number.NEGATIVE_INFINITY;
-  for (const point of ring) {
-    minLongitude = Math.min(minLongitude, point[0]);
-    maxLongitude = Math.max(maxLongitude, point[0]);
-    minLatitude = Math.min(minLatitude, point[1]);
-    maxLatitude = Math.max(maxLatitude, point[1]);
-  }
-  const projected = JSON.parse(requireCore().projectPolygonToMeters(JSON.stringify(polygon)));
-  let minX = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const [x, y] of projected.polygon_meters) {
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-  }
+  const encoded = core2.geometryArtifact(
+    JSON.stringify(body),
+    boxTrees,
+    BigInt(limits.maxGeometryBytes),
+    limits.maxMetadataBytes,
+    BigInt(limits.maxMeshes),
+    BigInt(limits.maxInstances)
+  );
+  const counts = JSON.parse(encoded.treeBoxes);
   return {
-    latitude: (minLatitude + maxLatitude) / 2,
-    longitude: (minLongitude + maxLongitude) / 2,
-    distance: Math.max(fetchDistanceM, Math.hypot(maxX - minX, maxY - minY) / 2)
+    archive: encoded.archive,
+    artifactDigest: encoded.artifactDigest,
+    geometryContentDigest: encoded.contentDigest,
+    encoding: encoded.encoding,
+    ...counts === null ? {} : { treeBoxes: counts }
   };
 }
 
-// src/ground-materials-service.ts
-var GroundMaterialsService = class {
-  request;
-  /** The client's logger: the 20 km2 site warning goes through it (D48). */
-  logger;
-  constructor(options) {
-    this.request = {
-      ...options.fetch === void 0 ? {} : { fetch: options.fetch },
-      ...options.timeoutMs === void 0 ? {} : { timeoutMs: options.timeoutMs },
-      // A retry of a public read reports through the client's logger.
-      ...options.logger === void 0 ? {} : { logger: options.logger }
-    };
-    this.logger = options.logger ?? consoleLogger;
-  }
-  /** Base options for a direct read: the client's transport settings. */
-  directOptions() {
-    return { ...this.request };
-  }
-  /**
-   * One tile's layers composed in-process from the public data hosts.
-   *
-   * Returns `null` for a tile with no material at all.
-   */
-  async getRaw(lat, lon, distance) {
-    const { layers } = await acquireGroundMaterials(pointToBbox(lat, lon, distance), {
-      ...this.directOptions()
-    });
-    const empty = Object.values(layers).every(
-      (collection) => (collection.features?.length ?? 0) === 0
+// src/internal/facade-artifact-guard.ts
+var FacadeArtifactMismatchError = class extends Error {
+  constructor(analysisType, missing, unplanned) {
+    super(
+      `binary ${analysisType}: the facade artifact does not carry exactly the batch's planned target buildings (${missing.length} missing, ${unplanned.length} unplanned); refused before any paid submission`
     );
-    return empty ? null : layers;
+    this.analysisType = analysisType;
+    this.missing = missing;
+    this.unplanned = unplanned;
   }
-  async getArea(polygon, options = {}) {
-    rejectRemovedOption(
-      options,
-      "acquisition",
-      "ground materials are composed from the public data hosts only; remove the option"
-    );
-    const cleaner = resolveCleaner(options.cleaner);
-    const started = performance.now();
-    const analysisType = resolveReadAnalysisType(options.analysisType);
-    const tileQueryHalfM = groundReadDistanceM(analysisType);
-    const grid = generateTilesForPolygon(polygon, {
-      analysisType,
-      ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
-    });
-    const active3 = grid.flat().filter((tile) => !tile.empty);
-    const extent = active3.length > 0 ? cleaningExtent(polygon, tileQueryHalfM) : void 0;
-    if (active3.length === 0 || extent === void 0) {
-      return {
-        layers: {},
-        polygon,
-        totalFeatures: 0,
-        executionTime: (performance.now() - started) / 1e3,
-        failedTiles: [],
-        readMarginM: tileQueryHalfM,
-        analysisType
-      };
+  name = "FacadeArtifactMismatchError";
+};
+function isSurfaceBody(body) {
+  return typeof body["analysis-surfaces"] === "string";
+}
+function checkFacadeArtifact(analysisType, body, artifact) {
+  const geometries = body.geometries;
+  const planned = geometries instanceof KernelGroup ? [...geometries.ids ?? []] : geometries !== null && typeof geometries === "object" && !Array.isArray(geometries) ? Object.keys(geometries) : [];
+  const carried = artifact.targetIds;
+  if (carried === void 0) throw new FacadeArtifactMismatchError(analysisType, planned, ["<unsplit tile>"]);
+  const have = new Set(carried);
+  const want = new Set(planned);
+  const missing = planned.filter((id) => !have.has(id));
+  const unplanned = carried.filter((id) => !want.has(id));
+  if (missing.length > 0 || unplanned.length > 0 || have.size !== carried.length) {
+    throw new FacadeArtifactMismatchError(analysisType, missing, unplanned);
+  }
+}
+
+// src/internal/tree-boxes.ts
+var BOXING_DECISIONS = [
+  "capability-excludes-vegetation",
+  "fallback-model-list"
+];
+function treeBoxDecision(model, geometryGroups2) {
+  const groups = geometryGroups2 === void 0 ? null : [...geometryGroups2];
+  return requireCore().vegetationTreeBoxDecision(
+    model,
+    JSON.stringify(groups)
+  );
+}
+function decisionBoxesTrees(decision) {
+  return BOXING_DECISIONS.includes(decision);
+}
+function treeBoxLogLine(record3) {
+  return `binary ${record3.model}: ${record3.trees} tree(s) converted to ${record3.footprintM.toFixed(1)} m x ${record3.footprintM.toFixed(1)} m x ${record3.heightM.toFixed(1)} m boxes in the geometry layer (${record3.boxesSent} sent, ${record3.seatedOnTerrain} seated on terrain, ${record3.boxesSent - record3.seatedOnTerrain} on z=0); this model carries no vegetation group on the binary transport (${record3.decidedBy})`;
+}
+function treeBoxCollisionLine(record3) {
+  const ids = record3.idCollisions;
+  return `binary ${record3.model}: ${ids.length} tree id(s) already name a building in \`geometries\`; the building was kept and the box dropped (${ids.slice(0, 5).join(", ")})`;
+}
+function treeBoxOutOfTileLine(record3) {
+  return `binary ${record3.model}: ${record3.outsideTile} of ${record3.boxesSent} tree box(es) fall outside the 512 m inference tile this payload describes and cannot affect its result. They are still sent \u2014 dropping geometry silently is worse \u2014 but a whole site's trees on one payload is usually a missing per-tile assignment; runArea does that for you.`;
+}
+
+// src/internal/binary-submission.ts
+var MAX_CONTROL_METADATA_BYTES = 4194304;
+function geometryFields() {
+  return Array.from(requireCore().binaryGeometryFields());
+}
+async function capability(gateway, signal) {
+  const raw = await gateway.requestJson(
+    "/binary/v1/capabilities",
+    signal === void 0 ? {} : { signal }
+  );
+  const value = object(raw, "binary capability");
+  if (value.inputFormat !== "irbf" || value.resultFormat !== "irbf" || value.wireVersion !== 1) {
+    throw new TypeError("gateway has an incompatible binary wire format");
+  }
+  const geometrySchemas = Array.isArray(value.geometrySchemas) ? value.geometrySchemas : [1];
+  const limits = object(value.limits, "binary limits");
+  const parsedLimits = {
+    maxGeometryBytes: positive(limits.maxGeometryBytes, 67108864, "maxGeometryBytes"),
+    // Ground polygons and point vegetation share this bounded input metadata budget.
+    maxMetadataBytes: positive(limits.maxMetadataBytes, 8388608, "maxMetadataBytes"),
+    maxMeshes: positive(limits.maxMeshes, 1e5, "maxMeshes"),
+    maxInstances: positive(limits.maxInstances, 1e5, "maxInstances"),
+    maxResultBytes: positive(limits.maxResultBytes, 268435456, "maxResultBytes"),
+    maxResultCells: positive(limits.maxResultCells, 16777216, "maxResultCells"),
+    maxTriangleValues: positive(limits.maxTriangleValues, 67108864, "maxTriangleValues")
+  };
+  const models = object(value.models, "binary capability models");
+  for (const [name, raw2] of Object.entries(models)) {
+    const model = object(raw2, `binary model ${name}`);
+    if (!Array.isArray(model.geometryGroups) || !model.geometryGroups.every((item) => typeof item === "string") || !Array.isArray(model.resultFamilies) || !model.resultFamilies.every((item) => typeof item === "string")) {
+      throw new TypeError(`binary model ${name} is invalid`);
     }
-    const transport3 = httpRangeTransport({
-      ...this.directOptions(),
-      ...options.signal === void 0 ? {} : { signal: options.signal }
+  }
+  const facadeTargets = Number.isSafeInteger(value.facadeTargets) && value.facadeTargets > 0 ? value.facadeTargets : void 0;
+  return {
+    inputFormat: "irbf",
+    resultFormat: "irbf",
+    wireVersion: 1,
+    geometrySchemas,
+    models,
+    limits: parsedLimits,
+    ...facadeTargets === void 0 ? {} : { facadeTargets }
+  };
+}
+async function prepareBinary(prepared, supported) {
+  const schema = requireCore().geometrySchemaVersion();
+  const schemas = supported.geometrySchemas ?? [1];
+  if (!schemas.includes(schema)) {
+    throw new TypeError(`this endpoint reads binary geometry schema(s) ${JSON.stringify(schemas)}; this SDK writes schema ${schema}. The server needs the geometry schema ${schema} update.`);
+  }
+  const model = supported.models[prepared.analysisType];
+  if (model === void 0 || !Array.isArray(model.geometryGroups) || !Array.isArray(model.resultFamilies) || model.resultFamilies.length === 0) {
+    throw new TypeError(`model ${prepared.analysisType} does not support binary transport`);
+  }
+  const decision = treeBoxDecision(prepared.analysisType, model.geometryGroups);
+  const trees = prepared.body.vegetation;
+  const boxes2 = decisionBoxesTrees(decision) && trees !== void 0 && trees !== null;
+  if (boxes2 && (typeof trees !== "object" || Array.isArray(trees))) {
+    throw new TypeError(`binary ${prepared.analysisType}: vegetation must be an object keyed by tree id to be boxed into the geometry layer`);
+  }
+  const body = { ...prepared.body };
+  if (boxes2) delete body.vegetation;
+  const fields = geometryFields();
+  const present2 = fields.filter((name) => {
+    const value = body[name];
+    return value !== void 0 && value !== null && typeof value === "object";
+  });
+  for (const name of present2) if (!model.geometryGroups.includes(name)) {
+    throw new TypeError(`model ${prepared.analysisType} does not support binary geometry group ${name}`);
+  }
+  const control = { ...body };
+  for (const name of fields) delete control[name];
+  delete control["binary-results"];
+  const controlJson = JSON.stringify(control);
+  if (controlJson === void 0) throw new TypeError("binary control has no JSON wire form");
+  canonicalJsonBytes2(controlJson, Math.min(
+    supported.limits.maxMetadataBytes,
+    MAX_CONTROL_METADATA_BYTES
+  ), "binary control");
+  const tile = prepared.artifact === void 0 ? bodyArtifact(prepared.body, boxes2, supported.limits) : prepared.artifact(boxes2, { ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
+  if (prepared.artifact !== void 0 && isSurfaceBody(prepared.body)) {
+    checkFacadeArtifact(prepared.analysisType, prepared.body, tile);
+  }
+  const artifact = tile;
+  const treeBoxes = tile.treeBoxes === void 0 ? void 0 : { ...tile.treeBoxes, model: prepared.analysisType, decidedBy: decision };
+  return {
+    artifact,
+    control,
+    limits: supported.limits,
+    ...treeBoxes === void 0 ? {} : { treeBoxes }
+  };
+}
+async function uploadGeometry2(uploadGateway, fetch2, prepared, timeoutMs, signal) {
+  const response = await uploadGateway.requestJson("/uploads/presign", {
+    method: "POST",
+    body: { content_length: prepared.artifact.archive.byteLength },
+    ...signal === void 0 ? {} : { signal }
+  });
+  const value = object(response, "presign response");
+  const uploadUrl = https(value["upload-url"], "upload-url");
+  const getUrl = https(value["get-url"], "get-url");
+  await uploadPresignedZip(uploadUrl, prepared.artifact.archive, {
+    fetch: fetch2,
+    timeoutMs,
+    ...signal === void 0 ? {} : { signal }
+  });
+  return getUrl;
+}
+function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
+  return {
+    geometry: {
+      url: geometryUrl,
+      encoding: binary.artifact.encoding,
+      artifactDigest: binary.artifact.artifactDigest,
+      contentDigest: binary.artifact.geometryContentDigest,
+      byteLength: binary.artifact.archive.byteLength
+    },
+    control: binary.control,
+    limits: binary.limits,
+    resultFormat,
+    ...binary.artifact.targets === void 0 ? {} : { targets: binary.artifact.targets }
+  };
+}
+async function submitBinary(gateway, prepared, binary, parseJob2, signal, beforeDispatch, idempotencyKey) {
+  const envelope = JSON.stringify({
+    inputFormat: "irbf",
+    resultFormat: binary.resultFormat,
+    wireVersion: 1,
+    geometry: binary.geometry,
+    control: binary.control,
+    ...binary.targets === void 0 ? {} : { targets: binary.targets }
+  });
+  const body = canonicalJsonBytes2(
+    envelope,
+    Math.min(
+      binary.limits.maxMetadataBytes,
+      MAX_CONTROL_METADATA_BYTES
+    ) + 65536,
+    "binary submission envelope"
+  );
+  const endpointPath = `/binary/v1/async/${encodeURIComponent(prepared.analysisType)}`;
+  const headers = {
+    "Content-Type": "application/json",
+    ...idempotencyKey === void 0 ? {} : { "Idempotency-Key": idempotencyKey }
+  };
+  let response;
+  try {
+    response = await dispatchKeyed({
+      gateway,
+      endpointPath,
+      body,
+      headers,
+      ...idempotencyKey === void 0 ? {} : { idempotencyKey },
+      ...beforeDispatch === void 0 ? {} : { beforeDispatch },
+      ...signal === void 0 ? {} : { signal }
     });
-    const rectangles = active3.map((tile) => pointToBbox(tile.centroid.latitude, tile.centroid.longitude, tileQueryHalfM));
-    const site = siteRectangle(rectangles);
-    const origin = kernelPolygonOrigin(polygon);
-    const direct = {
-      ...this.directOptions(),
-      ...options.signal === void 0 ? {} : { signal: options.signal },
-      transport: transport3,
-      // The same frame origin for every chunk, so one road buffers to one
-      // polygon whichever chunk sees it (D39).
-      frameOrigin: [origin.lon, origin.lat],
-      cleaningExtent: extent,
-      // The rectangles the simulation actually reads: a chunk meeting none of
-      // them is not composed (an L-shaped polygon's empty quadrant).
-      tileRectangles: rectangles,
-      logger: this.logger,
-      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-      ...options.defaultMaterial === void 0 ? {} : { defaultLayer: options.defaultMaterial },
-      ...options.zStep === void 0 ? {} : { zStep: options.zStep },
-      ...options.overtureRelease === void 0 ? {} : { overtureRelease: options.overtureRelease }
-    };
-    const area = await acquireGroundMaterialsArea(site, direct);
-    const overtureRelease = area.overtureRelease === "" ? void 0 : area.overtureRelease;
-    let layers = JSON.parse(area.layersJson);
-    if (cleaner !== "local" && Object.keys(layers).length > 0) {
-      layers = await cleaner.cleanV3(layers, {
-        latitude: extent.latitude,
-        longitude: extent.longitude,
-        distance: extent.distance,
-        ...options.defaultMaterial === void 0 ? {} : { defaultLayer: options.defaultMaterial },
-        ...options.zStep === void 0 ? {} : { zStep: options.zStep }
-      });
+  } catch (error) {
+    if (error instanceof SubmissionUncertainError) throw error;
+    if (error instanceof TransportError && error.phase !== "pre-dispatch") {
+      throw new SubmissionUncertainError([]);
     }
-    const totalFeatures = Object.values(layers).reduce(
-      (sum, collection) => sum + (collection.features?.length ?? 0),
-      0
+    throw error;
+  }
+  const rejected = response.status < 200 || response.status >= 300;
+  if (rejected && idempotencyKey !== void 0) {
+    throw new TransportError(
+      `binary submission received HTTP ${response.status}`,
+      "response",
+      "http",
+      "POST",
+      response.status
     );
-    return {
-      layers,
-      polygon,
-      totalFeatures,
-      executionTime: (performance.now() - started) / 1e3,
-      // A site-level read succeeds or fails as one. A partial ground set is
-      // not a degraded answer. It is an emptier city that nobody can see (D48).
-      failedTiles: [],
-      readMarginM: tileQueryHalfM,
-      analysisType,
-      ...overtureRelease === void 0 ? {} : { overtureRelease }
-    };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(response.content));
+  } catch {
+    throw new SubmissionUncertainError([]);
+  }
+  if (rejected) {
+    if (!preacceptRejection(response.status, raw)) {
+      throw new SubmissionUncertainError(jobIds(raw));
+    }
+    throw new TransportError(
+      `binary submission received HTTP ${response.status}`,
+      "response",
+      "http",
+      "POST",
+      response.status
+    );
+  }
+  let record3;
+  let job;
+  try {
+    record3 = object(raw, "binary accepted response");
+    job = parseJob2(record3);
+  } catch {
+    throw new SubmissionUncertainError(jobIds(raw));
+  }
+  try {
+    validateAck(record3.binary, binary.geometry, binary.resultFormat);
+  } catch {
+    throw new SubmissionUncertainError([job.jobId]);
+  }
+  return job;
+}
+function preacceptRejection(status, raw) {
+  if (![400, 401, 402, 404, 413, 415, 422, 429].includes(status) || raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const value = raw;
+  return Object.keys(value).sort().join() === "code,detail,status,title,type" && value.status === status && value.code === "JOB_BINARY_REJECTED" && [value.type, value.title, value.detail].every((item) => typeof item === "string");
+}
+function validateAck(raw, geometry, resultFormat) {
+  const value = object(raw, "binary acknowledgement");
+  if (value.inputFormat !== "irbf" || value.resultFormat !== resultFormat || value.wireVersion !== 1 || value.artifactDigest !== geometry.artifactDigest || value.contentDigest !== geometry.contentDigest) {
+    throw new TypeError("binary acknowledgement does not match the submitted artifact");
+  }
+}
+function positive(value, cap, name) {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > cap) throw new TypeError(`binary ${name} is invalid`);
+  return value;
+}
+function object(value, name) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${name} must be an object`);
+  return value;
+}
+function https(value, name) {
+  if (typeof value !== "string") throw new TypeError(`presign response has no ${name}`);
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new TypeError(`presign response ${name} is invalid`);
+  return url.href;
+}
+function jobIds(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+  const id = value.jobId;
+  return typeof id === "string" && id ? [id] : [];
+}
+function canonicalJsonBytes2(value, maxBytes, name) {
+  try {
+    return requireCore().canonicalMetadataJson(value, maxBytes, 32);
+  } catch (error) {
+    if (error instanceof Error && /byte limit/i.test(error.message)) {
+      throw new RangeError(`${name} exceeds its byte limit`);
+    }
+    throw error;
+  }
+}
+
+// src/internal/capability-cache.ts
+var CAPABILITY_TTL_MS = 6e4;
+var CAPABILITY_MAX_ATTEMPTS = 3;
+var CAPABILITY_MIN_BACKOFF_MS = 250;
+var CAPABILITY_MAX_BACKOFF_MS = 1e3;
+function isRetryableCapabilityError(error) {
+  if (!(error instanceof TransportError)) return false;
+  if (error.reason === "network" || error.reason === "timeout") return true;
+  if (error.reason === "http" && error.status !== void 0) {
+    return error.status === 429 || error.status >= 500 && error.status < 600;
+  }
+  return false;
+}
+async function pauseBeforeCapabilityRetry(signal) {
+  const waitMs = CAPABILITY_MIN_BACKOFF_MS + Math.random() * (CAPABILITY_MAX_BACKOFF_MS - CAPABILITY_MIN_BACKOFF_MS);
+  try {
+    await delay(waitMs, signal ?? new AbortController().signal);
+  } catch {
+    throw new TransportError(
+      "binary capability GET was aborted while waiting to retry",
+      "pre-dispatch",
+      "aborted",
+      "GET"
+    );
+  }
+}
+async function fetchCapability(gateway, signal) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await capability(gateway, signal);
+    } catch (error) {
+      if (attempt >= CAPABILITY_MAX_ATTEMPTS || !isRetryableCapabilityError(error)) throw error;
+    }
+    await pauseBeforeCapabilityRetry(signal);
+  }
+}
+var CapabilityCache = class {
+  constructor(gateway) {
+    this.gateway = gateway;
+  }
+  entry;
+  get(signal) {
+    const now2 = Date.now();
+    if (this.entry !== void 0 && now2 - this.entry.at < CAPABILITY_TTL_MS) return this.entry.value;
+    const value = fetchCapability(this.gateway, signal).catch((error) => {
+      if (this.entry?.value === value) this.entry = void 0;
+      throw error;
+    });
+    this.entry = { at: now2, value };
+    return value;
   }
 };
+
+// src/internal/binary-admission.ts
+var limit = 2;
+var active2 = 0;
+var waiting3 = [];
+async function withBinaryAdmission(operation, signal) {
+  if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
+  if (active2 < limit && waiting3.length === 0) active2 += 1;
+  else await new Promise((resolve, reject) => {
+    const waiter = { resolve, reject, ...signal === void 0 ? {} : { signal } };
+    if (signal !== void 0) {
+      const abort = () => {
+        const index2 = waiting3.indexOf(waiter);
+        if (index2 >= 0) waiting3.splice(index2, 1);
+        reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+      };
+      waiter.abort = abort;
+      signal.addEventListener("abort", abort, { once: true });
+    }
+    waiting3.push(waiter);
+  });
+  try {
+    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
+    return await operation();
+  } finally {
+    active2 -= 1;
+    while (active2 < limit && waiting3.length > 0) {
+      const waiter = waiting3.shift();
+      if (waiter.signal !== void 0 && waiter.abort !== void 0) {
+        waiter.signal.removeEventListener("abort", waiter.abort);
+      }
+      active2 += 1;
+      waiter.resolve();
+    }
+  }
+}
+
+// src/internal/binary-url-cache.ts
+var FALLBACK_TTL_MS = 60 * 60 * 1e3;
+var SAFETY_MARGIN_MS = 60 * 1e3;
+var MAX_URL_LENGTH = 8192;
+var MAX_ENTRIES = 256;
+var entries2 = /* @__PURE__ */ new Map();
+var BinaryUrlCache = class {
+  constructor(enabled, now2 = Date.now) {
+    this.enabled = enabled;
+    this.now = now2;
+  }
+  get(key) {
+    if (!this.enabled) return void 0;
+    const entry = entries2.get(key);
+    if (entry === void 0) return void 0;
+    if (this.now() >= entry.expiresAt) {
+      entries2.delete(key);
+      return void 0;
+    }
+    entries2.delete(key);
+    entries2.set(key, entry);
+    return entry.url;
+  }
+  set(key, url) {
+    if (!this.enabled || url.length > MAX_URL_LENGTH) return;
+    const expiresAt = reusableUntil(url, this.now());
+    if (expiresAt === void 0 || expiresAt <= this.now()) return;
+    entries2.delete(key);
+    entries2.set(key, { url, expiresAt });
+    while (entries2.size > MAX_ENTRIES) entries2.delete(entries2.keys().next().value);
+  }
+};
+function reusableUntil(raw, now2) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return void 0;
+  }
+  const date = url.searchParams.get("X-Amz-Date");
+  const seconds = url.searchParams.get("X-Amz-Expires");
+  if (date === null && seconds === null) return now2 + FALLBACK_TTL_MS - SAFETY_MARGIN_MS;
+  if (date === null || seconds === null || !/^\d{8}T\d{6}Z$/.test(date) || !/^\d+$/.test(seconds)) {
+    return void 0;
+  }
+  const signedAt = Date.UTC(
+    Number(date.slice(0, 4)),
+    Number(date.slice(4, 6)) - 1,
+    Number(date.slice(6, 8)),
+    Number(date.slice(9, 11)),
+    Number(date.slice(11, 13)),
+    Number(date.slice(13, 15))
+  );
+  const ttl = Number(seconds) * 1e3;
+  if (!Number.isSafeInteger(ttl) || ttl <= 0) return void 0;
+  const canonical = new Date(signedAt).toISOString().replace(/[-:]/g, "").replace(".000", "");
+  if (canonical !== date) return void 0;
+  return Math.min(signedAt + ttl, now2 + FALLBACK_TTL_MS) - SAFETY_MARGIN_MS;
+}
+
+// src/internal/binary-retention.ts
+var BUDGET_BYTES = 64 * 1024 * 1024;
+var BinaryRetention = class {
+  held = /* @__PURE__ */ new WeakMap();
+  bytes = 0;
+  get(prepared) {
+    return this.held.get(prepared);
+  }
+  /** Hold this artifact if the budget allows. Returns the bytes now held for it. */
+  keep(prepared, binary) {
+    if (this.held.has(prepared)) return binary.artifact.archive.byteLength;
+    if (this.bytes >= BUDGET_BYTES) return 0;
+    this.held.set(prepared, binary);
+    this.bytes += binary.artifact.archive.byteLength;
+    return binary.artifact.archive.byteLength;
+  }
+  /** Drop what is held for this submission. A no-op when nothing is. */
+  release(prepared) {
+    const binary = this.held.get(prepared);
+    if (binary === void 0) return;
+    this.held.delete(prepared);
+    this.bytes -= binary.artifact.archive.byteLength;
+  }
+  /** What this client is holding right now. Zero when every tile is released. */
+  get retainedBytes() {
+    return this.bytes;
+  }
+};
+
+// src/internal/status-batch.ts
+var STATUS_BATCH_LIMIT = 50;
+function rejectsTheForm(error) {
+  if (!(error instanceof TransportError) || error.status === void 0) return false;
+  return error.status === 400 || error.status === 404 || error.status === 405 || error.status === 501;
+}
+function chunk(ids) {
+  const chunks = [];
+  for (let start = 0; start < ids.length; start += STATUS_BATCH_LIMIT) {
+    chunks.push(ids.slice(start, start + STATUS_BATCH_LIMIT));
+  }
+  return chunks;
+}
+function readJobs(payload) {
+  if (Array.isArray(payload)) return { jobs: payload, batched: false };
+  if (payload !== null && typeof payload === "object") {
+    const jobs = payload.jobs;
+    if (Array.isArray(jobs)) return { jobs, batched: true };
+  }
+  return void 0;
+}
+async function fetchChunk(gateway, ids, signal) {
+  const query = ids.map((id) => encodeURIComponent(id)).join(",");
+  let payload;
+  try {
+    payload = await gateway.requestJson(
+      `/async/jobs?ids=${query}`,
+      signal === void 0 ? {} : { signal }
+    );
+  } catch (error) {
+    if (rejectsTheForm(error)) return "unsupported";
+    throw error;
+  }
+  const read = readJobs(payload);
+  if (read === void 0) return "unsupported";
+  const statuses = /* @__PURE__ */ new Map();
+  for (const entry of read.jobs) {
+    let job;
+    try {
+      job = jobFromResponse(entry);
+    } catch {
+      continue;
+    }
+    statuses.set(job.jobId, job);
+  }
+  return { statuses, batched: read.batched };
+}
+async function fetchStatusBatch(gateway, jobIds2, options = {}) {
+  const statuses = /* @__PURE__ */ new Map();
+  const unanswered = [];
+  let answered = 0;
+  let lacking = false;
+  const failedIds = [];
+  let retryAfterS;
+  if (jobIds2.length === 0) return { statuses, unanswered, batched: false, lacking: false };
+  const chunks = chunk(jobIds2);
+  const workers = Math.max(1, Math.min(options.maxWorkers ?? 5, chunks.length));
+  let cursor = 0;
+  await Promise.all(Array.from({ length: workers }, async () => {
+    while (cursor < chunks.length) {
+      const ids = chunks[cursor++];
+      if (ids === void 0) return;
+      let answer;
+      try {
+        answer = await fetchChunk(gateway, ids, options.signal);
+      } catch (error) {
+        if (options.signal?.aborted === true) throw error;
+        if (isTransientStatusError(error) && (error.reason === "http" || options.routeProven === true)) {
+          failedIds.push(...ids);
+          if (error.retryAfterS !== void 0) retryAfterS = Math.max(retryAfterS ?? 0, error.retryAfterS);
+          continue;
+        }
+        unanswered.push(...ids);
+        continue;
+      }
+      if (answer === "unsupported") {
+        lacking = true;
+        unanswered.push(...ids);
+        continue;
+      }
+      if (answer.batched) answered += 1;
+      else lacking = true;
+      for (const id of ids) {
+        const job = answer.statuses.get(id);
+        if (job === void 0) unanswered.push(id);
+        else statuses.set(id, job);
+      }
+    }
+  }));
+  return {
+    statuses,
+    unanswered,
+    batched: answered > 0,
+    lacking,
+    ...failedIds.length === 0 ? {} : { failedIds },
+    ...retryAfterS === void 0 ? {} : { retryAfterS }
+  };
+}
+
+// src/internal/binary-submit-coordinator.ts
+function awaitAbortable(promise, signal) {
+  if (signal === void 0) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      }
+    );
+  });
+}
+async function sharedUpload(uploads, key, uploadGateway, fetch2, prepared, timeoutMs, signal) {
+  let upload = uploads.get(key);
+  if (upload === void 0) {
+    upload = uploadGeometry2(uploadGateway, fetch2, prepared, timeoutMs, void 0).finally(() => {
+      uploads.delete(key);
+    });
+    uploads.set(key, upload);
+  }
+  return awaitAbortable(upload, signal);
+}
+function uploadsKey(encoding, artifactDigest) {
+  return `${encoding}
+${artifactDigest}`;
+}
+function urlCacheKey(uploadBaseUrl, gatewayBaseUrl, digest, encoding, artifactDigest) {
+  return [gatewayBaseUrl, uploadBaseUrl, digest ?? "", encoding, artifactDigest].join("\n");
+}
+function boundAuth(headers, expected, auth) {
+  return async () => {
+    const current = await auth();
+    if (await exactAuthHeadersDigest(current) !== expected) {
+      throw new AuthPartitionChangedError();
+    }
+    return headers;
+  };
+}
+async function resolveAuth(options) {
+  const deadline = new Deadline(options.signal, options.timeoutMs);
+  try {
+    const headers = await deadline.wait(() => options.auth());
+    return normalizeAuthHeaders(headers);
+  } catch {
+    const stopped = deadline.reason();
+    throw new TransportError(
+      stopped === "timeout" ? "gateway request timed out before dispatch" : stopped === "aborted" ? "gateway request was aborted before dispatch" : "gateway request authentication failed",
+      "pre-dispatch",
+      stopped ?? "auth",
+      "POST"
+    );
+  } finally {
+    deadline.close();
+  }
+}
+function transport(baseUrl, auth, options) {
+  return new GatewayTransport({ baseUrl, auth, fetch: options.fetch, timeoutMs: options.timeoutMs });
+}
+async function prepareUncached(options, fresh) {
+  return withBinaryAdmission(async () => {
+    try {
+      const binary = await options.prepare(fresh);
+      if (options.uploads === void 0) {
+        const geometryUrl2 = await uploadGeometry2(
+          options.uploadGateway,
+          options.fetch,
+          binary,
+          options.timeoutMs,
+          options.signal
+        );
+        return binarySubmission(binary, geometryUrl2, options.resultFormat);
+      }
+      const key = uploadsKey(binary.artifact.encoding, binary.artifact.artifactDigest);
+      const geometryUrl = await sharedUpload(
+        options.uploads,
+        key,
+        options.uploadGateway,
+        options.fetch,
+        binary,
+        options.timeoutMs,
+        options.signal
+      );
+      return binarySubmission(binary, geometryUrl, options.resultFormat);
+    } finally {
+      options.releasePrepared();
+    }
+  }, options.signal);
+}
+async function uncached(options, fresh) {
+  const binary = await prepareUncached(options, fresh);
+  return submitBinary(
+    options.gateway,
+    options.prepared,
+    binary,
+    options.parseJob,
+    options.signal,
+    options.beforeDispatch,
+    options.idempotencyKey
+  );
+}
+async function submitPreparedBinary(options) {
+  if (!options.reuseEnabled) return uncached(options, false);
+  const headers = await resolveAuth(options);
+  const digest = await exactAuthHeadersDigest(headers);
+  if (digest === void 0) return uncached(options, false);
+  const strictAuth = boundAuth(headers, digest, options.auth);
+  const gateway = transport(options.gateway.baseUrl, strictAuth, options);
+  const uploadGateway = transport(options.uploadGateway.baseUrl, strictAuth, options);
+  let paidDispatched = false;
+  const beforeDispatch = () => {
+    options.beforeDispatch?.();
+    paidDispatched = true;
+  };
+  try {
+    const binary = await withBinaryAdmission(async () => {
+      try {
+        const prepared = await options.prepare(false);
+        const cacheKey2 = urlCacheKey(
+          uploadGateway.baseUrl,
+          gateway.baseUrl,
+          digest,
+          prepared.artifact.encoding,
+          prepared.artifact.artifactDigest
+        );
+        let url = options.urlCache.get(cacheKey2);
+        if (url === void 0) {
+          if (options.uploads === void 0) {
+            url = await uploadGeometry2(
+              uploadGateway,
+              options.fetch,
+              prepared,
+              options.timeoutMs,
+              options.signal
+            );
+          } else {
+            const key = uploadsKey(prepared.artifact.encoding, prepared.artifact.artifactDigest);
+            url = await sharedUpload(
+              options.uploads,
+              key,
+              uploadGateway,
+              options.fetch,
+              prepared,
+              options.timeoutMs,
+              options.signal
+            );
+          }
+          options.urlCache.set(cacheKey2, url);
+        }
+        return binarySubmission(prepared, url, options.resultFormat);
+      } finally {
+        options.releasePrepared();
+      }
+    }, options.signal);
+    return await submitBinary(
+      gateway,
+      options.prepared,
+      binary,
+      options.parseJob,
+      options.signal,
+      beforeDispatch,
+      options.idempotencyKey
+    );
+  } catch (error) {
+    if (!(error instanceof AuthPartitionChangedError)) throw error;
+    if (paidDispatched) throw error;
+    return uncached(options, true);
+  }
+}
+
+// src/results/retired.ts
+var RETIRED_SIDECAR_KEYS = [
+  "values_bin",
+  "values_bin_dtype",
+  "values_bin_encoding",
+  "cell-tris_bin",
+  "cell-tris_bin_dtype",
+  "cell-tris_offsets_bin",
+  "cell-tris_bin_encoding",
+  "cell-tris_offsets_bin_encoding"
+];
+var RETIRED_ROOT_KEYS = [
+  "output_bin",
+  "output_bin_dtype",
+  "output_bin_shape",
+  "output_bin_encoding",
+  "values_bin",
+  "values_bin_dtype",
+  "values_bin_shape",
+  "values_bin_encoding"
+];
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function rejectRetiredResultFields(value) {
+  if (!isRecord(value)) return;
+  for (const field of RETIRED_ROOT_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(value, field)) {
+      throw new TypeError(`result contains retired field ${field}`);
+    }
+  }
+  if (!isRecord(value.surfaces)) return;
+  for (const [key, entry] of Object.entries(value.surfaces)) {
+    if (!isRecord(entry)) continue;
+    for (const field of RETIRED_SIDECAR_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(entry, field)) {
+        throw new TypeError(`surface ${key} contains retired result field ${field}`);
+      }
+    }
+  }
+}
+
+// src/internal/binary-result.ts
+var F16_EXPONENT_SCALE = Array.from({ length: 31 }, (_, exponent) => 2 ** (exponent - 25));
+function decodeBinaryResultDocument(document2, limits) {
+  checkLimits(limits);
+  const source = typeof SharedArrayBuffer !== "undefined" && document2.buffer instanceof SharedArrayBuffer ? document2.slice() : document2;
+  const inspected = callCore("inspectBinaryResult", source, limits);
+  const decoded = { ...inspected, sections: inspected.sections.map((section) => {
+    const [offset, length] = section.byteRange;
+    return { ...section, bytes: source.subarray(offset, offset + length) };
+  }) };
+  return projectDecoded(decoded);
+}
+function decodeCompactGridDocument(document2, limits) {
+  checkLimits(limits);
+  const source = typeof SharedArrayBuffer !== "undefined" && document2.buffer instanceof SharedArrayBuffer ? document2.slice() : document2;
+  const decoded = callCore("inspectBinaryResult", source, limits);
+  if (decoded.family !== "numeric-grid" && decoded.family !== "categorical-grid") return void 0;
+  const metadata = object2(JSON.parse(decoded.metadataJson), "binary result metadata");
+  const sections = new Map(decoded.sections.map((section) => {
+    const [offset, length] = section.byteRange;
+    return [section.role, { ...section, bytes: source.subarray(offset, offset + length) }];
+  }));
+  const data = requireSection(sections, 1), validity = requireSection(sections, 2);
+  const shape = metadata.shape;
+  if (!Array.isArray(shape) || shape.length !== 2) throw new TypeError("grid shape is invalid");
+  const rows = shape[0], columns = shape[1];
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(columns)) {
+    throw new TypeError("grid shape is invalid");
+  }
+  const bits2 = validity.bytes.slice();
+  if (decoded.family === "categorical-grid") {
+    if (data.dtype !== "u32") throw new TypeError("categorical grid data must use u32 codes");
+    const raw = metadata.dictionary;
+    if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+      throw new TypeError("categorical dictionary is missing");
+    }
+    return {
+      route: "compact-grid",
+      kind: "categorical",
+      shape: [rows, columns],
+      values: typed(data).slice(),
+      validity: bits2,
+      dictionary: Object.freeze(Array.from(raw))
+    };
+  }
+  if (data.dtype === "f64") {
+    return {
+      route: "compact-grid",
+      kind: "numeric",
+      shape: [rows, columns],
+      values: typed(data).slice(),
+      validity: bits2
+    };
+  }
+  const sourceValues = numericSource(data), divisor = valueDivisor(metadata, data);
+  const values = new Float32Array(Number(data.elementCount));
+  for (let index2 = 0; index2 < values.length; index2 += 1) {
+    values[index2] = sourceValues.at(index2) / divisor;
+  }
+  return {
+    route: "compact-grid",
+    kind: "numeric",
+    shape: [rows, columns],
+    values,
+    validity: bits2
+  };
+}
+function callCore(method, document2, limits) {
+  return requireCore()[method](
+    document2,
+    BigInt(limits.maxTotalBytes),
+    limits.maxMetadataBytes,
+    64,
+    BigInt(Math.max(limits.maxCells + 1, limits.maxTriangleValues)),
+    32,
+    BigInt(limits.maxCells),
+    BigInt(limits.maxTriangleValues)
+  );
+}
+function projectDecoded(decoded) {
+  const metadata = object2(JSON.parse(decoded.metadataJson), "binary result metadata");
+  const sections = new Map(decoded.sections.map((section) => [section.role, section]));
+  if (decoded.family === "surfaces") return {
+    family: decoded.family,
+    value: surfaces(metadata, sections)
+  };
+  const data = requireSection(sections, 1), validity = requireSection(sections, 2);
+  const dataValues = numericSource(data);
+  let dictionary;
+  if (decoded.family === "categorical-grid") {
+    dictionary = metadata.dictionary;
+    if (!Array.isArray(dictionary)) throw new TypeError("categorical dictionary is missing");
+  }
+  const attributes = { ...object2(metadata.attributes ?? {}, "result attributes") };
+  projectArrays(attributes, metadata.arrays, sections);
+  if (decoded.family === "vector") return { family: decoded.family, value: {
+    ...attributes,
+    output: materializeRange(
+      dataValues,
+      validity,
+      0,
+      Number(data.elementCount),
+      dictionary,
+      valueDivisor(metadata, data)
+    )
+  } };
+  const shape = metadata.shape;
+  if (!Array.isArray(shape) || shape.length !== 2) throw new TypeError("grid shape is invalid");
+  const rows = shape[0], columns = shape[1], matrix = [];
+  for (let row = 0; row < rows; row += 1) {
+    matrix.push(materializeRange(
+      dataValues,
+      validity,
+      row * columns,
+      (row + 1) * columns,
+      dictionary,
+      valueDivisor(metadata, data)
+    ));
+  }
+  return {
+    family: decoded.family,
+    value: metadata.root === "array" ? matrix : { ...attributes, output: matrix }
+  };
+}
+function checkLimits(limits) {
+  for (const [name, value] of Object.entries(limits)) checkLimit(value, name);
+}
+function projectArrays(target, raw, sections) {
+  if (raw === void 0) return;
+  if (!Array.isArray(raw)) throw new TypeError("binary result arrays must be an array");
+  for (const candidate of raw) {
+    const descriptor = object2(candidate, "binary result array descriptor");
+    const path = descriptor.path, shape = descriptor.shape;
+    const data = requireSection(sections, descriptor.dataRole);
+    const validity = descriptor.validityRole;
+    const value = materializeShape(
+      numericSource(data),
+      validity === void 0 ? void 0 : requireSection(sections, validity),
+      shape,
+      valueDivisor(descriptor, data)
+    );
+    let owner = target;
+    for (const key of path.slice(0, -1)) {
+      const child = Object.hasOwn(owner, key) ? owner[key] : void 0;
+      if (child === void 0) defineOwn(owner, key, {});
+      else if (child === null || typeof child !== "object" || Array.isArray(child)) {
+        throw new Error("binary result auxiliary path collides with metadata");
+      }
+      owner = owner[key];
+    }
+    defineOwn(owner, path[path.length - 1], value);
+  }
+}
+function materializeShape(values, validity, shape, divisor) {
+  let cursor = 0;
+  const visit = (depth) => {
+    if (depth === shape.length) {
+      const index2 = cursor++;
+      return validity !== void 0 && !validAt(validity, index2) ? null : values.at(index2) / divisor;
+    }
+    const output = new Array(shape[depth]);
+    for (let index2 = 0; index2 < output.length; index2 += 1) output[index2] = visit(depth + 1);
+    return output;
+  };
+  return visit(0);
+}
+function surfaces(metadata, sections) {
+  if (!Array.isArray(metadata.frames)) throw new TypeError("surface frames are missing");
+  const values = requireSection(sections, 1), valueValidity = requireSection(sections, 2);
+  const valueSource = numericSource(values);
+  const areas = sections.get(3), areaValidity = sections.get(4);
+  const offsets = sections.get(5);
+  const triangles = sections.has(6) ? typed(requireSection(sections, 6)) : void 0;
+  const triangleBits = sections.get(7);
+  const output = /* @__PURE__ */ Object.create(null);
+  for (const raw of metadata.frames) {
+    const frame = object2(raw, "surface frame"), shape = frame.shape;
+    if (!Array.isArray(shape) || shape.length !== 2) throw new TypeError("surface shape is invalid");
+    const start = frame.start, end = start + shape[0] * shape[1];
+    const attributes2 = object2(frame.attributes ?? {}, "surface attributes");
+    const item = {
+      ...attributes2,
+      nu: shape[0],
+      nv: shape[1],
+      values: materializeRange(
+        valueSource,
+        valueValidity,
+        start,
+        end,
+        void 0,
+        valueDivisor(metadata, values)
+      )
+    };
+    if (frame.hasCellArea === true && areas !== void 0 && areaValidity !== void 0) {
+      item["cell-area"] = materializeRange(numericSource(areas), areaValidity, start, end);
+    }
+    if (frame.hasCellTris === true && offsets !== void 0 && triangles !== void 0) {
+      const cells = new Array(end - start);
+      for (let cell = start; cell < end; cell += 1) {
+        if (triangleBits !== void 0 && !validAt(triangleBits, cell)) {
+          cells[cell - start] = null;
+          continue;
+        }
+        const first = u64OffsetAt(offsets, cell), last = u64OffsetAt(offsets, cell + 1);
+        const coordinates = new Array(last - first);
+        for (let index2 = first; index2 < last; index2 += 1) {
+          coordinates[index2 - first] = triangles[index2];
+        }
+        cells[cell - start] = coordinates;
+      }
+      item["cell-tris"] = cells;
+    }
+    output[String(frame.id)] = item;
+  }
+  const attributes = object2(metadata.attributes ?? {}, "surface root attributes");
+  return { ...attributes, surfaces: output };
+}
+function materializeRange(values, validity, start, end, dictionary, divisor = 1) {
+  const output = new Array(end - start);
+  for (let index2 = start; index2 < end; index2 += 1) {
+    const value = values.at(index2);
+    output[index2 - start] = !validAt(validity, index2) ? null : dictionary === void 0 ? value / divisor : dictionary[value];
+  }
+  return output;
+}
+function typed(section) {
+  if (section.dtype === "u8") return section.bytes;
+  if (section.dtype === "f16") throw new TypeError("f16 requires scalar projection");
+  const definitions = {
+    u32: [Uint32Array, 4],
+    i16: [Int16Array, 2],
+    i32: [Int32Array, 4],
+    f32: [Float32Array, 4],
+    f64: [Float64Array, 8],
+    u64: [BigUint64Array, 8]
+  };
+  const definition = definitions[section.dtype];
+  if (definition === void 0) throw new TypeError(`unsupported result dtype ${section.dtype}`);
+  const [Constructor, width] = definition;
+  if (section.bytes.buffer instanceof ArrayBuffer && section.bytes.byteOffset % width === 0) {
+    return new Constructor(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength / width);
+  }
+  const copy = new Uint8Array(section.bytes.length);
+  copy.set(section.bytes);
+  return new Constructor(copy.buffer, 0, copy.byteLength / width);
+}
+function numericSource(section) {
+  if (section.dtype === "u64") throw new TypeError("u64 is not a scalar result value dtype");
+  if (section.dtype === "f16") {
+    const view = new DataView(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength);
+    return { at: (index2) => decodeF16(view.getUint16(index2 * 2, true)) };
+  }
+  const values = typed(section);
+  return { at: (index2) => values[index2] };
+}
+function valueDivisor(owner, data) {
+  const raw = owner.valueDivisor;
+  if (raw === void 0 || raw === null) return 1;
+  if (data.dtype !== "i16" || !Number.isSafeInteger(raw) || raw < 1 || raw > 1e6) throw new TypeError("valueDivisor requires i16 data and a uint value from 1 through 1000000");
+  return raw;
+}
+function decodeF16(bits2) {
+  const sign = bits2 & 32768 ? -1 : 1;
+  const exponent = bits2 >>> 10 & 31, fraction = bits2 & 1023;
+  return exponent === 0 ? sign * fraction * F16_EXPONENT_SCALE[1] : exponent === 31 ? fraction === 0 ? sign * Infinity : NaN : sign * (fraction + 1024) * F16_EXPONENT_SCALE[exponent];
+}
+function validAt(section, index2) {
+  return (section.bytes[index2 >> 3] & 1 << (index2 & 7)) !== 0;
+}
+function u64OffsetAt(section, index2) {
+  if (section.dtype !== "u64") throw new TypeError("triangle offsets must use u64");
+  const position = index2 * 8;
+  const view = new DataView(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength);
+  if (view.getUint32(position + 4, true) !== 0) {
+    throw new RangeError("triangle offset exceeds the supported uint32 range");
+  }
+  return view.getUint32(position, true);
+}
+function defineOwn(owner, key, value) {
+  Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });
+}
+function requireSection(sections, role) {
+  const value = sections.get(role);
+  if (value === void 0) throw new Error(`binary result omitted role ${role}`);
+  return value;
+}
+function object2(value, name) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${name} must be an object`);
+  return value;
+}
+function checkLimit(value, name) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 4294967295) throw new RangeError(`${name} must be a non-negative uint32 integer`);
+}
+
+// src/parts/daylight-result.ts
+var NO_ROOM = 65535;
+function daylightCore() {
+  return requireCore();
+}
+var DaylightFactorResult = class {
+  /** The result shape, as `SurfaceColumns.kind` for a facade run. */
+  kind = "daylight-points";
+  /** The frame's schema version. */
+  version;
+  /** The IRBF frame every view reads. Do not change it. */
+  frame;
+  layout;
+  sensorCount;
+  /** The worker's `min-legend` / `max-legend`, as for a grid or facade result. */
+  minLegend;
+  maxLegend;
+  x;
+  y;
+  z;
+  /** The daylight factor per sensor: the `values` column of the grid and facade results. */
+  values;
+  /** Bit `i % 8` of byte `i / 8`: `values[i]` is present (as a grid result's `validity`). */
+  validity;
+  /** Index into `rooms`, or `NO_ROOM`. */
+  room;
+  groups;
+  rooms;
+  buildings;
+  /** The result's root `warnings`. */
+  warnings;
+  /** Validate `frame` (a family 7 frame) and view it. The views share its
+   * buffer when it starts on an 8-byte boundary; else it is copied once. */
+  constructor(frame) {
+    if (frame.length > RESULT_DECODE_LIMITS.maxTotalBytes) {
+      throw new RangeError(`daylight-factor result frame of ${frame.length} bytes exceeds the result limit of ${RESULT_DECODE_LIMITS.maxTotalBytes} bytes`);
+    }
+    const owned = frame.byteOffset % 8 === 0 ? frame : new Uint8Array(frame);
+    const core2 = daylightCore();
+    const summary = core2.decodeDaylightResult(owned);
+    const s = summary.sections;
+    const view = (make, i) => new make(owned.buffer, owned.byteOffset + i.offset, i.count);
+    this.frame = owned;
+    this.layout = summary.layout;
+    this.sensorCount = summary.sensor_count;
+    this.version = summary.schema_version;
+    this.minLegend = summary.legend[0];
+    this.maxLegend = summary.legend[1];
+    this.x = view(Float64Array, s.x);
+    this.y = view(Float64Array, s.y);
+    this.z = view(Float64Array, s.z);
+    this.values = view(Float32Array, s.df);
+    this.validity = view(Uint8Array, s.df_validity);
+    this.room = view(Uint16Array, s.room);
+    this.groups = Object.freeze(summary.groups.map((g) => Object.freeze({
+      key: g.key,
+      building: g.building,
+      start: g.start,
+      end: g.end,
+      hasRooms: g.rooms,
+      roomStart: g.room_start,
+      roomEnd: g.room_end,
+      meanDf: g.mean_df,
+      meanDfAll: g.mean_df_all
+    })));
+    this.rooms = Object.freeze(summary.rooms.map((r) => Object.freeze({
+      id: r.id,
+      name: r.name,
+      sensors: r.sensors,
+      meanDf: r.mean_df,
+      medianDf: r.median_df,
+      minDf: r.min_df,
+      maxDf: r.max_df,
+      areaPctDfGe2: r.area_pct_df_ge_2,
+      windowArea: r.window_area,
+      floorArea: r.floor_area,
+      irc: r.irc
+    })));
+    this.buildings = Object.freeze([...summary.buildings]);
+    this.warnings = Object.freeze([...summary.warnings]);
+  }
+  /** The worker's JSON result bytes, byte for byte (`daylightJsonFromFrame`). */
+  toJsonBytes() {
+    const core2 = daylightCore();
+    return core2.daylightJsonFromFrame(this.frame);
+  }
+  /** The worker's JSON result, parsed: the value the JSON result format returns. */
+  toJson() {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(this.toJsonBytes()));
+  }
+};
+function isDaylightFrame(document2) {
+  return document2.length >= 12 && document2[0] === 73 && document2[1] === 82 && document2[2] === 66 && document2[3] === 70 && document2[10] === 7 && document2[11] === 0;
+}
 
 // node_modules/fflate/esm/index.mjs
 var import_module = require("module");
@@ -6936,11 +9651,1906 @@ var Unzip = /* @__PURE__ */ (function() {
       this.p = null;
     }
   };
-  Unzip2.prototype.register = function(decoder5) {
-    this.o[decoder5.compression] = decoder5;
+  Unzip2.prototype.register = function(decoder6) {
+    this.o[decoder6.compression] = decoder6;
   };
   return Unzip2;
 })();
+
+// src/results/archive.ts
+var DEFAULT_MAX_COMPRESSED_BYTES = 64 * 1024 * 1024;
+var DEFAULT_MAX_EXPANDED_BYTES = 512 * 1024 * 1024;
+var INPUT_CHUNK_BYTES = 8 * 1024;
+function limit2(value, fallback, name) {
+  const resolved = value === void 0 ? fallback : value;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new TypeError(`${name} must be a positive safe integer`);
+  }
+  return resolved;
+}
+function join2(chunks, length) {
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk2 of chunks) {
+    result.set(chunk2, offset);
+    offset += chunk2.length;
+  }
+  return result;
+}
+function feed(content, push) {
+  for (let offset = 0; offset < content.length; offset += INPUT_CHUNK_BYTES) {
+    const end = Math.min(offset + INPUT_CHUNK_BYTES, content.length);
+    push(content.subarray(offset, end), false);
+  }
+  push(new Uint8Array(), true);
+}
+function expandGzip(content, maximum) {
+  const chunks = [];
+  let length = 0;
+  let complete = false;
+  let lastMemberOffset = 0;
+  const stream = new Gunzip((chunk2, final) => {
+    if (chunk2.length > maximum - length) {
+      throw new Error("result archive exceeds the expanded byte limit");
+    }
+    if (chunk2.length > 0) chunks.push(chunk2);
+    length += chunk2.length;
+    complete ||= final;
+  });
+  stream.onmember = (offset) => {
+    lastMemberOffset = offset;
+    complete = false;
+  };
+  feed(content, (chunk2, final) => stream.push(chunk2, final));
+  if (content.length - lastMemberOffset < 18) {
+    throw new Error("result GZIP archive is truncated");
+  }
+  if (!complete) throw new Error("result GZIP archive is truncated");
+  return join2(chunks, length);
+}
+function expandZip(content, maximum) {
+  const chunks = [];
+  let length = 0;
+  let selected = false;
+  let complete = false;
+  const stream = new Unzip((file) => {
+    if (selected || file.name.endsWith("/")) return;
+    selected = true;
+    file.ondata = (error, chunk2, final) => {
+      if (error !== null) throw error;
+      if (chunk2.length > maximum - length) {
+        throw new Error("result archive exceeds the expanded byte limit");
+      }
+      if (chunk2.length > 0) chunks.push(chunk2);
+      length += chunk2.length;
+      complete ||= final;
+    };
+    file.start();
+  });
+  stream.register(UnzipInflate);
+  feed(content, (chunk2, final) => stream.push(chunk2, final));
+  if (!selected) throw new Error("result ZIP archive is empty");
+  if (!complete) throw new Error("result ZIP archive is truncated");
+  return join2(chunks, length);
+}
+function checkArchiveOptions(options) {
+  limit2(options.maxCompressedBytes, DEFAULT_MAX_COMPRESSED_BYTES, "maxCompressedBytes");
+  limit2(options.maxExpandedBytes, DEFAULT_MAX_EXPANDED_BYTES, "maxExpandedBytes");
+}
+function decompressResultArchive(content, options = {}) {
+  const compressed = limit2(
+    options.maxCompressedBytes,
+    DEFAULT_MAX_COMPRESSED_BYTES,
+    "maxCompressedBytes"
+  );
+  const expanded = limit2(
+    options.maxExpandedBytes,
+    DEFAULT_MAX_EXPANDED_BYTES,
+    "maxExpandedBytes"
+  );
+  if (content.length > compressed) {
+    throw new Error("result archive exceeds the compressed byte limit");
+  }
+  if (content[0] === 80 && content[1] === 75) {
+    return expandZip(content, expanded);
+  }
+  if (content[0] === 31 && content[1] === 139) {
+    return expandGzip(content, expanded);
+  }
+  throw new Error("result content is not a ZIP or GZIP archive");
+}
+
+// src/results/surface-record.ts
+var hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+function ownValue(value, key) {
+  return hasOwn(value, key) ? value[key] : void 0;
+}
+function emptyMap() {
+  return /* @__PURE__ */ Object.create(null);
+}
+function setOwn(target, key, value) {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true
+  });
+}
+function record2(value, name) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${name} must be an object`);
+  }
+  return value;
+}
+function finite(value, name) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new TypeError(`${name} must be a finite number`);
+  }
+  return value;
+}
+function count(value, name) {
+  const result = finite(value, name);
+  if (!Number.isSafeInteger(result) || result < 0 || result > 4294967295) {
+    throw new TypeError(`${name} must be an unsigned 32-bit integer`);
+  }
+  return result;
+}
+function vector(value, name) {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new TypeError(`${name} must be a finite three-component vector`);
+  }
+  value.forEach((component, index2) => finite(component, `${name}[${index2}]`));
+}
+function validateNullableNumbers(value, expected, name) {
+  if (!Array.isArray(value) || value.length !== expected) {
+    throw new TypeError(`${name} must contain exactly ${expected} cells`);
+  }
+  value.forEach((item, index2) => {
+    if (item !== null) finite(item, `${name}[${index2}]`);
+  });
+}
+function validateCellTriangles(value, expected, name) {
+  if (value === void 0 || value === null) return;
+  if (!Array.isArray(value) || value.length !== expected) {
+    throw new TypeError(`${name} must contain exactly ${expected} cells`);
+  }
+  value.forEach((cell, cellIndex) => {
+    if (cell === null) return;
+    if (!Array.isArray(cell) || cell.length % 9 !== 0) {
+      throw new TypeError(`${name}[${cellIndex}] must contain complete triangles`);
+    }
+    cell.forEach((item, index2) => finite(item, `${name}[${cellIndex}][${index2}]`));
+  });
+}
+function validateEntry(entry, key, trustedBulk = false) {
+  vector(ownValue(entry, "origin"), `surface ${key} origin`);
+  vector(ownValue(entry, "u-axis"), `surface ${key} u-axis`);
+  vector(ownValue(entry, "v-axis"), `surface ${key} v-axis`);
+  const gridSize = finite(ownValue(entry, "grid-size"), `surface ${key} grid-size`);
+  if (gridSize <= 0) throw new TypeError(`surface ${key} grid-size must be positive`);
+  const nu = count(ownValue(entry, "nu"), `surface ${key} nu`);
+  const nv = count(ownValue(entry, "nv"), `surface ${key} nv`);
+  const expected = nu * nv;
+  if (!Number.isSafeInteger(expected)) {
+    throw new TypeError(`surface ${key} cell count is not representable`);
+  }
+  finite(ownValue(entry, "area"), `surface ${key} area`);
+  finite(ownValue(entry, "mean"), `surface ${key} mean`);
+  finite(ownValue(entry, "peak"), `surface ${key} peak`);
+  const values = ownValue(entry, "values");
+  if (trustedBulk) {
+    if (!Array.isArray(values) || values.length !== expected) {
+      throw new TypeError(`surface ${key} values must contain exactly ${expected} cells`);
+    }
+  } else if (values instanceof Float64Array) {
+    if (values.length !== expected) {
+      throw new TypeError(`surface ${key} values must contain exactly ${expected} cells`);
+    }
+    values.forEach((item, index2) => {
+      if (!Number.isFinite(item) && !Number.isNaN(item)) {
+        throw new TypeError(`surface ${key} values[${index2}] must be finite or masked`);
+      }
+    });
+  } else {
+    validateNullableNumbers(values, expected, `surface ${key} values`);
+  }
+  const cellArea = ownValue(entry, "cell-area");
+  if (cellArea !== void 0 && cellArea !== null) {
+    if (trustedBulk) {
+      if (!Array.isArray(cellArea) || cellArea.length !== expected) {
+        throw new TypeError(`surface ${key} cell-area must contain exactly ${expected} cells`);
+      }
+    } else validateNullableNumbers(cellArea, expected, `surface ${key} cell-area`);
+  }
+  const cellTriangles = ownValue(entry, "cell-tris");
+  if (trustedBulk) {
+    if (cellTriangles !== void 0 && cellTriangles !== null && (!Array.isArray(cellTriangles) || cellTriangles.length !== expected)) {
+      throw new TypeError(`surface ${key} cell-tris must contain exactly ${expected} cells`);
+    }
+  } else validateCellTriangles(cellTriangles, expected, `surface ${key} cell-tris`);
+  return entry;
+}
+function parseRecord(rawValue, options, trustedBulk) {
+  const raw = record2(rawValue, "surface result");
+  if (!trustedBulk) rejectRetiredResultFields(raw);
+  const rawSurfaces = record2(ownValue(raw, "surfaces"), "surface result surfaces");
+  const surfaces2 = emptyMap();
+  for (const [key, value] of Object.entries(rawSurfaces)) {
+    setOwn(surfaces2, key, validateEntry(record2(value, `surface ${key}`), key, trustedBulk));
+  }
+  const complete = Object.values(surfaces2).every(
+    (entry) => entry["cell-tris"] !== void 0 && entry["cell-tris"] !== null
+  );
+  if (options.requireCellGeometry === true && !complete) {
+    throw new Error(
+      "surface cell geometry was omitted and no synthesis inputs were provided"
+    );
+  }
+  return {
+    route: "surface",
+    value: { ...raw, surfaces: surfaces2 },
+    cellGeometry: complete ? "complete" : "omitted"
+  };
+}
+function parseSurfaceRecord(rawValue, options = {}) {
+  return parseRecord(rawValue, options, false);
+}
+function parseValidatedIrBfSurfaceRecord(rawValue, options = {}) {
+  return parseRecord(rawValue, options, true);
+}
+
+// src/results/router.ts
+var IRBF_MAGIC = [73, 82, 66, 70, 13, 10, 26, 10];
+var RESULT_DECODE_LIMITS = {
+  maxTotalBytes: 268435456,
+  maxMetadataBytes: 4194304,
+  maxCells: 16777216,
+  maxTriangleValues: 67108864
+};
+function parseJson3(document2) {
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(document2));
+}
+function requireFiniteNumbers(value) {
+  const pending2 = [value];
+  while (pending2.length > 0) {
+    const item = pending2.pop();
+    if (typeof item === "number" && !Number.isFinite(item)) throw new Error("JSON result contains a non-finite number");
+    if (Array.isArray(item)) for (const child of item) pending2.push(child);
+    else if (item !== null && typeof item === "object") for (const child of Object.values(item)) pending2.push(child);
+  }
+}
+function isSurfaceResult(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, "surfaces")) return false;
+  const surfaces2 = value.surfaces;
+  return surfaces2 !== null && typeof surfaces2 === "object" && !Array.isArray(surfaces2);
+}
+function jsonRoute(document2, options) {
+  const decoded = requireCore().decodeGridDocument(document2, options.expectedGridKind);
+  let route = "";
+  let finiteNumbersValidated = false;
+  try {
+    route = decoded.route;
+    finiteNumbersValidated = decoded.finiteNumbersValidated === true;
+  } finally {
+    decoded.free();
+  }
+  const value = parseJson3(document2);
+  rejectRetiredResultFields(value);
+  if (route === "json-grid" && !finiteNumbersValidated) requireFiniteNumbers(value);
+  if (route !== "json-grid" && isSurfaceResult(value)) {
+    return options.surface === void 0 ? parseSurfaceRecord(value) : parseSurfaceRecord(value, options.surface);
+  }
+  return { route: "json", value };
+}
+function parseResultDocument(document2, options = {}) {
+  const irbf = document2.length >= IRBF_MAGIC.length && IRBF_MAGIC.every((value, index2) => document2[index2] === value);
+  if (!irbf) return jsonRoute(document2, options);
+  if (isDaylightFrame(document2)) return { route: "daylight-points", value: new DaylightFactorResult(document2) };
+  const decoded = decodeBinaryResultDocument(document2, RESULT_DECODE_LIMITS);
+  if (decoded.family === "surfaces") {
+    return options.surface === void 0 ? parseValidatedIrBfSurfaceRecord(decoded.value) : parseValidatedIrBfSurfaceRecord(decoded.value, options.surface);
+  }
+  const kind = decoded.family === "categorical-grid" ? "categorical" : decoded.family === "numeric-grid" ? "numeric" : void 0;
+  if (options.expectedGridKind !== void 0 && kind !== void 0 && options.expectedGridKind !== kind) {
+    throw new TypeError(`result grid kind is ${kind}, expected ${options.expectedGridKind}`);
+  }
+  return { route: "json", value: decoded.value };
+}
+function parseResultArchive(content, options = {}) {
+  return parseResultDocument(decompressResultArchive(content, options.archive), options);
+}
+
+// src/area/facade-synthesis.ts
+var FacadeSynthesisStore = class {
+  inputs = /* @__PURE__ */ new Map();
+  /**
+   * Retain one accepted job's inputs. Two places release them, and between
+   * them they cover every accepted job: `take` on the merge that uses one, and
+   * `forget` for the rest — the merge releases the whole schedule it finished
+   * (its failed jobs included), and a submission that aborts releases what it
+   * captured before the abort. A capture no release path reaches would be held
+   * for the life of the client.
+   */
+  remember(jobId, input) {
+    this.inputs.set(jobId, input);
+  }
+  take(jobId) {
+    const input = this.inputs.get(jobId);
+    this.inputs.delete(jobId);
+    return input;
+  }
+  /** Release a capture no merge will ever consume. */
+  forget(jobId) {
+    this.inputs.delete(jobId);
+  }
+  get pendingCount() {
+    return this.inputs.size;
+  }
+};
+
+// src/jobs.ts
+var BIG_PAYLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
+var JobsService = class {
+  gateway;
+  uploadGateway;
+  fetch;
+  pollIntervalMs;
+  backoffCapMs;
+  downloadTimeoutMs;
+  requestTimeoutMs;
+  bigPayloadThresholdBytes;
+  geometryReuseEnabled;
+  geometryReuseOptions;
+  capabilities;
+  /** `undefined` until the batched status route has been tried once. */
+  batchedStatus;
+  binaryPrepared = new BinaryRetention();
+  geometryUrls;
+  auth;
+  binaryUrlReuse;
+  /** Default `consoleLogger`, like every other service in this package. The
+   * only line it can emit that an earlier SDK did not is the D70 substitution
+   * report — and that is on a body an earlier SDK THREW on, so no working
+   * caller starts seeing new output. */
+  logger;
+  /** Bodies whose substitution has already been reported. */
+  loggedTreeBoxes = /* @__PURE__ */ new WeakSet();
+  /**
+   * This client's facade capture and layout cache (`area/facade-synthesis.ts`).
+   * Per client, dies with it: no disk, no IndexedDB, no module-global map, and
+   * nothing of it reaches an `AreaSchedule`.
+   */
+  facadeSynthesis = new FacadeSynthesisStore();
+  constructor(options) {
+    const fetcher = resolveFetch(options.fetch);
+    if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
+    this.fetch = fetcher;
+    this.pollIntervalMs = options.pollIntervalMs;
+    if (this.pollIntervalMs !== void 0) requireTimeout(this.pollIntervalMs);
+    const backoffCapSeconds = options.backoffCapSeconds;
+    if (backoffCapSeconds !== void 0) requireTimeout(backoffCapSeconds * 1e3);
+    this.backoffCapMs = backoffCapSeconds === void 0 ? void 0 : backoffCapSeconds * 1e3;
+    this.downloadTimeoutMs = options.downloadTimeoutMs ?? 6e5;
+    requireTimeout(this.downloadTimeoutMs);
+    this.requestTimeoutMs = options.timeoutMs ?? 18e4;
+    requireTimeout(this.requestTimeoutMs);
+    this.bigPayloadThresholdBytes = options.bigPayloadThresholdBytes ?? BIG_PAYLOAD_THRESHOLD_BYTES;
+    this.binaryUrlReuse = options.binaryUrlReuse !== false;
+    this.logger = options.logger ?? consoleLogger;
+    this.geometryUrls = new BinaryUrlCache(this.binaryUrlReuse);
+    this.auth = options.auth;
+    if (!Number.isSafeInteger(this.bigPayloadThresholdBytes) || this.bigPayloadThresholdBytes < 0) {
+      throw new TypeError("bigPayloadThresholdBytes must be a non-negative safe integer");
+    }
+    this.gateway = new GatewayTransport(options);
+    this.capabilities = new CapabilityCache(this.gateway);
+    this.geometryReuseEnabled = options.geometryReuseEnabled ?? true;
+    this.geometryReuseOptions = buildGeometryReuseOptions(
+      options,
+      this.fetch,
+      this.bigPayloadThresholdBytes,
+      this.requestTimeoutMs
+    );
+    this.uploadGateway = new GatewayTransport({
+      ...options,
+      baseUrl: options.gatewayBaseUrl ?? options.baseUrl
+    });
+  }
+  /** Decompress and route an already downloaded result archive. */
+  decompress(content, options) {
+    return parseResultArchive(content, options);
+  }
+  async submit(analysisType, payload, options = {}) {
+    const prepared = this.prepareSubmission(analysisType, payload, options);
+    return this.submitPrepared(prepared, options.signal === void 0 ? {} : { signal: options.signal });
+  }
+  prepareSubmission(analysisType, payload, options = {}) {
+    const transport3 = options.transport ?? defaultTransport(analysisType);
+    if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
+      throw new TypeError("unsupported option binaryResults; use transport instead");
+    }
+    return {
+      analysisType,
+      transport: transport3,
+      body: prepareSubmissionBody(analysisType, payload, options)
+    };
+  }
+  async submitPrepared(prepared, options = {}) {
+    if (prepared.transport === "binary" && prepared.interiorBinary !== void 0) {
+      const binary = prepared.interiorBinary;
+      return submitPreparedBinary({
+        prepared,
+        parseJob: jobFromResponse,
+        prepare: async () => binary,
+        releasePrepared: () => void 0,
+        gateway: this.gateway,
+        uploadGateway: this.uploadGateway,
+        auth: this.auth,
+        fetch: this.fetch,
+        timeoutMs: this.requestTimeoutMs,
+        urlCache: this.geometryUrls,
+        reuseEnabled: this.binaryUrlReuse,
+        resultFormat: prepared.interiorResultFormat ?? "json",
+        ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey },
+        ...options.signal === void 0 ? {} : { signal: options.signal },
+        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+        ...options.uploads === void 0 ? {} : { uploads: options.uploads }
+      });
+    }
+    if (prepared.transport === "binary") {
+      let binary;
+      const parseJob2 = (response) => withTreeBoxes(jobFromResponse(response), binary);
+      return submitPreparedBinary({
+        prepared,
+        parseJob: parseJob2,
+        prepare: async (fresh) => {
+          if (!fresh) {
+            const retained = this.binaryPrepared.get(prepared);
+            if (retained !== void 0) {
+              binary = retained;
+              return retained;
+            }
+          }
+          binary = await this.prepareBinaryValue(prepared, options.signal);
+          return binary;
+        },
+        releasePrepared: () => this.binaryPrepared.release(prepared),
+        gateway: this.gateway,
+        uploadGateway: this.uploadGateway,
+        auth: this.auth,
+        fetch: this.fetch,
+        timeoutMs: this.requestTimeoutMs,
+        urlCache: this.geometryUrls,
+        reuseEnabled: this.binaryUrlReuse,
+        ...options.signal === void 0 ? {} : { signal: options.signal },
+        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+        ...options.uploads === void 0 ? {} : { uploads: options.uploads },
+        ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey }
+      });
+    }
+    if (this.geometryReuseEnabled) {
+      const reused = await tryGeometryReuse(
+        prepared,
+        this.geometryReuseOptions,
+        options.signal,
+        options.beforeDispatch,
+        options.idempotencyKey
+      );
+      if (reused !== void 0) return reused;
+    }
+    const json = preparedJsonBytes(prepared);
+    const archive = requireCore().zipPayloadJson(json);
+    return submitArchive({
+      endpointPath: `/async/${encodeURIComponent(prepared.analysisType)}`,
+      archive,
+      gateway: this.gateway,
+      uploadGateway: this.uploadGateway,
+      fetch: this.fetch,
+      thresholdBytes: this.bigPayloadThresholdBytes,
+      timeoutMs: this.requestTimeoutMs,
+      parseAccepted: jobFromResponse,
+      ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey },
+      ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+      ...options.signal === void 0 ? {} : { signal: options.signal }
+    });
+  }
+  /**
+   * Finish all binary validation and encoding before a paid submission.
+   *
+   * What it encodes is RETAINED, under this client's byte budget
+   * (`internal/binary-retention.ts`), and `submitPrepared` sends exactly those
+   * bytes instead of encoding the same body a second time. The submit frees the
+   * artifact as soon as its upload has used it; a caller that preflights a
+   * whole plan and then does NOT submit some of it must call
+   * `releasePreflight` for those — `area/submission.ts` does.
+   */
+  async preflightPrepared(prepared, options = {}) {
+    if (prepared.transport !== "binary" || this.binaryPrepared.get(prepared) !== void 0) return;
+    const binary = await withBinaryAdmission(
+      () => this.prepareBinaryValue(prepared, options.signal),
+      options.signal
+    );
+    if (options.retain !== false) this.binaryPrepared.keep(prepared, binary);
+  }
+  /** Free what a preflight is holding for a submission that will not happen. */
+  releasePreflight(prepared) {
+    this.binaryPrepared.release(prepared);
+  }
+  /**
+   * The live `/binary/v1/capabilities` document, cached for
+   * `CAPABILITY_TTL_MS` (`internal/capability-cache.ts`). A caller that only
+   * needs to know whether a model's binary route is live — the daylight-
+   * factor parts auto-routing (D228), among others — reads this instead of
+   * guessing from a submission outcome.
+   */
+  async binaryCapability(signal) {
+    return this.capabilities.get(signal);
+  }
+  async prepareBinaryValue(prepared, signal) {
+    const binary = await prepareBinary(prepared, await this.capabilities.get(signal));
+    if (binary.treeBoxes !== void 0 && !this.loggedTreeBoxes.has(prepared)) {
+      this.loggedTreeBoxes.add(prepared);
+      this.logger.info(treeBoxLogLine(binary.treeBoxes));
+      if (binary.treeBoxes.idCollisions.length > 0) {
+        this.logger.warn(treeBoxCollisionLine(binary.treeBoxes));
+      }
+      if (binary.treeBoxes.outsideTile > 0) {
+        this.logger.warn(treeBoxOutOfTileLine(binary.treeBoxes));
+      }
+    }
+    return binary;
+  }
+  async getStatusWithSignal(jobId, signal) {
+    const id = requireJobId(jobId);
+    const response = await this.gateway.requestJson(
+      `/async/jobs/${encodeURIComponent(id)}`,
+      signal === void 0 ? {} : { signal }
+    );
+    const job = jobFromResponse(response);
+    if (job.jobId !== id) throw new Error("job response ID does not match requested jobId");
+    return job;
+  }
+  async getStatus(jobId, options = {}) {
+    return this.getStatusWithSignal(jobId, options.signal);
+  }
+  /** Whether the batched status route has answered this client at least once.
+   *  `false` until it has, and `false` for ever once a gateway has shown it
+   *  lacks the route — which is what the area poll reads to choose its
+   *  interval (`internal/status-batch.ts`, `docs/DEVIATIONS.md` D121). */
+  get batchedStatusSupported() {
+    return this.batchedStatus === true;
+  }
+  /** Many job statuses in one request per 50 ids. Ids it could not settle
+   *  come back in `unanswered` for the caller to ask about per job; it never
+   *  throws for a gateway reason. A gateway that lacks the route is asked
+   *  once and never again. */
+  async getStatusBatch(jobIds2, options = {}) {
+    const ids = jobIds2.map(requireJobId);
+    if (this.batchedStatus === false) {
+      return { statuses: /* @__PURE__ */ new Map(), unanswered: [...ids], batched: false, lacking: true };
+    }
+    const sweep = await fetchStatusBatch(
+      this.gateway,
+      ids,
+      { ...options, routeProven: this.batchedStatus === true }
+    );
+    if (sweep.lacking) this.batchedStatus = false;
+    else if (sweep.batched) this.batchedStatus = true;
+    return sweep;
+  }
+  /** Poll until the job is terminal, on the SDK's one poll engine
+   *  (`internal/wait-job.ts`, D213). */
+  async waitForCompletion(jobId, options = {}) {
+    return waitForJob(requireJobId(jobId), options, {
+      // One job: `GET /async/jobs/{id}`. A batch of one saves nothing, and a
+      // gateway without the batched route answers `?ids=` with the whole
+      // account listing (~70 KB, ~0.9 s).
+      status: (id, signal) => this.getStatusWithSignal(id, signal),
+      fixedIntervalS: this.pollIntervalMs === void 0 ? void 0 : this.pollIntervalMs / 1e3,
+      maxIntervalS: this.backoffCapMs === void 0 ? void 0 : this.backoffCapMs / 1e3
+    });
+  }
+  async resultsUrl(jobId, signal) {
+    const response = await this.gateway.requestBytesWithHeaders(
+      `/async/jobs/${encodeURIComponent(jobId)}/results`,
+      signal === void 0 ? {} : { signal }
+    );
+    return parseResultsLink(response.headers.get("Link"));
+  }
+  download(url, signal) {
+    return downloadPresigned(url, {
+      fetch: this.fetch,
+      timeoutMs: this.downloadTimeoutMs,
+      ...signal === void 0 ? {} : { signal }
+    });
+  }
+  async downloadResults(jobId, options = {}) {
+    const id = requireJobId(jobId);
+    if (options.job !== void 0 && options.job.jobId !== id) {
+      throw new TypeError("supplied job ID does not match requested jobId");
+    }
+    const job = options.job ?? await this.getStatusWithSignal(id, options.signal);
+    if (job.status !== JobStatus.Succeeded) throw new JobNotCompletedError(id, job.status);
+    for (let sendsDone = 1; ; sendsDone += 1) {
+      try {
+        const presignedUrl = await this.resultsUrl(id, options.signal);
+        const downloaded = await this.download(presignedUrl, options.signal);
+        return { ...downloaded, jobId: id, presignedUrl };
+      } catch (error) {
+        if (!shouldRetryDownload(error, sendsDone)) throw error;
+        await pauseBeforeRetry(sendsDone, error, options.signal);
+      }
+    }
+  }
+};
+
+// src/area/schedule-retry-fields.ts
+function freezeRetryFields(schedule2) {
+  const attempts = schedule2.attempts === void 0 ? void 0 : Object.freeze({ ...schedule2.attempts });
+  return {
+    ...attempts === void 0 ? {} : { attempts },
+    ...schedule2.runId === void 0 ? {} : { runId: schedule2.runId }
+  };
+}
+function retryFieldsToJSON(schedule2) {
+  return {
+    ...schedule2.runId === void 0 ? {} : { runId: schedule2.runId },
+    ...schedule2.attempts === void 0 ? {} : { attempts: { ...schedule2.attempts } }
+  };
+}
+function object3(value, name, invalid2) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) invalid2(`${name} must be an object`);
+  return value;
+}
+function positiveIntegers(value, name, invalid2) {
+  if (value === void 0) return void 0;
+  const raw = object3(value, name, invalid2);
+  const entries3 = [];
+  for (const [key, item] of Object.entries(raw)) {
+    if (!Number.isSafeInteger(item) || item < 1) invalid2(`${name}.${key} must be a positive integer`);
+    entries3.push([key, item]);
+  }
+  return Object.fromEntries(entries3);
+}
+function parseRetryFields(raw, invalid2) {
+  if (raw.runId !== void 0 && (typeof raw.runId !== "string" || raw.runId.length === 0)) {
+    invalid2("runId must be a non-empty string");
+  }
+  const attempts = positiveIntegers(raw.attempts, "attempts", invalid2);
+  return {
+    ...raw.runId === void 0 ? {} : { runId: raw.runId },
+    ...attempts === void 0 ? {} : { attempts }
+  };
+}
+
+// src/area/schedule.ts
+var STATUSES = /* @__PURE__ */ new Set([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "skipped"
+]);
+function frozenMap(source) {
+  const map = new Map(source);
+  let proxy;
+  proxy = new Proxy(map, {
+    get(target, property) {
+      if (property === "set" || property === "delete" || property === "clear") {
+        return () => {
+          throw new TypeError("AreaSchedule.jobs is frozen");
+        };
+      }
+      if (property === "forEach") {
+        return (callback, thisArg) => target.forEach((value2, key) => callback.call(thisArg, value2, key, proxy));
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    set() {
+      throw new TypeError("AreaSchedule.jobs is frozen");
+    },
+    deleteProperty() {
+      throw new TypeError("AreaSchedule.jobs is frozen");
+    },
+    defineProperty() {
+      throw new TypeError("AreaSchedule.jobs is frozen");
+    }
+  });
+  return proxy;
+}
+function freezeAreaSchedule(schedule2) {
+  const membership = schedule2.batchMembership === void 0 ? void 0 : Object.freeze(
+    Object.fromEntries(Object.entries(schedule2.batchMembership).map(([key, ids]) => [key, Object.freeze([...ids])]))
+  );
+  const counts = schedule2.batchSensorCounts === void 0 ? void 0 : Object.freeze({ ...schedule2.batchSensorCounts });
+  const polygon = Object.freeze({
+    ...schedule2.polygon,
+    coordinates: Object.freeze(schedule2.polygon.coordinates.map((ring) => Object.freeze(ring.map((position) => Object.freeze([...position])))))
+  });
+  const tilePositions = Object.freeze(schedule2.tilePositions.map((position) => Object.freeze({ ...position })));
+  return Object.freeze({
+    ...schedule2,
+    jobs: frozenMap(schedule2.jobs),
+    polygon,
+    tilePositions,
+    gridShape: Object.freeze([...schedule2.gridShape]),
+    failedSubmissions: Object.freeze([...schedule2.failedSubmissions]),
+    ...freezeRetryFields(schedule2),
+    ...schedule2.uncertainSubmissions === void 0 ? {} : {
+      uncertainSubmissions: Object.freeze([...schedule2.uncertainSubmissions])
+    },
+    ...schedule2.invalidReferenceSubmissions === void 0 ? {} : {
+      invalidReferenceSubmissions: Object.freeze([...schedule2.invalidReferenceSubmissions])
+    },
+    ...schedule2.geometryProbeJobIds === void 0 ? {} : {
+      geometryProbeJobIds: Object.freeze([...schedule2.geometryProbeJobIds])
+    },
+    ...schedule2.geometryProbeUncertain === true ? { geometryProbeUncertain: true } : {},
+    ...membership === void 0 ? {} : { batchMembership: membership },
+    ...counts === void 0 ? {} : { batchSensorCounts: counts },
+    ...schedule2.webhookEvents === void 0 ? {} : {
+      webhookEvents: Object.freeze([...schedule2.webhookEvents])
+    }
+  });
+}
+function jsonJob(job) {
+  const copy = {
+    tileId: job.tileId,
+    row: job.row,
+    col: job.col,
+    status: job.status,
+    ...job.jobId === void 0 ? {} : { jobId: job.jobId },
+    ...job.error === void 0 ? {} : { error: job.error },
+    ...job.invalidReference === true ? { invalidReference: true } : {},
+    ...job.binary === void 0 ? {} : { binary: { ...job.binary } }
+  };
+  return copy;
+}
+function areaScheduleToJSON(schedule2) {
+  return {
+    jobs: [...schedule2.jobs].map(([key, job]) => [key, jsonJob(job)]),
+    polygon: schedule2.polygon,
+    configHash: schedule2.configHash,
+    ...schedule2.siteIdentity === void 0 ? {} : { siteIdentity: schedule2.siteIdentity },
+    tilePositions: schedule2.tilePositions.map((position) => ({ ...position })),
+    gridShape: [...schedule2.gridShape],
+    analysisType: schedule2.analysisType,
+    transport: schedule2.transport ?? "json",
+    ...schedule2.wireVersion === void 0 ? {} : { wireVersion: schedule2.wireVersion },
+    failedSubmissions: [...schedule2.failedSubmissions],
+    ...schedule2.uncertainSubmissions === void 0 ? {} : { uncertainSubmissions: [...schedule2.uncertainSubmissions] },
+    ...schedule2.invalidReferenceSubmissions === void 0 ? {} : {
+      invalidReferenceSubmissions: [...schedule2.invalidReferenceSubmissions]
+    },
+    ...schedule2.geometryProbeJobIds === void 0 ? {} : {
+      geometryProbeJobIds: [...schedule2.geometryProbeJobIds]
+    },
+    ...schedule2.geometryProbeUncertain === true ? { geometryProbeUncertain: true } : {},
+    submissionAbortStatus: schedule2.submissionAbortStatus,
+    surfaceFields: schedule2.surfaceFields ?? false,
+    ...schedule2.terrainContextMarginM === void 0 ? {} : { terrainContextMarginM: schedule2.terrainContextMarginM },
+    ...schedule2.maxSensorsPerJob === void 0 ? {} : { maxSensorsPerJob: schedule2.maxSensorsPerJob },
+    ...schedule2.weatherIdentity === void 0 ? {} : { weatherIdentity: schedule2.weatherIdentity },
+    ...schedule2.scheduleContractVersion === void 0 ? {} : { scheduleContractVersion: schedule2.scheduleContractVersion },
+    ...schedule2.batchingPolicyVersion === void 0 ? {} : { batchingPolicyVersion: schedule2.batchingPolicyVersion },
+    ...schedule2.batchMembership === void 0 ? {} : { batchMembership: structuredClone(schedule2.batchMembership) },
+    ...schedule2.batchSensorCounts === void 0 ? {} : { batchSensorCounts: { ...schedule2.batchSensorCounts } },
+    ...schedule2.webhookUrl === void 0 ? {} : { webhookUrl: schedule2.webhookUrl },
+    ...schedule2.webhookEvents === void 0 ? {} : { webhookEvents: [...schedule2.webhookEvents] },
+    ...retryFieldsToJSON(schedule2)
+  };
+}
+function invalid(message) {
+  throw new TypeError(`invalid area schedule: ${message}`);
+}
+function object4(value, name) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) invalid(`${name} must be an object`);
+  return value;
+}
+function string(value, name) {
+  if (typeof value !== "string" || value.length === 0) invalid(`${name} must be a non-empty string`);
+  return value;
+}
+function index(value, name) {
+  if (!Number.isSafeInteger(value) || value < 0) invalid(`${name} must be a non-negative integer`);
+  return value;
+}
+function parseJob(key, value) {
+  const raw = object4(value, `job ${key}`);
+  if (raw.result !== void 0 || raw.lastJobSnapshot !== void 0) invalid(`job ${key} contains non-durable state`);
+  const tileId = string(raw.tileId, `job ${key}.tileId`);
+  if (tileId !== key) invalid(`job key ${key} does not match tileId ${tileId}`);
+  if (typeof raw.status !== "string" || !STATUSES.has(raw.status)) invalid(`job ${key} has invalid status`);
+  if (raw.jobId !== void 0 && (typeof raw.jobId !== "string" || raw.jobId.length === 0)) invalid(`job ${key} has invalid jobId`);
+  if (raw.error !== void 0 && typeof raw.error !== "string") invalid(`job ${key} has invalid error`);
+  if (raw.invalidReference !== void 0 && raw.invalidReference !== true) {
+    invalid(`job ${key} has invalid invalidReference marker`);
+  }
+  const binary = parseBinary(raw.binary, key);
+  return {
+    tileId,
+    row: index(raw.row, `job ${key}.row`),
+    col: index(raw.col, `job ${key}.col`),
+    status: raw.status,
+    ...raw.jobId === void 0 ? {} : { jobId: raw.jobId },
+    ...raw.error === void 0 ? {} : { error: raw.error },
+    ...raw.invalidReference === true ? { invalidReference: true } : {},
+    ...binary === void 0 ? {} : { binary }
+  };
+}
+function uniqueReferences(items, name) {
+  const unique2 = new Set(items);
+  if (unique2.size !== items.length) invalid(`${name} must not contain duplicates`);
+  return unique2;
+}
+function validateSubmissionReferences(jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions) {
+  const failed2 = uniqueReferences(failedSubmissions, "failedSubmissions");
+  const uncertain = uniqueReferences(uncertainSubmissions, "uncertainSubmissions");
+  const invalidReferences = uniqueReferences(
+    invalidReferenceSubmissions,
+    "invalidReferenceSubmissions"
+  );
+  for (const tileId of failed2) {
+    const job = jobs.get(tileId);
+    if (!job) invalid(`failed submission ${tileId} has no job`);
+    if (job.status !== "failed" || job.jobId !== void 0) {
+      invalid(`failed submission ${tileId} must be a failed job without a jobId`);
+    }
+    if (uncertain.has(tileId)) invalid(`submission ${tileId} is both failed and uncertain`);
+  }
+  for (const tileId of uncertain) {
+    const job = jobs.get(tileId);
+    if (!job) invalid(`uncertain submission ${tileId} has no job`);
+    if (job.jobId === void 0 && job.status !== "skipped") {
+      invalid(`uncertain submission ${tileId} without a jobId must be skipped`);
+    }
+  }
+  for (const tileId of invalidReferences) {
+    const job = jobs.get(tileId);
+    if (!job || job.status !== "failed" || job.invalidReference !== true) {
+      invalid(`invalid reference submission ${tileId} must remain a failed invalid-reference job`);
+    }
+    if (failed2.has(tileId) || uncertain.has(tileId)) {
+      invalid(`invalid reference submission ${tileId} is in another submission outcome list`);
+    }
+  }
+  for (const [tileId, job] of jobs) {
+    if (job.invalidReference === true && !invalidReferences.has(tileId)) {
+      invalid(`invalid-reference job ${tileId} is absent from invalidReferenceSubmissions`);
+    }
+  }
+}
+function areaScheduleFromJSON(value) {
+  const raw = object4(value, "root");
+  if (!Array.isArray(raw.jobs)) invalid("jobs must be an array");
+  const jobs = /* @__PURE__ */ new Map();
+  for (const entry of raw.jobs) {
+    if (!Array.isArray(entry) || entry.length !== 2) invalid("job entry must be a pair");
+    const key = string(entry[0], "job key");
+    if (jobs.has(key)) invalid(`duplicate job ${key}`);
+    jobs.set(key, parseJob(key, entry[1]));
+  }
+  const polygon = object4(raw.polygon, "polygon");
+  if (polygon.type !== "Polygon" || !Array.isArray(polygon.coordinates)) invalid("polygon must be GeoJSON Polygon");
+  if (!Array.isArray(raw.gridShape) || raw.gridShape.length !== 2) invalid("gridShape must contain two indexes");
+  if (!Array.isArray(raw.tilePositions) || !Array.isArray(raw.failedSubmissions)) invalid("schedule arrays are missing");
+  const tilePositions = raw.tilePositions.map((item, at) => {
+    const position = object4(item, `tilePositions[${at}]`);
+    return { row: index(position.row, "tile row"), col: index(position.col, "tile col"), tileId: string(position.tileId, "tileId") };
+  });
+  const failedSubmissions = raw.failedSubmissions.map((item) => string(item, "failed submission"));
+  if (raw.uncertainSubmissions !== void 0 && !Array.isArray(raw.uncertainSubmissions)) invalid("uncertainSubmissions must be an array");
+  const uncertainSubmissions = raw.uncertainSubmissions?.map((item) => string(item, "uncertain submission"));
+  if (raw.invalidReferenceSubmissions !== void 0 && !Array.isArray(raw.invalidReferenceSubmissions)) {
+    invalid("invalidReferenceSubmissions must be an array");
+  }
+  const invalidReferenceSubmissions = raw.invalidReferenceSubmissions?.map((item) => string(item, "invalid reference submission"));
+  if (raw.geometryProbeJobIds !== void 0 && !Array.isArray(raw.geometryProbeJobIds)) {
+    invalid("geometryProbeJobIds must be an array");
+  }
+  const geometryProbeJobIds = raw.geometryProbeJobIds?.map((item) => string(item, "geometry probe job ID"));
+  if (geometryProbeJobIds !== void 0) uniqueReferences(geometryProbeJobIds, "geometryProbeJobIds");
+  if (raw.geometryProbeUncertain !== void 0 && raw.geometryProbeUncertain !== true) {
+    invalid("geometryProbeUncertain must be true when present");
+  }
+  if ((geometryProbeJobIds?.length ?? 0) > 0 && raw.geometryProbeUncertain !== true) {
+    invalid("geometry probe job IDs require an uncertain-probe marker");
+  }
+  validateSubmissionReferences(
+    jobs,
+    failedSubmissions,
+    uncertainSubmissions ?? [],
+    invalidReferenceSubmissions ?? []
+  );
+  const abort = raw.submissionAbortStatus ?? null;
+  if (abort !== null && !Number.isSafeInteger(abort)) invalid("submissionAbortStatus must be an integer or null");
+  if (raw.surfaceFields !== void 0 && typeof raw.surfaceFields !== "boolean") invalid("surfaceFields must be Boolean");
+  if (raw.terrainContextMarginM !== void 0 && (typeof raw.terrainContextMarginM !== "number" || !Number.isFinite(raw.terrainContextMarginM) || raw.terrainContextMarginM < 0)) {
+    invalid("terrainContextMarginM must be a finite non-negative number");
+  }
+  if (raw.maxSensorsPerJob !== void 0 && (!Number.isSafeInteger(raw.maxSensorsPerJob) || raw.maxSensorsPerJob < 1)) {
+    invalid("maxSensorsPerJob must be a positive integer");
+  }
+  if (raw.batchingPolicyVersion !== void 0 && raw.batchingPolicyVersion !== 2) {
+    invalid("batchingPolicyVersion must be 2");
+  }
+  if (raw.weatherIdentity !== void 0 && (typeof raw.weatherIdentity !== "string" || !raw.weatherIdentity.startsWith("sha256:"))) {
+    invalid("weatherIdentity must be a sha256: digest");
+  }
+  if (raw.siteIdentity !== void 0 && (typeof raw.siteIdentity !== "string" || !/^sha256:[0-9a-f]{64}$/.test(raw.siteIdentity))) {
+    invalid("siteIdentity must be a sha256: digest");
+  }
+  if (raw.scheduleContractVersion !== void 0 && (!Number.isSafeInteger(raw.scheduleContractVersion) || raw.scheduleContractVersion < 1)) {
+    invalid("scheduleContractVersion must be a positive integer");
+  }
+  const membership = optionalStringArrays(raw.batchMembership, "batchMembership");
+  const counts = optionalPositiveIntegers(raw.batchSensorCounts, "batchSensorCounts");
+  if (membership === void 0 !== (counts === void 0)) invalid("exact batch records must be present together");
+  if (raw.batchingPolicyVersion === 2 !== (membership !== void 0)) {
+    invalid("exact batch policy and records must be present together");
+  }
+  if (raw.webhookEvents !== void 0 && !Array.isArray(raw.webhookEvents)) invalid("webhookEvents must be an array");
+  if (raw.webhookUrl !== void 0 && (typeof raw.webhookUrl !== "string" || raw.webhookUrl.length === 0)) {
+    invalid("webhookUrl must be a non-empty string");
+  }
+  const retryFields = parseRetryFields(raw, invalid);
+  const schedule2 = {
+    jobs,
+    polygon,
+    configHash: string(raw.configHash, "configHash"),
+    tilePositions,
+    ...raw.siteIdentity === void 0 ? {} : { siteIdentity: raw.siteIdentity },
+    gridShape: [index(raw.gridShape[0], "grid rows"), index(raw.gridShape[1], "grid cols")],
+    analysisType: string(raw.analysisType, "analysisType"),
+    failedSubmissions,
+    transport: raw.transport === void 0 ? "json" : transport2(raw.transport),
+    ...raw.wireVersion === void 0 ? {} : { wireVersion: wireVersion(raw.wireVersion) },
+    ...uncertainSubmissions === void 0 ? {} : { uncertainSubmissions },
+    ...invalidReferenceSubmissions === void 0 ? {} : { invalidReferenceSubmissions },
+    ...geometryProbeJobIds === void 0 ? {} : { geometryProbeJobIds },
+    ...raw.geometryProbeUncertain === true ? { geometryProbeUncertain: true } : {},
+    submissionAbortStatus: abort,
+    surfaceFields: raw.surfaceFields === true,
+    ...raw.terrainContextMarginM === void 0 ? {} : { terrainContextMarginM: raw.terrainContextMarginM },
+    ...raw.maxSensorsPerJob === void 0 ? {} : { maxSensorsPerJob: raw.maxSensorsPerJob },
+    ...raw.weatherIdentity === void 0 ? {} : { weatherIdentity: raw.weatherIdentity },
+    ...raw.scheduleContractVersion === void 0 ? {} : { scheduleContractVersion: raw.scheduleContractVersion },
+    ...raw.batchingPolicyVersion === void 0 ? {} : { batchingPolicyVersion: 2 },
+    ...membership === void 0 ? {} : { batchMembership: membership, batchSensorCounts: counts },
+    ...raw.webhookUrl === void 0 ? {} : { webhookUrl: raw.webhookUrl },
+    ...Array.isArray(raw.webhookEvents) ? { webhookEvents: raw.webhookEvents.map((item) => string(item, "webhook event")) } : {},
+    ...retryFields
+  };
+  if (schedule2.transport === "binary" && schedule2.wireVersion !== 1) {
+    invalid("binary transport requires wireVersion 1");
+  }
+  if (schedule2.transport === "json" && schedule2.wireVersion !== void 0) {
+    invalid("JSON transport must not contain wireVersion");
+  }
+  for (const [key, job] of schedule2.jobs) {
+    if (schedule2.transport === "json" && job.binary !== void 0) {
+      invalid(`JSON job ${key} contains a binary acknowledgement`);
+    }
+  }
+  return freezeAreaSchedule(schedule2);
+}
+function parseBinary(value, key) {
+  if (value === void 0) return void 0;
+  const raw = object4(value, `job ${key}.binary`);
+  if (raw.inputFormat !== "irbf" || raw.resultFormat !== "irbf" || raw.wireVersion !== 1) {
+    invalid(`job ${key} has an incompatible binary acknowledgement`);
+  }
+  return {
+    inputFormat: "irbf",
+    resultFormat: "irbf",
+    wireVersion: 1,
+    artifactDigest: string(raw.artifactDigest, `job ${key} artifactDigest`),
+    contentDigest: string(raw.contentDigest, `job ${key} contentDigest`)
+  };
+}
+function transport2(value) {
+  if (value !== "json" && value !== "binary") invalid("transport must be json or binary");
+  return value;
+}
+function wireVersion(value) {
+  if (value !== 1) invalid("wireVersion must be 1");
+  return 1;
+}
+function optionalStringArrays(value, name) {
+  if (value === void 0) return void 0;
+  const raw = object4(value, name);
+  const entries3 = [];
+  for (const [key, items] of Object.entries(raw)) {
+    if (!Array.isArray(items)) invalid(`${name}.${key} must be an array`);
+    entries3.push([key, items.map((item) => string(item, `${name}.${key}`))]);
+  }
+  return Object.fromEntries(entries3);
+}
+function optionalPositiveIntegers(value, name) {
+  if (value === void 0) return void 0;
+  const raw = object4(value, name);
+  const entries3 = [];
+  for (const [key, item] of Object.entries(raw)) {
+    if (!Number.isSafeInteger(item) || item < 1) invalid(`${name}.${key} must be positive`);
+    entries3.push([key, item]);
+  }
+  return Object.fromEntries(entries3);
+}
+function computeAreaState(schedule2) {
+  let completedCount = 0, failedCount = 0, skippedCount = 0, pendingCount = 0, runningCount = 0;
+  for (const job of schedule2.jobs.values()) {
+    if (job.status === "completed") completedCount += 1;
+    else if (job.status === "failed") failedCount += 1;
+    else if (job.status === "skipped") skippedCount += 1;
+    else if (job.status === "pending") pendingCount += 1;
+    else runningCount += 1;
+  }
+  return {
+    totalCount: schedule2.jobs.size,
+    completedCount,
+    failedCount,
+    skippedCount,
+    pendingCount,
+    runningCount,
+    isComplete: pendingCount === 0 && runningCount === 0
+  };
+}
+
+// src/area/poll.ts
+var failures = /* @__PURE__ */ new WeakMap();
+var FAILURE_LIMIT = 5;
+var FAILURE_MIN_SPAN_MS = 1e4;
+function workerCount(value) {
+  const count2 = value ?? 5;
+  if (!Number.isSafeInteger(count2) || count2 < 1) throw new TypeError("maxWorkers must be a positive integer");
+  return count2;
+}
+function applySnapshot(job, snapshot) {
+  job.lastJobSnapshot = snapshot;
+  if (snapshot.status === JobStatus.Succeeded) job.status = "completed";
+  else if (snapshot.status === JobStatus.Failed) {
+    job.status = "failed";
+    job.error = snapshot.error ?? "job failed";
+  } else if (snapshot.status === JobStatus.Running) job.status = "running";
+  else job.status = "pending";
+}
+function noteFailure(record3, error) {
+  if (!isTransientStatusError(error)) return;
+  record3.failures += 1;
+  if (error.retryAfterS !== void 0) {
+    record3.retryAfterS = Math.max(record3.retryAfterS ?? 0, error.retryAfterS);
+  }
+}
+async function pollOne(service, job, record3, signal) {
+  if (job.invalidReference === true || !job.jobId || job.status === "completed" || job.status === "failed" || job.status === "skipped") return;
+  if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
+  try {
+    const snapshot = await service.getStatus(job.jobId, signal === void 0 ? {} : { signal });
+    failures.delete(job);
+    applySnapshot(job, snapshot);
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
+    if (isTransientStatusError(error)) {
+      noteFailure(record3, error);
+      return;
+    }
+    const now2 = performance.now();
+    const previous = failures.get(job);
+    const count2 = (previous?.count ?? 0) + 1;
+    const sinceMs = previous?.sinceMs ?? now2;
+    failures.set(job, { count: count2, sinceMs });
+    if (count2 >= FAILURE_LIMIT && now2 - sinceMs >= FAILURE_MIN_SPAN_MS) {
+      job.status = "skipped";
+      job.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+}
+function revivePolledOut(schedule2) {
+  let revived = 0;
+  for (const job of schedule2.jobs.values()) {
+    if (job.status !== "skipped" || !job.jobId) continue;
+    job.status = "pending";
+    failures.delete(job);
+    revived += 1;
+  }
+  return revived;
+}
+async function pollBatched(service, pending2, options, record3) {
+  const getStatusBatch = service.getStatusBatch;
+  if (getStatusBatch === void 0) return pending2;
+  const byId = /* @__PURE__ */ new Map();
+  for (const job of pending2) if (job.jobId) byId.set(job.jobId, job);
+  if (byId.size === 0) return pending2;
+  let sweep;
+  try {
+    sweep = await getStatusBatch.call(service, [...byId.keys()], {
+      ...options.signal === void 0 ? {} : { signal: options.signal },
+      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers }
+    });
+  } catch (error) {
+    if (options.signal?.aborted === true) throw error;
+    return pending2;
+  }
+  if (sweep.failedIds !== void 0) {
+    record3.failures += 1;
+    if (sweep.retryAfterS !== void 0) {
+      record3.retryAfterS = Math.max(record3.retryAfterS ?? 0, sweep.retryAfterS);
+    }
+  }
+  for (const [id, job] of byId) {
+    const snapshot = sweep.statuses.get(id);
+    if (snapshot === void 0) continue;
+    failures.delete(job);
+    applySnapshot(job, snapshot);
+  }
+  return sweep.unanswered.map((id) => byId.get(id)).filter((job) => job !== void 0);
+}
+var lastSweeps = /* @__PURE__ */ new WeakMap();
+function lastSweepRecord(schedule2) {
+  return lastSweeps.get(schedule2) ?? { perJob: 0, failures: 0, retryAfterS: void 0 };
+}
+async function checkAreaState(service, schedule2, options = {}) {
+  const pending2 = [...schedule2.jobs.values()].filter((job) => Boolean(job.jobId) && job.status !== "completed" && job.status !== "failed" && job.status !== "skipped");
+  const record3 = { perJob: 0, failures: 0, retryAfterS: void 0 };
+  const remaining = service.getStatusBatch === void 0 || pending2.length === 0 ? pending2 : await pollBatched(service, pending2, options, record3);
+  record3.perJob = remaining.length;
+  lastSweeps.set(schedule2, record3);
+  const count2 = Math.min(workerCount(options.maxWorkers), Math.max(1, remaining.length));
+  let cursor = 0;
+  await Promise.all(Array.from({ length: count2 }, async () => {
+    while (cursor < remaining.length) {
+      const job = remaining[cursor++];
+      if (job) await pollOne(service, job, record3, options.signal);
+    }
+  }));
+  const state = computeAreaState(schedule2);
+  try {
+    options.onProgress?.(state);
+  } catch {
+  }
+  return state;
+}
+
+// src/area/retry-context.ts
+function scheduleKeyStates(schedule2) {
+  const attempt = (key) => schedule2.attempts?.[key];
+  const states = [];
+  for (const job of schedule2.jobs.values()) {
+    const jobStatus = job.jobId !== void 0 && (job.status === "completed" || job.status === "failed") ? job.status : void 0;
+    states.push({ key: job.tileId, submit: "accepted", jobStatus, attempt: attempt(job.tileId) });
+  }
+  for (const key of schedule2.failedSubmissions) states.push({ key, submit: "failed", attempt: attempt(key) });
+  for (const key of schedule2.uncertainSubmissions ?? []) {
+    states.push({ key, submit: "uncertain", attempt: attempt(key) });
+  }
+  return states;
+}
+async function buildRetryContext(service, retryFrom, options = {}) {
+  await checkAreaState(service, retryFrom, {
+    ...options.signal === void 0 ? {} : { signal: options.signal },
+    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers }
+  });
+  const plan = planAreaRetry({
+    ...retryFrom.runId === void 0 ? { freshRunId: freshRunId() } : { runId: retryFrom.runId },
+    keys: scheduleKeyStates(retryFrom)
+  });
+  return {
+    runId: plan.runId,
+    attempts: plan.attempts,
+    resubmitKeys: new Set(plan.resubmit.map((entry) => entry.key)),
+    idempotencyKeys: new Map(plan.resubmit.map((entry) => [entry.key, entry.idempotencyKey])),
+    carryUncertain: plan.heldUncertain
+  };
+}
+
+// src/area/facade-ownership.ts
+var FacadeOwnership = class {
+  /** `unowned` is the site pass's own answer, computed before any seeding. */
+  constructor(unowned) {
+    this.unowned = unowned;
+  }
+  savedOwner = /* @__PURE__ */ new Map();
+  demoted = [];
+  /**
+   * Ids some visited tile ANALYSES, and the tiles this pass visited. A saved
+   * owner is the only thing that can leave a building unclaimed, and whether
+   * that is a defect depends on whether its tile was rebuilt — see
+   * {@link FacadeOwnership.finish}.
+   */
+  claimed = /* @__PURE__ */ new Set();
+  visited = /* @__PURE__ */ new Set();
+  /**
+   * Adopt the ownership a saved schedule already recorded.
+   *
+   * A retry rebuilds SOME tiles. The kernel's answer is a property of the GRID
+   * and not of one pass over it, so a fresh run and a retry agree by
+   * construction — but a schedule saved by an older SDK, or one whose grid was
+   * planned under a different tile list, may not. Where it disagrees the SAVED
+   * answer wins: those sensors are already billed.
+   *
+   * "Wins" means it SELECTS a tile, not merely that it rejects the kernel's.
+   * Using it only to reject loses the building in both — the saved tile never
+   * had it in `core`, and the kernel's tile gives it up — and the kernel's own
+   * `unowned` cannot see that, because it is computed before this filter.
+   * {@link FacadeOwnership.finish} carries the host's own check for it.
+   */
+  seedFromSchedule(membership) {
+    for (const [key, ids] of Object.entries(membership ?? {})) {
+      const tileId = key.split("#batch")[0] ?? key;
+      for (const id of ids) if (!this.savedOwner.has(id)) this.savedOwner.set(id, tileId);
+    }
+  }
+  /**
+   * Record what the kernel selected for this tile (`area/site-facade.ts`).
+   *
+   * The kernel applies the rule this class used to apply here — a saved owner
+   * wins where the tile still carries the mesh, else the tile's post-resolution
+   * `core` — so this host only records what was claimed and which duplicates
+   * the site pass resolved. The Python twin is `observe_native`.
+   */
+  observe(tileId, answer, activeIds) {
+    this.visited.add(tileId);
+    for (const id of activeIds) this.claimed.add(id);
+    for (const id of answer.demoted) {
+      this.demoted.push({ id, kept: this.savedOwner.get(id) ?? "an earlier tile", later: tileId });
+    }
+  }
+  /**
+   * Refuse a building nobody analyses.
+   *
+   * Two ways to end up analysed by nobody. The kernel's `unowned` is one: a
+   * shrink-band building no core took. The other is a saved owner whose tile
+   * this pass DID visit and which no longer carries the mesh — and the visited
+   * set is what keeps that apart from the ordinary retry, where the owning tile
+   * simply was not rebuilt and its existing job still analyses the building.
+   * Raising on the second would fail a legitimate retry for geometry that is
+   * already billed.
+   *
+   * `complete` is `false` when only SOME tiles were visited (a retry).
+   */
+  finish(complete) {
+    const stale = [...this.savedOwner.entries()].filter(([id, tile]) => this.visited.has(tile) && !this.claimed.has(id)).map(([id]) => id);
+    const orphaned = [.../* @__PURE__ */ new Set([...this.unowned, ...stale])].sort();
+    if (orphaned.length === 0 || !complete) return;
+    throw new Error(
+      `facade ownership left ${orphaned.length} building(s) analysed by no tile: ${orphaned.slice(0, 8).join(", ")}${orphaned.length > 8 ? " ..." : ""}. The re-anchored core box (DEVIATIONS D63) gave them up and no neighbouring tile claimed them. This is a bug in the core-extent rule, not in the payload.`
+    );
+  }
+  /** `{id, kept, later}` per duplicate the kernel resolved, in tile order. */
+  get resolved() {
+    return this.demoted;
+  }
+};
+
+// src/area/weather-guard.ts
+var SCHEDULE_CONTRACT_VERSION = 9;
+var WEATHER_IDENTITY_CONTRACT_VERSION = 4;
+var MIGRATION = "Start a fresh run, or re-run the finished tiles yourself. The SDK will not assign the current weather to jobs it cannot prove were run with it, and it will not start a billed run on your behalf. Build the retry payload from the SAME weather \u2014 the same file, the same catalog window or the same arrays \u2014 and the resume is admitted.";
+var WeatherIdentityError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "WeatherIdentityError";
+  }
+};
+var WIRE_TO_COLUMN = Object.fromEntries(
+  Object.entries(MODEL_INPUT_NAMES).map(([column, camel]) => [
+    TOP_LEVEL_ALIASES.get(camel) ?? camel,
+    column
+  ])
+);
+var WINDOW_KEYS = [
+  ["start-month", "start_month"],
+  ["start-day", "start_day"],
+  ["start-hour", "start_hour"],
+  ["end-month", "end_month"],
+  ["end-day", "end_day"],
+  ["end-hour", "end_hour"]
+];
+function numbers(value) {
+  if (!Array.isArray(value)) return void 0;
+  const out = [];
+  for (const item of value) {
+    if (typeof item !== "number" || !Number.isFinite(item)) return void 0;
+    out.push(item);
+  }
+  return out;
+}
+function preparedWeatherIdentity(payload) {
+  const refuse = (detail) => {
+    throw new WeatherIdentityError(
+      `this payload's weather cannot be identified: ${detail}. The SDK does not submit a weather-bearing run it cannot describe, because a run with no identity cannot be resumed and cannot be shown to be the run a retry carries.`
+    );
+  };
+  const latitude = payload.latitude;
+  const longitude = payload.longitude;
+  const period = payload["time-period"];
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    refuse("it carries no location");
+  }
+  if (period === null || typeof period !== "object") refuse("it carries no window");
+  const source = period;
+  const window = {};
+  for (const [wire, kernel] of WINDOW_KEYS) {
+    const value = source[wire];
+    if (typeof value !== "number" || !Number.isInteger(value)) {
+      refuse("its window is incomplete");
+    }
+    window[kernel] = value;
+  }
+  const columns = {};
+  for (const [wire, kernel] of Object.entries(WIRE_TO_COLUMN)) {
+    if (!Object.hasOwn(payload, wire)) continue;
+    const values = numbers(payload[wire]);
+    if (values === void 0) refuse(`column ${wire} holds a value that is not a number`);
+    columns[kernel] = values;
+  }
+  if (Object.keys(columns).length === 0) refuse("it carries no weather column");
+  return requireCore().weatherRunIdentity(
+    JSON.stringify({ latitude, longitude, window, columns })
+  );
+}
+function isWeatherBearing(analysisType) {
+  return WEATHER_BEARING_ANALYSES.has(analysisType);
+}
+function checkResumeWeather(retryFrom, currentIdentity) {
+  if (retryFrom === void 0 || !isWeatherBearing(retryFrom.analysisType)) return;
+  const version = retryFrom.scheduleContractVersion;
+  if (version === void 0 || version < WEATHER_IDENTITY_CONTRACT_VERSION) {
+    throw new WeatherIdentityError(
+      `retryFrom schedule predates the weather run identity (schedule contract version ${String(version)}, this SDK writes ${WEATHER_IDENTITY_CONTRACT_VERSION}). An earlier version records either no weather at all, or the identity of an EPW FILE, which is computed over a different preimage under a different version tag and can never equal this SDK's value \u2014 so comparing them would report a weather change that did not happen, and skipping the comparison could submit the failed tiles with one climate and carry the succeeded tiles forward with another, in one grid. ${MIGRATION}`
+    );
+  }
+  const recorded = retryFrom.weatherIdentity;
+  if (recorded === void 0) {
+    throw new WeatherIdentityError(
+      `retryFrom schedule has no weather identity: it describes a weather-bearing run whose weather this SDK cannot name, so it cannot show that your retry carries the same readings at the same location. ${MIGRATION}`
+    );
+  }
+  if (currentIdentity === void 0) {
+    throw new WeatherIdentityError(
+      `this retry's weather cannot be identified, and the schedule it resumes carries an identity (${recorded.slice(0, 19)}...). The prepared payload reads no weather array, or carries no location or window. ${MIGRATION}`
+    );
+  }
+  if (currentIdentity !== recorded) {
+    throw new WeatherIdentityError(
+      `retryFrom weather identity mismatch: the schedule was created with ${recorded.slice(0, 19)}..., this retry computes ${currentIdentity.slice(0, 19)}.... The window is unchanged, so configHash matches and every other guard passes \u2014 but the readings, or the latitude and longitude, differ, so the resubmitted tiles and the carried-forward ones would hold two different climates. ${MIGRATION}`
+    );
+  }
+}
+
+// src/area/planning.ts
+async function retrySiteIdentity(current, inputs, prior, retryContext) {
+  const recorded = prior?.siteIdentity;
+  if (current === void 0 || recorded === void 0 || recorded === current || prior === void 0 || (retryContext?.resubmitKeys.size ?? 0) === 0) return current;
+  const legacyKey = await preparedSiteKey(inputs, void 0, true);
+  return legacyKey !== void 0 && `sha256:${kernelConfigHash({ siteKey: legacyKey })}` === recorded ? recorded : current;
+}
+async function planAreaSubmission(service, input, polygonInput, options = {}) {
+  const slice = new Slice(options);
+  slice.check();
+  if (input.vegetationInstances != null || input["vegetation-instances"] != null) {
+    throw new TypeError("vegetation-instances have no area tiling policy");
+  }
+  const payload = prepareAreaPayload(input);
+  if (payload["vegetation-instances"] != null) {
+    throw new TypeError("vegetation-instances have no area tiling policy");
+  }
+  const analysisType = payload["analysis-type"];
+  const weatherIdentity = isWeatherBearing(analysisType) ? preparedWeatherIdentity(payload) : void 0;
+  const surfaceFields = payload["analysis-surfaces"] != null;
+  if (payload["sensor-points"] !== void 0) {
+    throw new TypeError("sensor-points are not supported for area analysis");
+  }
+  if (surfaceFields && options.retryFrom !== void 0 && options.retryFrom.batchingPolicyVersion !== 2) {
+    throw new Error("legacy facade schedules can be polled and merged but cannot be retried safely");
+  }
+  if (surfaceFields) checkFacadeCountContract(options.retryFrom);
+  if (surfaceFields) checkFacadeSensorCap(options);
+  const polygon = validatePolygon(polygonInput);
+  const grid = generateTilesForPolygon(polygon, {
+    analysisType,
+    ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
+  });
+  const { tiles, byId } = indexed(grid);
+  const config = getTilingConfig(analysisType);
+  const requestedMargin = options.terrainContextMarginM ?? 128;
+  const terrainContextMarginM = Math.max(
+    (config.contextSizeM - config.inferenceSizeM) / 2,
+    requestedMargin
+  );
+  if (options.retryFrom?.terrainContextMarginM !== void 0 && options.retryFrom.terrainContextMarginM !== terrainContextMarginM) {
+    throw new Error("retryFrom terrainContextMarginM mismatch");
+  }
+  validateRetryGrid(options.retryFrom, polygon, analysisType, tiles, grid);
+  if (options.terrainContext !== void 0) throw new TypeError("terrainContext is internal; use terrainContextMarginM");
+  const inputs = {
+    payload,
+    options,
+    polygon,
+    config,
+    terrainContextMarginM,
+    grade: consumeGradeOption(payload)
+  };
+  const texts = /* @__PURE__ */ new Map();
+  const siteKey = await preparedSiteKey(inputs, texts);
+  const retryContext = options.retryFrom === void 0 ? void 0 : await buildRetryContext(service, options.retryFrom, options);
+  const currentSiteIdentity = await retrySiteIdentity(
+    siteKey === void 0 ? void 0 : `sha256:${kernelConfigHash({ siteKey })}`,
+    inputs,
+    options.retryFrom,
+    retryContext
+  );
+  const siteIdentity = options.retryFrom === void 0 ? currentSiteIdentity : options.retryFrom.siteIdentity;
+  const terrain = siteTerrain(payload["ground-geometry"], terrainDigest(siteKey), texts);
+  const site = await preparedSites().get(
+    siteKey,
+    () => buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain),
+    options.signal
+  );
+  texts.clear();
+  slice.check();
+  const composed = surfaceFields ? void 0 : await composedTiles(site, slice, options.signal);
+  const ownership = new FacadeOwnership(site.answers.unowned);
+  ownership.seedFromSchedule(options.retryFrom?.batchMembership);
+  const base = { ...payload };
+  for (const key of GROUP_KEYS) delete base[key];
+  const hashFields = { ...payload };
+  if (Object.hasOwn(hashFields, "geometries")) hashFields.geometries = {};
+  delete hashFields["ground-materials"];
+  if (hashFields["mesh-cleaning"] === "auto") delete hashFields["mesh-cleaning"];
+  const foldedFields = foldHashFields(hashFields, liveTerrain(terrain));
+  const hashInput = Object.hasOwn(foldedFields, "ground-geometry") ? { ...foldedFields, terrain_slicing: { v: 1 } } : foldedFields;
+  if (analysisType === "sky-view-factors") hashInput.tile_location_policy = { v: 1 };
+  const configHash = surfaceFields ? kernelFacadeConfigHash(hashInput, site.tileBuildingFolds ??= await foldTileBuildings(tiles, slice, site.answers)) : kernelConfigHash(hashInput);
+  checkResumeWeather(options.retryFrom, weatherIdentity);
+  if (options.retryFrom !== void 0) {
+    requireFoldedSchedule(options.retryFrom);
+    if (options.retryFrom.configHash !== configHash) {
+      throw new Error("retryFrom schedule configHash mismatch");
+    }
+    checkPaidRetrySiteIdentity(options.retryFrom, currentSiteIdentity, (retryContext?.resubmitKeys.size ?? 0) > 0);
+  }
+  const runId = retryContext?.runId ?? options.retryFrom?.runId ?? freshRunId();
+  const attemptFor = (key) => retryContext?.attempts[key] ?? 1;
+  const retry = retryContext === void 0 ? void 0 : retryContext.resubmitKeys;
+  const tilePositions = options.retryFrom === void 0 ? tiles.map((tile) => ({ ...tile })) : options.retryFrom.tilePositions.map((position) => ({ ...position }));
+  const built = await buildEntries(tiles, {
+    service,
+    options,
+    analysisType,
+    base,
+    byId,
+    ownership,
+    site: site.answers,
+    surfaceFields,
+    retry,
+    runId,
+    attemptFor,
+    ...composed === void 0 ? {} : { composed },
+    ...surfaceFields ? { facadeRequest: facadeRequest(base, tiles, options.retryFrom, options.maxSensorsPerJob) } : {},
+    reuseScope: (key) => [
+      "area-v1",
+      key,
+      config.inferenceSizeM,
+      config.contextSizeM,
+      config.stepM,
+      terrainContextMarginM,
+      surfaceFields ? 2 : 0
+    ].join(":")
+  }, slice);
+  tilePositions.push(...built.extraPositions);
+  if (surfaceFields) ownership.finish(options.retryFrom === void 0);
+  return {
+    polygon,
+    analysisType,
+    configHash,
+    ...siteIdentity === void 0 ? {} : { siteIdentity },
+    gridShape: [grid.length, grid.reduce((width, line) => Math.max(width, line.length), 0)],
+    tilePositions,
+    entries: built.entries,
+    surfaceFields,
+    // Read off the CALLER input, not the payload: every path pins
+    // `emit-cell-tris` false on the wire (the server arm is 12x the bytes and
+    // is never requested), so asking for triangles is what selects LOCAL
+    // synthesis in the merge. `docs/DEVIATIONS.md` D88.
+    ...surfaceFields && (input.emitCellTris === true || input["emit-cell-tris"] === true) ? { localCellTris: true } : {},
+    // The real planned job count (WP-6, `infrared-core#240` / `#209`): one
+    // entry per tile on a grid run, but one per facade sub-batch on a
+    // surface run -- `tilePositions.length` is NOT this (it also carries a
+    // base entry for every empty-of-batches tile). `previewAreaBatches`
+    // (`area/preview.ts`) reads this so a caller prices from the plan, not
+    // from the tile count.
+    plannedJobCount: built.entries.length,
+    terrainContextMarginM,
+    runId,
+    ...retryContext === void 0 ? {} : { retryContext },
+    ...weatherIdentity === void 0 ? {} : { weatherIdentity },
+    ...surfaceFields ? {
+      batchingPolicyVersion: 2,
+      batchMembership: built.batchMembership,
+      batchSensorCounts: built.batchSensorCounts
+    } : {}
+  };
+}
+async function composedTiles(site, slice, signal) {
+  try {
+    return await site.composed(slice);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return site.composed(slice);
+  }
+}
+function validateRetryGrid(retry, polygon, analysisType, tiles, grid) {
+  if (retry === void 0) return;
+  if (retry.analysisType !== analysisType) throw new Error("retryFrom analysisType mismatch");
+  if (JSON.stringify(retry.polygon) !== JSON.stringify(polygon)) throw new Error("retryFrom polygon mismatch");
+  const shape = [grid.length, grid.reduce((width, line) => Math.max(width, line.length), 0)];
+  if (retry.gridShape[0] !== shape[0] || retry.gridShape[1] !== shape[1]) throw new Error("retryFrom gridShape mismatch");
+  const expected = new Map(tiles.map((tile) => [tile.tileId, `${tile.row}:${tile.col}`]));
+  for (const position of retry.tilePositions) {
+    if (position.tileId.includes("#batch")) continue;
+    if (expected.get(position.tileId) !== `${position.row}:${position.col}`) {
+      throw new Error("retryFrom tilePositions mismatch");
+    }
+    expected.delete(position.tileId);
+  }
+  if (expected.size !== 0) throw new Error("retryFrom tilePositions mismatch");
+}
+function requireFoldedSchedule(retryFrom) {
+  const version = retryFrom.scheduleContractVersion ?? 1;
+  if (version >= CONFIG_HASH_FOLD_CONTRACT_VERSION) return;
+  throw new ConfigHashPolicyError(
+    `retryFrom schedule predates this SDK's configHash (schedule contract version ${String(version)}, this SDK writes ${CONFIG_HASH_FOLD_CONTRACT_VERSION}). An older SDK either hashed the whole terrain, context-geometry and vegetation documents instead of the kernel's group hash of each (D51), or took the hash itself through this package's own rounding fold instead of the kernel's configHash primitive (D81) \u2014 either way the two identities cannot be compared and a mismatch here would say nothing about your inputs. Start a fresh run with the same inputs: the tiles that already succeeded are unaffected on the server, and this SDK will not resume a schedule whose identity it cannot verify.`
+  );
+}
+var ConfigHashPolicyError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ConfigHashPolicyError";
+  }
+};
+
+// src/mesh-clean.ts
+function cleanMesh(coordinates, indices2) {
+  const coords = coordinates instanceof Float64Array || coordinates instanceof Float32Array ? coordinates : Float32Array.from(coordinates);
+  const tris = indices2 instanceof Uint32Array ? indices2 : checkedIndices(indices2);
+  return requireCore().cleanMesh(coords, tris);
+}
+function checkedIndices(indices2) {
+  const out = new Uint32Array(indices2.length);
+  for (let i = 0; i < indices2.length; i++) {
+    const value = indices2[i];
+    if (!Number.isInteger(value) || value < 0 || value > 4294967295) {
+      throw new RangeError(
+        `indices[${i}] = ${String(value)} is not a whole number in 0..2**32-1`
+      );
+    }
+    out[i] = value;
+  }
+  return out;
+}
+
+// src/vegetation-mesh.ts
+var VegetationMeshError = class extends Error {
+  name = "VegetationMeshError";
+};
+function referencePoint(collection) {
+  const point = collection["referencePoint"];
+  const valid = Array.isArray(point) && point.length === 2 && point.every((value) => typeof value === "number" && Number.isFinite(value));
+  if (!valid) {
+    throw new VegetationMeshError(
+      "featureCollection must carry referencePoint [lon, lat] (the metric frame origin)"
+    );
+  }
+  return [point[0], point[1]];
+}
+function convertPointsToMeshesLocal(featureCollection, options = {}) {
+  if (featureCollection === null || typeof featureCollection !== "object" || Array.isArray(featureCollection)) {
+    throw new VegetationMeshError("featureCollection must be an object");
+  }
+  const [lon, lat] = referencePoint(featureCollection);
+  const features = featureCollection["features"];
+  if (!Array.isArray(features)) {
+    throw new VegetationMeshError("featureCollection.features must be an array");
+  }
+  const core2 = requireCore();
+  const registry = options.registryJson ?? core2.vegetationRegistryDocument();
+  let meshes;
+  try {
+    meshes = JSON.parse(
+      core2.vegetationPointsToMeshes(JSON.stringify(features), lon, lat, registry)
+    );
+  } catch (error) {
+    throw new VegetationMeshError(
+      `local geojson-to-mesh failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  if (!Array.isArray(meshes)) {
+    throw new VegetationMeshError(
+      `local geojson-to-mesh returned ${typeof meshes}, expected an array`
+    );
+  }
+  return meshes;
+}
+function vegetationRegistryDocument() {
+  return requireCore().vegetationRegistryDocument();
+}
+
+// src/vegetation.ts
+var VegetationService = class {
+  request;
+  constructor(options) {
+    this.request = {
+      ...options.fetch === void 0 ? {} : { fetch: options.fetch },
+      ...options.timeoutMs === void 0 ? {} : { timeoutMs: options.timeoutMs },
+      // A retry of a public read reports through the client's logger.
+      ...options.logger === void 0 ? {} : { logger: options.logger }
+    };
+  }
+  /**
+   * One tile's trees, read straight from the public data hosts.
+   *
+   * Returns `null` for a genuinely empty tile.
+   */
+  async getGeoJson(lat, lon, distance) {
+    const result = await acquireTrees(pointToBbox(lat, lon, distance), { ...this.request });
+    if (result.features.length === 0) return null;
+    return {
+      type: "FeatureCollection",
+      features: result.features,
+      ...result.warnings.length === 0 ? {} : { _warnings: [...result.warnings] }
+    };
+  }
+  /**
+   * One tile's trees as FeatureCollection JSON text.
+   *
+   * The area path uses this rather than the object form: the per-tile texts
+   * are spliced into the array the deduplicator takes, so no tile's features
+   * are ever built as host objects (bulk-data rule 1).
+   */
+  async tileJsonDirect(lat, lon, distance, options) {
+    const { featuresJson } = await acquireTreesJson(pointToBbox(lat, lon, distance), options);
+    return featureCollectionJson(featuresJson);
+  }
+  /**
+   * Convert tree Point features to dotbim meshes in the local WASM kernel.
+   *
+   * `converter` accepts only `"local"`: the TypeScript SDK has no remote
+   * convert route, so a remote value is a typed error rather than a silent
+   * local run (D39). Mirrors Python
+   * `VegetationServiceClient.convert_to_mesh(converter="local")`.
+   */
+  toMeshes(featureCollection, options = {}) {
+    const converter = options.converter ?? "local";
+    if (converter !== "local") {
+      throw new VegetationMeshError(
+        `converter must be "local"; the TypeScript SDK has no remote convert route`
+      );
+    }
+    return convertPointsToMeshesLocal(
+      featureCollection,
+      options.registryJson === void 0 ? {} : { registryJson: options.registryJson }
+    );
+  }
+  /**
+   * Trees over an area, tile by tile.
+   */
+  async getArea(polygon, options = {}) {
+    rejectRemovedOption(
+      options,
+      "acquisition",
+      "trees are read from the public data hosts only; remove the option"
+    );
+    const started = performance.now();
+    const analysisType = resolveReadAnalysisType(options.analysisType);
+    const readDistanceM = groundReadDistanceM(analysisType);
+    const tiles = generateTilesForPolygon(polygon, {
+      analysisType,
+      ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
+    });
+    const active3 = tiles.flat().filter((tile) => !tile.empty);
+    const failedTiles = [];
+    const workers = options.maxWorkers ?? 10;
+    const request = {
+      ...this.request,
+      ...options.signal === void 0 ? {} : { signal: options.signal }
+    };
+    const direct = { ...request, transport: httpRangeTransport(request) };
+    const stopIfAborted = () => {
+      if (options.signal?.aborted === true) {
+        throw options.signal.reason ?? new DOMException("aborted", "AbortError");
+      }
+    };
+    const tilesJson = jsonArrayOf(
+      await mapLimit(active3, workers, async (tile) => {
+        stopIfAborted();
+        try {
+          return await this.tileJsonDirect(
+            tile.centroid.latitude,
+            tile.centroid.longitude,
+            readDistanceM,
+            direct
+          );
+        } catch {
+          stopIfAborted();
+          failedTiles.push(tile.tileId);
+          return void 0;
+        }
+      })
+    );
+    stopIfAborted();
+    if (active3.length > 0 && failedTiles.length === active3.length) {
+      throw new Error(`Vegetation fetch failed for all ${active3.length} area tiles`);
+    }
+    const features = JSON.parse(requireCore().dedupVegetationFeatures(tilesJson));
+    return {
+      features,
+      polygon,
+      totalTrees: Object.keys(features).length,
+      executionTime: (performance.now() - started) / 1e3,
+      failedTiles,
+      readMarginM: readDistanceM,
+      analysisType
+    };
+  }
+};
+
+// src/internal/ground-merge.ts
+function resolveCleaner(requested) {
+  if (requested === void 0) return "local";
+  if (typeof requested === "string") {
+    throw new InvalidOptionError(
+      `cleaner ${JSON.stringify(requested)} was removed; leave cleaner unset for the bundled kernel cleaner, or pass a GroundMaterialCleaner object`
+    );
+  }
+  return requested;
+}
+function cleaningExtent(polygon, fetchDistanceM) {
+  const ring = polygon.coordinates[0];
+  if (!ring || ring.length === 0) throw new TypeError("polygon exterior ring is empty");
+  let minLatitude = Number.POSITIVE_INFINITY;
+  let maxLatitude = Number.NEGATIVE_INFINITY;
+  let minLongitude = Number.POSITIVE_INFINITY;
+  let maxLongitude = Number.NEGATIVE_INFINITY;
+  for (const point of ring) {
+    minLongitude = Math.min(minLongitude, point[0]);
+    maxLongitude = Math.max(maxLongitude, point[0]);
+    minLatitude = Math.min(minLatitude, point[1]);
+    maxLatitude = Math.max(maxLatitude, point[1]);
+  }
+  const projected = JSON.parse(requireCore().projectPolygonToMeters(JSON.stringify(polygon)));
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const [x, y] of projected.polygon_meters) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    distance: Math.max(fetchDistanceM, Math.hypot(maxX - minX, maxY - minY) / 2)
+  };
+}
+
+// src/ground-materials-service.ts
+var GroundMaterialsService = class {
+  request;
+  /** The client's logger: the 20 km2 site warning goes through it (D48). */
+  logger;
+  constructor(options) {
+    this.request = {
+      ...options.fetch === void 0 ? {} : { fetch: options.fetch },
+      ...options.timeoutMs === void 0 ? {} : { timeoutMs: options.timeoutMs },
+      // A retry of a public read reports through the client's logger.
+      ...options.logger === void 0 ? {} : { logger: options.logger }
+    };
+    this.logger = options.logger ?? consoleLogger;
+  }
+  /** Base options for a direct read: the client's transport settings. */
+  directOptions() {
+    return { ...this.request };
+  }
+  /**
+   * One tile's layers composed in-process from the public data hosts.
+   *
+   * Returns `null` for a tile with no material at all.
+   */
+  async getRaw(lat, lon, distance) {
+    const { layers } = await acquireGroundMaterials(pointToBbox(lat, lon, distance), {
+      ...this.directOptions()
+    });
+    const empty = Object.values(layers).every(
+      (collection) => (collection.features?.length ?? 0) === 0
+    );
+    return empty ? null : layers;
+  }
+  async getArea(polygon, options = {}) {
+    rejectRemovedOption(
+      options,
+      "acquisition",
+      "ground materials are composed from the public data hosts only; remove the option"
+    );
+    const cleaner = resolveCleaner(options.cleaner);
+    const started = performance.now();
+    const analysisType = resolveReadAnalysisType(options.analysisType);
+    const tileQueryHalfM = groundReadDistanceM(analysisType);
+    const grid = generateTilesForPolygon(polygon, {
+      analysisType,
+      ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
+    });
+    const active3 = grid.flat().filter((tile) => !tile.empty);
+    const extent = active3.length > 0 ? cleaningExtent(polygon, tileQueryHalfM) : void 0;
+    if (active3.length === 0 || extent === void 0) {
+      return {
+        layers: {},
+        polygon,
+        totalFeatures: 0,
+        executionTime: (performance.now() - started) / 1e3,
+        failedTiles: [],
+        readMarginM: tileQueryHalfM,
+        analysisType
+      };
+    }
+    const transport3 = httpRangeTransport({
+      ...this.directOptions(),
+      ...options.signal === void 0 ? {} : { signal: options.signal }
+    });
+    const rectangles = active3.map((tile) => pointToBbox(tile.centroid.latitude, tile.centroid.longitude, tileQueryHalfM));
+    const site = siteRectangle(rectangles);
+    const origin = kernelPolygonOrigin(polygon);
+    const direct = {
+      ...this.directOptions(),
+      ...options.signal === void 0 ? {} : { signal: options.signal },
+      transport: transport3,
+      // The same frame origin for every chunk, so one road buffers to one
+      // polygon whichever chunk sees it (D39).
+      frameOrigin: [origin.lon, origin.lat],
+      cleaningExtent: extent,
+      // The rectangles the simulation actually reads: a chunk meeting none of
+      // them is not composed (an L-shaped polygon's empty quadrant).
+      tileRectangles: rectangles,
+      logger: this.logger,
+      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+      ...options.defaultMaterial === void 0 ? {} : { defaultLayer: options.defaultMaterial },
+      ...options.zStep === void 0 ? {} : { zStep: options.zStep },
+      ...options.overtureRelease === void 0 ? {} : { overtureRelease: options.overtureRelease }
+    };
+    const area = await acquireGroundMaterialsArea(site, direct);
+    const overtureRelease = area.overtureRelease === "" ? void 0 : area.overtureRelease;
+    let layers = JSON.parse(area.layersJson);
+    if (cleaner !== "local" && Object.keys(layers).length > 0) {
+      layers = await cleaner.cleanV3(layers, {
+        latitude: extent.latitude,
+        longitude: extent.longitude,
+        distance: extent.distance,
+        ...options.defaultMaterial === void 0 ? {} : { defaultLayer: options.defaultMaterial },
+        ...options.zStep === void 0 ? {} : { zStep: options.zStep }
+      });
+    }
+    const totalFeatures = Object.values(layers).reduce(
+      (sum, collection) => sum + (collection.features?.length ?? 0),
+      0
+    );
+    return {
+      layers,
+      polygon,
+      totalFeatures,
+      executionTime: (performance.now() - started) / 1e3,
+      // A site-level read succeeds or fails as one. A partial ground set is
+      // not a degraded answer. It is an emptier city that nobody can see (D48).
+      failedTiles: [],
+      readMarginM: tileQueryHalfM,
+      analysisType,
+      ...overtureRelease === void 0 ? {} : { overtureRelease }
+    };
+  }
+};
 
 // src/internal/weather-static-decode.ts
 var WeatherServiceError = class extends Error {
@@ -7340,11 +11950,11 @@ function rowsFromWeatherData(weatherData) {
   const rowCount = columns.reduce((most, [, values]) => Math.max(most, values.length), 0);
   const rows = [];
   for (let index2 = 0; index2 < rowCount; index2 += 1) {
-    const record4 = {};
+    const record3 = {};
     for (const [field, values] of columns) {
-      record4[field] = index2 < values.length ? values[index2] : null;
+      record3[field] = index2 < values.length ? values[index2] : null;
     }
-    rows.push(normalizeWeatherPoint(record4));
+    rows.push(normalizeWeatherPoint(record3));
   }
   return rows;
 }
@@ -7499,18 +12109,18 @@ function validateCoordinates(coordinates) {
     }
   }
 }
-function validateIndices(indices) {
-  for (const index2 of indices) {
+function validateIndices(indices2) {
+  for (const index2 of indices2) {
     if (typeof index2 !== "number" || !Number.isFinite(index2)) {
       throw new TypeError("indices must contain only finite numbers");
     }
   }
 }
-function packMesh(coordinates, indices) {
+function packMesh(coordinates, indices2) {
   validateCoordinates(coordinates);
-  validateIndices(indices);
+  validateIndices(indices2);
   const coordinateBuffer = coordinates instanceof Float64Array ? coordinates : new Float64Array(coordinates);
-  return requireCore().packMesh(coordinateBuffer, indices);
+  return requireCore().packMesh(coordinateBuffer, indices2);
 }
 
 // src/internal/registry-document.ts
@@ -7572,7 +12182,7 @@ async function readDocument(response) {
     );
   }
 }
-function stopDetail2(error, deadline, timeoutMs) {
+function stopDetail3(error, deadline, timeoutMs) {
   const stopped = deadline.reason();
   if (stopped === "timeout") {
     return `the colour registry did not answer within ${timeoutMs} ms`;
@@ -7613,19 +12223,19 @@ async function fetchVisualConfigurations(options = {}) {
     document2 = await deadline.wait(() => readDocument(response));
   } catch (error) {
     if (error instanceof RegistryFetchError) throw error;
-    throw new RegistryFetchError(stopDetail2(error, deadline, timeoutMs), { cause: error });
+    throw new RegistryFetchError(stopDetail3(error, deadline, timeoutMs), { cause: error });
   } finally {
     deadline.close();
   }
   if (typeof document2 !== "object" || document2 === null) {
     throw new RegistryFetchError("colour registry document is not a JSON object");
   }
-  const record4 = document2;
-  const configurations = record4["visualConfigurations"];
+  const record3 = document2;
+  const configurations = record3["visualConfigurations"];
   if (typeof configurations !== "object" || configurations === null) {
     throw new RegistryFetchError("colour registry has no `visualConfigurations` object");
   }
-  const rawVersion = record4["version"];
+  const rawVersion = record3["version"];
   const resolved = deepFreeze({
     configurations,
     version: typeof rawVersion === "string" ? rawVersion : null
@@ -7774,6 +12384,44 @@ function gridImageSize(png, gridWidth, gridHeight) {
   return { width, height, scale };
 }
 
+// src/legend.ts
+var EMPTY2 = new Float64Array(0);
+function gridOf(source) {
+  if (source instanceof Float32Array || source instanceof Float64Array) return source;
+  const grid = source?.mergedGrid;
+  if (grid instanceof Float32Array || grid instanceof Float64Array) return grid;
+  throw new TypeError("expected an AreaResult, a Float32Array or a Float64Array");
+}
+function isCategorical(source) {
+  if (source instanceof Float32Array || source instanceof Float64Array) return false;
+  return (source.legend?.length ?? 0) > 0;
+}
+function toRange(range2) {
+  return range2 === void 0 ? void 0 : [range2[0], range2[1]];
+}
+function legendRange(source, mode = "exact", options = {}) {
+  const grid = gridOf(source);
+  const values = mode === "fixed" || isCategorical(source) ? EMPTY2 : grid;
+  return toRange(requireCore().legendRange(values, mode, options.fixed?.[0], options.fixed?.[1]));
+}
+function sharedLegendRange(sources, mode = "exact", options = {}) {
+  if (!Array.isArray(sources)) throw new TypeError("expected an array of results");
+  const grids = sources.map(gridOf);
+  const pooled = mode === "fixed" ? [] : grids.filter((_, index2) => !isCategorical(sources[index2]));
+  return toRange(
+    requireCore().sharedLegendRange(pooled, mode, options.fixed?.[0], options.fixed?.[1])
+  );
+}
+async function registryFixedRange(analysisType, options = {}) {
+  const configurations = options.visualConfigurations ?? (await fetchVisualConfigurations(options.registry ?? {})).configurations;
+  const config = resolveVisualConfig(configurations, analysisType, {
+    criteria: options.criteria,
+    subtype: options.subtype
+  });
+  if (config === void 0) return void 0;
+  return toRange(requireCore().registryFixedRange(JSON.stringify(config)));
+}
+
 // src/ground-materials.ts
 function cleanV3Local(layers, params) {
   const result = requireCore().groundCleanV3(
@@ -7797,3574 +12445,6 @@ var CELL_SIZE_M = 1;
 var TILE_SIZE_M = 512;
 var TILE_SIZE_CELLS = TILE_SIZE_M / CELL_SIZE_M;
 
-// src/internal/job-response.ts
-function requiredString(value) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new TypeError("invalid job response");
-  }
-  return value;
-}
-function optionalString(value) {
-  return typeof value === "string" ? value : void 0;
-}
-function binaryAcknowledgement(value) {
-  if (value === void 0) return void 0;
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("invalid binary acknowledgement");
-  }
-  const raw = value;
-  if (raw.inputFormat !== "irbf" || raw.resultFormat !== "irbf" || raw.wireVersion !== 1) {
-    throw new TypeError("invalid binary acknowledgement");
-  }
-  return {
-    inputFormat: "irbf",
-    resultFormat: "irbf",
-    wireVersion: 1,
-    artifactDigest: requiredString(raw.artifactDigest),
-    contentDigest: requiredString(raw.contentDigest)
-  };
-}
-function parseJobStatus(value) {
-  switch (value.toLowerCase()) {
-    case "pending":
-      return "pending";
-    case "running":
-      return "running";
-    case "succeeded":
-    case "succeded":
-      return "succeeded";
-    case "failed":
-      return "failed";
-    default:
-      return "unknown";
-  }
-}
-function jobFromResponse(input) {
-  if (input === null || typeof input !== "object" || Array.isArray(input)) {
-    throw new TypeError("invalid job response");
-  }
-  const value = input;
-  const statusValue = value.jobStatus ?? value.status;
-  if (statusValue !== void 0 && statusValue !== null && typeof statusValue !== "string") {
-    throw new TypeError("invalid job response");
-  }
-  const startedAt = optionalString(value.startedAt);
-  const finishedAt = optionalString(value.finishedAt);
-  const resultsUrl = optionalString(value.resultsUrl ?? value.results);
-  const error = optionalString(value.error);
-  const binary = binaryAcknowledgement(value.binary);
-  return {
-    jobId: requiredString(value.jobId),
-    modelName: optionalString(value.modelName) ?? "",
-    status: parseJobStatus(optionalString(statusValue) ?? "Unknown"),
-    requestedAt: optionalString(value.requestedAt) ?? "",
-    ...startedAt === void 0 ? {} : { startedAt },
-    ...finishedAt === void 0 ? {} : { finishedAt },
-    ...resultsUrl === void 0 ? {} : { resultsUrl },
-    ...error === void 0 ? {} : { error },
-    ...binary === void 0 ? {} : { binary }
-  };
-}
-
-// src/internal/download.ts
-async function downloadPresigned(input, options = {}) {
-  let url;
-  try {
-    url = new URL(input);
-  } catch {
-    throw new TypeError("presigned download URL must be an absolute HTTPS URL");
-  }
-  if (url.protocol !== "https:" || url.username || url.password) {
-    throw new TypeError("presigned download URL must be uncredentialed HTTPS");
-  }
-  const fetcher = resolveFetch(options.fetch);
-  if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
-  const timeoutMs = options.timeoutMs ?? 18e4;
-  requireTimeout(timeoutMs);
-  const deadline = new Deadline(options.signal, timeoutMs);
-  let dispatched = false;
-  try {
-    const response = await deadline.wait(() => {
-      dispatched = true;
-      return fetcher(url.href, {
-        method: "GET",
-        credentials: "omit",
-        redirect: "manual",
-        signal: deadline.controller.signal
-      });
-    });
-    if (response.status >= 300 && response.status < 400) {
-      cancelResponseBody(response);
-      throw new TransportError("presigned download received a redirect", "response", "http", "GET", response.status);
-    }
-    if (!response.ok) {
-      cancelResponseBody(response);
-      throw new TransportError(`presigned download received HTTP ${response.status}`, "response", "http", "GET", response.status);
-    }
-    return {
-      content: new Uint8Array(await deadline.wait(() => response.arrayBuffer())),
-      contentType: response.headers.get("Content-Type") ?? ""
-    };
-  } catch (error) {
-    if (error instanceof TransportError) throw error;
-    const reason2 = deadline.reason() ?? (dispatched ? "network" : "validation");
-    const phase = dispatched ? "after-dispatch" : "pre-dispatch";
-    const message = reason2 === "timeout" ? "presigned download timed out" : reason2 === "aborted" ? "presigned download was aborted" : "presigned download failed";
-    throw new TransportError(message, phase, reason2, "GET");
-  } finally {
-    deadline.close();
-  }
-}
-
-// src/internal/download-retry.ts
-var DOWNLOAD_RETRY_ATTEMPTS = 1;
-var DOWNLOAD_RETRY_DELAY_MS = 250;
-function isRetryableDownloadError(error) {
-  if (!(error instanceof TransportError)) return false;
-  if (error.status === void 0) return error.reason === "network";
-  return error.status === 403 || error.status >= 500 && error.status < 600;
-}
-async function pauseBeforeRetry(signal) {
-  try {
-    await delay(DOWNLOAD_RETRY_DELAY_MS, signal ?? new AbortController().signal);
-  } catch {
-    throw new TransportError(
-      "presigned download was aborted",
-      "after-dispatch",
-      "aborted",
-      "GET"
-    );
-  }
-}
-
-// src/internal/link.ts
-var TOKEN = /[!#$%&'*+\-.^_`|~0-9A-Za-z]/;
-function splitLinkValues(header) {
-  const values = [];
-  let start = 0;
-  let quoted = false;
-  let escaped = false;
-  let angled = false;
-  for (let index2 = 0; index2 < header.length; index2 += 1) {
-    const character = header[index2];
-    if (escaped) {
-      escaped = false;
-    } else if (quoted) {
-      if (character === "\\") escaped = true;
-      else if (character === '"') quoted = false;
-    } else if (angled) {
-      if (character === ">") angled = false;
-      else if (character === "<" || character === '"') return void 0;
-    } else if (character === '"') {
-      quoted = true;
-    } else if (character === "<") {
-      angled = true;
-    } else if (character === ">") {
-      return void 0;
-    } else if (character === ",") {
-      const value = header.slice(start, index2).trim();
-      if (value.length === 0) return void 0;
-      values.push(value);
-      start = index2 + 1;
-    }
-  }
-  if (quoted || escaped || angled) return void 0;
-  const last = header.slice(start).trim();
-  if (last.length === 0) return void 0;
-  values.push(last);
-  return values;
-}
-function readParameters(input) {
-  let index2 = 0;
-  let relations;
-  const skipWhitespace = () => {
-    while (input[index2] === " " || input[index2] === "	") index2 += 1;
-  };
-  while (index2 < input.length) {
-    skipWhitespace();
-    if (index2 === input.length) break;
-    if (input[index2] !== ";") return null;
-    index2 += 1;
-    skipWhitespace();
-    const nameStart = index2;
-    while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
-    if (nameStart === index2) return null;
-    const name = input.slice(nameStart, index2).toLowerCase();
-    skipWhitespace();
-    if (input[index2] !== "=") return null;
-    index2 += 1;
-    skipWhitespace();
-    let parameter = "";
-    if (input[index2] === '"') {
-      index2 += 1;
-      let closed = false;
-      while (index2 < input.length) {
-        const character = input[index2++];
-        if (character === "\\") {
-          if (index2 === input.length) return null;
-          parameter += input[index2++];
-        } else if (character === '"') {
-          closed = true;
-          break;
-        } else {
-          parameter += character;
-        }
-      }
-      if (!closed) return null;
-    } else {
-      const valueStart = index2;
-      while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
-      if (valueStart === index2) return null;
-      parameter = input.slice(valueStart, index2);
-    }
-    skipWhitespace();
-    if (index2 < input.length && input[index2] !== ";") return null;
-    if (name === "rel") {
-      if (relations !== void 0) return null;
-      relations = parameter.split(/[ \t]+/).filter((item) => item.length > 0);
-    }
-  }
-  return relations;
-}
-function parseResultsLink(header) {
-  const values = header === null ? void 0 : splitLinkValues(header);
-  if (values === void 0) throw new Error("results response has no usable Link header");
-  const matches = [];
-  let unqualified;
-  for (const value of values) {
-    if (!value.startsWith("<")) {
-      if (values.length === 1 && value.startsWith("https://")) unqualified = value;
-      else throw new Error("results response has no usable Link header");
-      continue;
-    }
-    const end = value.indexOf(">");
-    if (end <= 1) throw new Error("results response has no usable Link header");
-    const url = value.slice(1, end);
-    const relations = readParameters(value.slice(end + 1));
-    if (relations === null) throw new Error("results response has no usable Link header");
-    if (relations?.some((item) => item.toLowerCase() === "results")) matches.push(url);
-    else if (relations === void 0 && values.length === 1) unqualified = url;
-  }
-  const selected = matches.length === 1 ? matches[0] : matches.length === 0 ? unqualified : void 0;
-  if (selected === void 0 || !selected.startsWith("https://")) {
-    throw new Error("results response has no usable Link header");
-  }
-  return selected;
-}
-
-// src/internal/submit-body.ts
-var INTERIOR_ANALYSES = /* @__PURE__ */ new Set([
-  "daylight-factor",
-  "energy-balance",
-  "spatial-daylight-autonomy"
-]);
-var UNSUPPORTED_TOP_LEVEL_ALIASES = /* @__PURE__ */ new Set([
-  "analysisType",
-  "analysis_type",
-  "analysisSurfaces",
-  "analysis_surfaces",
-  "binaryResults",
-  "binary_results",
-  "contextGeometry",
-  "context_geometry",
-  "emitCellTris",
-  "emit_cell_tris",
-  "groundMaterials",
-  "ground_materials",
-  "groundGeometry",
-  "ground_geometry",
-  "sensorSurfaces",
-  "sensor_surfaces",
-  "surfaceGridSize",
-  "surface_grid_size",
-  "surfaceOffset",
-  "surface_offset",
-  "terrainAlignment",
-  "terrain_alignment",
-  "webhookEvents",
-  "webhook_events",
-  "webhookUrl",
-  "webhook_url"
-]);
-function prepareSubmissionBody(analysisType, payload, options) {
-  if (typeof analysisType !== "string" || analysisType.length === 0) {
-    throw new TypeError("analysisType must be a non-empty string");
-  }
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new TypeError("analysis payload must be an object");
-  }
-  for (const name of UNSUPPORTED_TOP_LEVEL_ALIASES) {
-    if (Object.prototype.hasOwnProperty.call(payload, name)) {
-      throw new TypeError(`analysis payload must use wire-keyed fields; unsupported ${name}`);
-    }
-  }
-  const bodyType = payload["analysis-type"];
-  if (bodyType !== void 0 && bodyType !== analysisType) {
-    throw new TypeError("payload analysis-type does not match analysisType");
-  }
-  if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
-    throw new TypeError("unsupported option binaryResults; use transport instead");
-  }
-  if (Object.prototype.hasOwnProperty.call(payload, "binary-results")) {
-    throw new TypeError("unsupported payload field binary-results; use transport instead");
-  }
-  const hasAlignment = Object.prototype.hasOwnProperty.call(payload, "terrain-alignment");
-  const body = { ...payload, "analysis-type": analysisType };
-  validatePreparedAnalysisRequest(body, { enforceTerrainTriangleLimit: true });
-  if (takesGradeDrop(analysisType)) delete body["terrain-alignment"];
-  if (options.webhookUrl !== void 0) body["webhook-url"] = options.webhookUrl;
-  if (options.webhookEvents !== void 0) body["webhook-events"] = [...options.webhookEvents];
-  const suppliedScene = [
-    "geometries",
-    "context-geometry",
-    "vegetation",
-    "vegetation-instances"
-  ].some((name) => groupHasContent(body[name]));
-  if (!INTERIOR_ANALYSES.has(analysisType) && !hasAlignment && groupHasContent(body["ground-geometry"]) && suppliedScene) body["terrain-alignment"] = "as-is";
-  return body;
-}
-
-// src/internal/upload.ts
-function signedHttps(input) {
-  let url;
-  try {
-    url = new URL(input);
-  } catch {
-    throw new TypeError("presigned upload URL must be an absolute HTTPS URL");
-  }
-  if (url.protocol !== "https:" || url.username || url.password || url.hash) {
-    throw new TypeError("presigned upload URL must be uncredentialed HTTPS without a fragment");
-  }
-  return url.href;
-}
-async function uploadPresignedZip(input, content, options) {
-  const url = signedHttps(input);
-  requireTimeout(options.timeoutMs);
-  const deadline = new Deadline(options.signal, options.timeoutMs);
-  let dispatched = false;
-  try {
-    const response = await deadline.wait(() => {
-      dispatched = true;
-      return options.fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/zip" },
-        body: content,
-        credentials: "omit",
-        redirect: "manual",
-        signal: deadline.controller.signal
-      });
-    });
-    if (response.status >= 300 && response.status < 400) {
-      cancelResponseBody(response);
-      throw new TransportError("presigned upload received a redirect", "response", "http", "PUT", response.status);
-    }
-    if (!response.ok) {
-      cancelResponseBody(response);
-      throw new TransportError(`presigned upload received HTTP ${response.status}`, "response", "http", "PUT", response.status);
-    }
-    await deadline.wait(() => response.arrayBuffer());
-  } catch (error) {
-    if (error instanceof TransportError) throw error;
-    const stopped = deadline.reason();
-    throw new TransportError(
-      stopped === "timeout" ? "presigned upload timed out" : stopped === "aborted" ? "presigned upload was aborted" : "presigned upload failed",
-      dispatched ? "unknown-acceptance" : "pre-dispatch",
-      stopped ?? (dispatched ? "network" : "validation"),
-      "PUT"
-    );
-  } finally {
-    deadline.close();
-  }
-}
-
-// src/internal/submission.ts
-var SubmissionUncertainError = class extends Error {
-  constructor(acceptedJobIds2, status) {
-    super(status === void 0 ? "job submission returned an invalid accepted response" : `job submission received HTTP ${status}; the job may already exist`);
-    this.acceptedJobIds = acceptedJobIds2;
-    this.status = status;
-  }
-  name = "SubmissionUncertainError";
-  phase = "unknown-acceptance";
-  /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
-  status;
-};
-var AcceptedResponseError = class extends Error {
-  name = "AcceptedResponseError";
-};
-var GeometryReferenceRejectedError = class extends Error {
-  constructor(code) {
-    super("geometry reference was rejected before job acceptance");
-    this.code = code;
-  }
-  name = "GeometryReferenceRejectedError";
-};
-var GATEWAY_SIZE_MESSAGES = /* @__PURE__ */ new Set([
-  "Request Too Long",
-  "HTTP content length exceeded 10485760 bytes"
-]);
-var PRE_ACCEPT_REF_REJECTIONS = /* @__PURE__ */ new Map([
-  [400, /* @__PURE__ */ new Set(["REF_INVALID_ENVELOPE", "REF_HOST_NOT_ALLOWED"])],
-  [413, /* @__PURE__ */ new Set(["REF_TOO_LARGE"])],
-  [415, /* @__PURE__ */ new Set(["REF_CONTENT_TYPE_REJECTED"])],
-  [422, /* @__PURE__ */ new Set([
-    "REF_GEOMETRY_OVERLAP",
-    "REF_GEOMETRY_UNKNOWN_GROUP",
-    "REF_GEOMETRY_NESTED",
-    "REF_GEOMETRY_EMPTY"
-  ])],
-  [502, /* @__PURE__ */ new Set(["REF_NOT_FOUND", "REF_EXPIRED", "REF_DECODE_FAILED"])],
-  [504, /* @__PURE__ */ new Set(["REF_FETCH_TIMEOUT"])]
-]);
-function parseJson2(content) {
-  if (content.byteLength === 0) return void 0;
-  try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(content);
-    return JSON.parse(text);
-  } catch {
-    return void 0;
-  }
-}
-function signedHttps2(value, label) {
-  if (typeof value !== "string") throw new TypeError(`presign response has no ${label}`);
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new TypeError(`presign response ${label} is invalid`);
-  }
-  if (url.protocol !== "https:" || url.username || url.password || url.hash) {
-    throw new TypeError(`presign response ${label} is invalid`);
-  }
-  return url.href;
-}
-async function presign(options) {
-  const response = await options.uploadGateway.requestJson("/uploads/presign", {
-    method: "POST",
-    body: { content_length: options.archive.byteLength },
-    ...options.signal === void 0 ? {} : { signal: options.signal }
-  });
-  if (response === null || typeof response !== "object" || Array.isArray(response)) {
-    throw new TypeError("presign response is invalid");
-  }
-  const value = response;
-  return {
-    uploadUrl: signedHttps2(value["upload-url"], "upload-url"),
-    getUrl: signedHttps2(value["get-url"], "get-url")
-  };
-}
-async function presignAndUpload(options) {
-  const pair = await presign(options);
-  await uploadPresignedZip(pair.uploadUrl, options.archive, {
-    fetch: options.fetch,
-    timeoutMs: options.timeoutMs,
-    ...options.signal === void 0 ? {} : { signal: options.signal }
-  });
-  return pair.getUrl;
-}
-function uploadArchive(options) {
-  return presignAndUpload(options);
-}
-function exactGatewaySizeRejection(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const body = value;
-  const keys = Object.keys(body);
-  return keys.length === 1 && keys[0] === "message" && typeof body.message === "string" && GATEWAY_SIZE_MESSAGES.has(body.message);
-}
-function acceptedJobIds(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
-  const jobId = value.jobId;
-  return typeof jobId === "string" && jobId.length > 0 ? [jobId] : [];
-}
-async function post(options, body, contentType, allowExpired, allowGatewaySizeFallback) {
-  let response;
-  try {
-    response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
-      method: "POST",
-      headers: { "Content-Type": contentType },
-      body,
-      acceptHttpErrors: true,
-      ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
-      ...options.signal === void 0 ? {} : { signal: options.signal }
-    });
-  } catch (error) {
-    if (error instanceof TransportError && error.phase === "response" && error.status !== void 0 && error.status >= 300 && error.status < 400) {
-      throw new SubmissionUncertainError([], error.status);
-    }
-    throw error;
-  }
-  const parsed = parseJson2(response.content);
-  const ok = response.status >= 200 && response.status < 300;
-  if (!ok) {
-    const reportedIds = acceptedJobIds(parsed);
-    if (reportedIds.length > 0) throw new SubmissionUncertainError(reportedIds);
-    if (allowGatewaySizeFallback && response.status === 413 && exactGatewaySizeRejection(parsed)) {
-      return { kind: "too-large" };
-    }
-    if (allowExpired && response.status === 502 && parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.code === "REF_EXPIRED") return { kind: "expired" };
-    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const code = parsed.code;
-      if (typeof code === "string" && PRE_ACCEPT_REF_REJECTIONS.get(response.status)?.has(code)) {
-        throw new GeometryReferenceRejectedError(code);
-      }
-    }
-    if (response.status < 400 || response.status >= 500) {
-      throw new SubmissionUncertainError([], response.status);
-    }
-    throw new TransportError(
-      `job submission received HTTP ${response.status}`,
-      "response",
-      "http",
-      "POST",
-      response.status
-    );
-  }
-  try {
-    return { kind: "accepted", value: options.parseAccepted(parsed) };
-  } catch (error) {
-    if (error instanceof AcceptedResponseError) throw error;
-    throw new SubmissionUncertainError(acceptedJobIds(parsed));
-  }
-}
-async function submitArchive(options) {
-  if (options.archive.byteLength <= options.thresholdBytes) {
-    const result2 = await post(options, options.archive, "application/zip", false, true);
-    if (result2.kind === "expired") throw new Error("unreachable inline reference state");
-    if (result2.kind === "accepted") return result2.value;
-  }
-  let getUrl = await presignAndUpload(options);
-  let envelope = new TextEncoder().encode(JSON.stringify({ $ref: getUrl }));
-  let result = await post(options, envelope, "application/json", true, false);
-  if (result.kind === "accepted") return result.value;
-  getUrl = await presignAndUpload(options);
-  envelope = new TextEncoder().encode(JSON.stringify({ $ref: getUrl }));
-  result = await post(options, envelope, "application/json", false, false);
-  if (result.kind !== "accepted") throw new Error("unreachable reference retry state");
-  return result.value;
-}
-
-// src/internal/geometry-reuse/cache.ts
-var MAX_PARTITIONS = 64;
-var MAX_SCOPES = 256;
-var MAX_DOCUMENTS = 256;
-var MAX_IN_FLIGHT_FIRST_USES = 64;
-var MAX_SCOPE_LOCKS = 64;
-var UNSUPPORTED_TTL_MS = 24 * 60 * 60 * 1e3;
-var GeometryReuseCapacityError = class extends Error {
-  name = "GeometryReuseCapacityError";
-};
-function emptyState() {
-  return { schema_version: 1, last_hashes: {}, documents: [] };
-}
-function cloneSnapshot(scope) {
-  if (scope === void 0) return { state: emptyState(), urls: {} };
-  return {
-    state: structuredClone(scope.state),
-    urls: { ...scope.urls }
-  };
-}
-function liveCapability(value, now2) {
-  if (value === void 0) return void 0;
-  return value.expiresAt === void 0 || now2 < value.expiresAt ? value.outcome : void 0;
-}
-var GeometryReuseCache = class {
-  constructor(now2 = Date.now) {
-    this.now = now2;
-  }
-  partitions = /* @__PURE__ */ new Map();
-  firstUses = /* @__PURE__ */ new Map();
-  scopeLocks = /* @__PURE__ */ new Map();
-  getCapability(partitionKey) {
-    const partition = this.partitions.get(partitionKey);
-    if (partition === void 0) return void 0;
-    const outcome = liveCapability(partition.capability, this.now());
-    if (outcome === void 0) delete partition.capability;
-    return outcome;
-  }
-  setCapability(partitionKey, outcome) {
-    const now2 = this.now();
-    const partition = this.partition(partitionKey, now2);
-    partition.capability = outcome === "supported" ? { outcome } : { outcome, expiresAt: now2 + UNSUPPORTED_TTL_MS };
-  }
-  /**
-   * Single-flight the FIRST reference-carrying submission of a partition.
-   *
-   * There is no probe job any more: the verdict is learned from a real
-   * customer submission (D71). One submission therefore has to go first and
-   * alone, or a 49-tile run against a deployment that ignores the field would
-   * discard 49 billed jobs where one is enough. `owned` marks the caller that
-   * ran it, and only that caller may use the returned job. A waiter learns
-   * nothing except that the question has been answered; it reads the verdict.
-   */
-  async firstUse(partitionKey, task, signal) {
-    const existing = this.firstUses.get(partitionKey);
-    if (existing !== void 0) {
-      await waitFor(existing.then(ignore, ignore), signal);
-      if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-      return { owned: false };
-    }
-    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-    if (this.firstUses.size >= MAX_IN_FLIGHT_FIRST_USES) return { owned: false };
-    let pending2;
-    pending2 = task().finally(() => {
-      if (this.firstUses.get(partitionKey) === pending2) this.firstUses.delete(partitionKey);
-    });
-    this.firstUses.set(partitionKey, pending2);
-    return { owned: true, value: await pending2 };
-  }
-  snapshot(partitionKey, scopeKey) {
-    const now2 = this.now();
-    const partition = this.partitions.get(partitionKey);
-    const scope = partition?.scopes.get(scopeKey);
-    if (scope === void 0) return cloneSnapshot(void 0);
-    const documents = scope.state.documents.filter((item) => now2 / 1e3 < item.expires_at && scope.urls[item.key] !== void 0);
-    if (documents.length !== scope.state.documents.length) {
-      const keys = new Set(documents.map((item) => item.key));
-      scope.state = { ...scope.state, documents };
-      scope.urls = Object.fromEntries(Object.entries(scope.urls).filter(([key]) => keys.has(key)));
-    }
-    scope.touchedAt = now2;
-    if (partition !== void 0) partition.touchedAt = now2;
-    return cloneSnapshot(scope);
-  }
-  acknowledge(partitionKey, scopeKey, value) {
-    const now2 = this.now();
-    if (!Number.isFinite(value.expiresAt) || value.expiresAt <= now2) return;
-    const partition = this.partition(partitionKey, now2);
-    const prior = partition.scopes.get(scopeKey);
-    const documents = (prior?.state.documents ?? []).filter((item) => item.key !== value.key);
-    const document2 = {
-      key: value.key,
-      groups: { ...value.groups },
-      acknowledged_at: now2 / 1e3,
-      expires_at: value.expiresAt / 1e3
-    };
-    partition.scopes.delete(scopeKey);
-    partition.scopes.set(scopeKey, {
-      state: {
-        schema_version: 1,
-        last_hashes: { ...value.current },
-        documents: [...documents, document2]
-      },
-      urls: { ...prior?.urls ?? {}, [value.key]: value.url },
-      touchedAt: now2
-    });
-    this.trim();
-  }
-  /**
-   * Record `current` as the last group hashes of an inline submission (D189).
-   * Only an acknowledgement recorded them before, so a group that changed
-   * while no reference was sent never became "unchanged since the last run"
-   * and stayed inline on every later run. A scope with no history is left
-   * absent: empty state is a first use, which uploads every eligible group.
-   */
-  observe(partitionKey, scopeKey, current) {
-    const scope = this.partitions.get(partitionKey)?.scopes.get(scopeKey);
-    if (scope === void 0) return;
-    scope.state = { ...scope.state, last_hashes: { ...current } };
-  }
-  invalidate(partitionKey, scopeKey, key, url) {
-    const scope = this.partitions.get(partitionKey)?.scopes.get(scopeKey);
-    if (scope === void 0 || scope.urls[key] !== url) return;
-    delete scope.urls[key];
-    scope.state = {
-      ...scope.state,
-      documents: scope.state.documents.filter((item) => item.key !== key)
-    };
-  }
-  async withScope(partitionKey, scopeKey, task, signal) {
-    const key = `${partitionKey}
-${scopeKey}`;
-    const prior = this.scopeLocks.get(key) ?? Promise.resolve();
-    if (!this.scopeLocks.has(key) && this.scopeLocks.size >= MAX_SCOPE_LOCKS) {
-      throw new GeometryReuseCapacityError("geometry reuse scope capacity is full");
-    }
-    let release3;
-    const next = new Promise((resolve) => {
-      release3 = resolve;
-    });
-    const tail = prior.then(() => next);
-    this.scopeLocks.set(key, tail);
-    const wait = signal === void 0 ? prior : new Promise((resolve, reject) => {
-      if (signal.aborted) {
-        reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-        return;
-      }
-      const abort = () => reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-      signal.addEventListener("abort", abort, { once: true });
-      void prior.then(() => {
-        signal.removeEventListener("abort", abort);
-        resolve();
-      });
-    });
-    try {
-      await wait;
-    } catch (error) {
-      release3();
-      void tail.then(() => {
-        if (this.scopeLocks.get(key) === tail) this.scopeLocks.delete(key);
-      });
-      throw error;
-    }
-    try {
-      return await task();
-    } finally {
-      release3();
-      if (this.scopeLocks.get(key) === tail) this.scopeLocks.delete(key);
-    }
-  }
-  counts() {
-    const scopes = [...this.partitions.values()].flatMap((item) => [...item.scopes.values()]);
-    return {
-      partitions: this.partitions.size,
-      scopes: scopes.length,
-      documents: scopes.reduce((sum, item) => sum + item.state.documents.length, 0)
-    };
-  }
-  partition(key, now2) {
-    const found = this.partitions.get(key);
-    if (found !== void 0) {
-      found.touchedAt = now2;
-      this.partitions.delete(key);
-      this.partitions.set(key, found);
-      return found;
-    }
-    const created = { scopes: /* @__PURE__ */ new Map(), touchedAt: now2 };
-    this.partitions.set(key, created);
-    this.trim();
-    return created;
-  }
-  trim() {
-    while (this.partitions.size > MAX_PARTITIONS) this.partitions.delete(this.partitions.keys().next().value);
-    const allScopes = () => [...this.partitions].flatMap(
-      ([partition, value]) => [...value.scopes].map(
-        ([scope, state]) => [partition, scope, state]
-      )
-    );
-    while (allScopes().length > MAX_SCOPES) {
-      const [partition, scope] = allScopes().sort((left, right) => left[2].touchedAt - right[2].touchedAt)[0];
-      this.partitions.get(partition)?.scopes.delete(scope);
-    }
-    while (allScopes().reduce((sum, item) => sum + item[2].state.documents.length, 0) > MAX_DOCUMENTS) {
-      const candidates = allScopes().flatMap(([partition, scope, value2]) => value2.state.documents.map((document2) => ({ partition, scope, document: document2 })));
-      candidates.sort((left, right) => left.document.acknowledged_at - right.document.acknowledged_at);
-      const oldest = candidates[0];
-      if (oldest === void 0) break;
-      const value = this.partitions.get(oldest.partition)?.scopes.get(oldest.scope);
-      if (value !== void 0) {
-        value.state = { ...value.state, documents: value.state.documents.filter((item) => item !== oldest.document) };
-        delete value.urls[oldest.document.key];
-      }
-    }
-  }
-};
-function ignore() {
-  return void 0;
-}
-function waitFor(pending2, signal) {
-  if (signal === void 0) return pending2;
-  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-    signal.addEventListener("abort", abort, { once: true });
-    void pending2.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
-var sharedCache = new GeometryReuseCache();
-function getGeometryReuseCache() {
-  return sharedCache;
-}
-
-// src/internal/geometry-reuse/credentials.ts
-function activeCredential(headers) {
-  let apiKey;
-  for (const [name, value] of Object.entries(headers)) {
-    if (name.toLowerCase() === "authorization") {
-      const match = /^\s*Bearer\s+(.+)$/i.exec(value);
-      if (match?.[1]?.trim()) return { kind: "bearer", value: match[1].trim() };
-    }
-    if (name.toLowerCase() === "x-api-key" && value.trim()) apiKey = value.trim();
-  }
-  return apiKey === void 0 ? void 0 : { kind: "api-key", value: apiKey };
-}
-async function credentialPartition(baseUrl, headers) {
-  const credential = activeCredential(headers);
-  if (credential === void 0) return void 0;
-  const material = canonicalJsonBytes(`${credential.kind}\0${credential.value}`);
-  const digest = material === void 0 ? void 0 : await sha256Hex(material);
-  return digest === void 0 ? void 0 : `${trimTrailingSlashes(baseUrl)}
-${credential.kind}:${digest}`;
-}
-async function exactAuthHeadersDigest(headers) {
-  if (activeCredential(headers) === void 0) return void 0;
-  const normalized = Object.entries(normalizeAuthHeaders(headers));
-  const material = canonicalJsonBytes(normalized);
-  return material === void 0 ? void 0 : sha256Hex(material);
-}
-function normalizeAuthHeaders(headers) {
-  const normalized = new Headers();
-  for (const [name, value] of Object.entries(headers)) normalized.set(name, value);
-  return Object.fromEntries(normalized.entries());
-}
-
-// src/internal/geometry-reuse/errors.ts
-function unique(ids) {
-  return Object.freeze([...new Set(ids.filter((value) => typeof value === "string" && value.length > 0))]);
-}
-var GeometryReferenceSubmissionError = class extends AcceptedResponseError {
-  constructor(acceptedJobIds2 = [], reason2 = "geometry-reference-outcome-uncertain", message = "geometry-reference submission cannot be used or retried safely") {
-    super(message);
-    this.reason = reason2;
-    this.acceptedJobIds = unique(acceptedJobIds2);
-  }
-  name = "GeometryReferenceSubmissionError";
-  acceptedJobIds;
-  invalidReference = true;
-  nonRetryable = true;
-};
-var GeometryReferenceAcknowledgementError = class extends GeometryReferenceSubmissionError {
-  name = "GeometryReferenceAcknowledgementError";
-  constructor(acceptedJobIds2 = [], reason2 = "invalid-geometry-acknowledgement") {
-    super(
-      acceptedJobIds2,
-      reason2,
-      "accepted geometry-reference submission had no valid acknowledgement"
-    );
-  }
-};
-
-// src/internal/geometry-reuse/observer.ts
-function safeLog(logger, level, event, reason2) {
-  try {
-    logger[level]({ event, reason: reason2 });
-  } catch {
-  }
-}
-function notifyCapability(options, outcome, ids) {
-  const event = Object.freeze({ outcome, acceptedJobIds: Object.freeze([...ids]) });
-  try {
-    const pending2 = options.onProbe?.(event);
-    if (pending2 !== void 0) void Promise.resolve(pending2).catch(() => void 0);
-  } catch {
-  }
-  safeLog(
-    options.logger,
-    outcome === "supported" ? "info" : "warn",
-    "geometry_ref_capability",
-    `${outcome}; accepted job IDs: ${ids.length} reported`
-  );
-}
-
-// src/internal/geometry-reuse/submit.ts
-function expectedAck(value, groups) {
-  const job = jobFromResponse(value);
-  let acknowledged = false;
-  let reason2 = "geometry acknowledgement verifier failed";
-  try {
-    const verdict = JSON.parse(requireCore().verifyGeometryAck(JSON.stringify(value), [...groups]));
-    acknowledged = verdict.status === "acknowledged";
-    if (typeof verdict.reason === "string") reason2 = verdict.reason;
-  } catch {
-  }
-  if (!acknowledged) throw new GeometryReferenceAcknowledgementError([job.jobId], reason2);
-  return job;
-}
-function bound(options, partitionKey, signal, beforeDispatch) {
-  const auth = async () => {
-    const headers = await options.auth();
-    if (await credentialPartition(options.baseUrl, headers) !== partitionKey) {
-      throw new AuthPartitionChangedError();
-    }
-    return headers;
-  };
-  return {
-    gateway: new GatewayTransport({ baseUrl: options.baseUrl, auth, fetch: options.fetch, timeoutMs: options.timeoutMs }),
-    uploadGateway: new GatewayTransport({
-      baseUrl: options.gatewayBaseUrl,
-      auth,
-      fetch: options.fetch,
-      timeoutMs: options.timeoutMs
-    }),
-    fetch: options.fetch,
-    thresholdBytes: options.thresholdBytes,
-    timeoutMs: options.timeoutMs,
-    ...signal === void 0 ? {} : { signal },
-    ...beforeDispatch === void 0 ? {} : { beforeDispatch }
-  };
-}
-async function submitBody(analysisType, body, transport3, groups = []) {
-  const json = jsonWireBytes(body);
-  if (json === void 0) throw new TypeError("request has no JSON wire form");
-  return submitArchive({
-    endpointPath: `/async/${encodeURIComponent(analysisType)}`,
-    archive: requireCore().zipPayloadJson(json),
-    gateway: transport3.gateway,
-    uploadGateway: transport3.uploadGateway,
-    fetch: transport3.fetch,
-    thresholdBytes: transport3.thresholdBytes,
-    timeoutMs: transport3.timeoutMs,
-    ...transport3.beforeDispatch === void 0 ? {} : { beforeDispatch: transport3.beforeDispatch },
-    parseAccepted: groups.length === 0 ? jobFromResponse : (value) => expectedAck(value, groups),
-    ...transport3.signal === void 0 ? {} : { signal: transport3.signal }
-  });
-}
-async function uploadGeometry(bytes, transport3) {
-  return uploadArchive({
-    archive: requireCore().zipPayloadJson(bytes),
-    uploadGateway: transport3.uploadGateway,
-    fetch: transport3.fetch,
-    timeoutMs: transport3.timeoutMs,
-    ...transport3.signal === void 0 ? {} : { signal: transport3.signal }
-  });
-}
-
-// src/internal/geometry-reuse/expiry.ts
-var DEFAULT_REF_TTL_MS = 24 * 60 * 60 * 1e3;
-var EXPIRY_MARGIN_MS = 15 * 60 * 1e3;
-function expiryFromUrl(value, now2 = Date.now()) {
-  let signedAt = now2;
-  let ttl = DEFAULT_REF_TTL_MS;
-  try {
-    const url = new URL(value);
-    const expires = Number(url.searchParams.get("X-Amz-Expires"));
-    if (Number.isFinite(expires) && expires > 0) ttl = expires * 1e3;
-    const stamp = url.searchParams.get("X-Amz-Date");
-    if (stamp !== null && /^\d{8}T\d{6}Z$/.test(stamp)) {
-      const iso = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`;
-      const parsed = Date.parse(iso);
-      if (Number.isFinite(parsed)) signedAt = parsed;
-    }
-  } catch {
-  }
-  return signedAt + ttl - EXPIRY_MARGIN_MS;
-}
-
-// src/internal/geometry-reuse/controller.ts
-var DIRECT_SCOPE = "direct-v1";
-var DEAD_REF_CODES = /* @__PURE__ */ new Set(["REF_EXPIRED", "REF_NOT_FOUND"]);
-var INTERIOR_ANALYSES2 = /* @__PURE__ */ new Set([
-  "daylight-factor",
-  "energy-balance",
-  "spatial-daylight-autonomy"
-]);
-function parsePlan(current, snapshot) {
-  return JSON.parse(requireCore().planGeometryReuse(
-    JSON.stringify(current),
-    JSON.stringify(snapshot.state),
-    Date.now() / 1e3
-  ));
-}
-async function referenceFromPlan(planValue, prepared, snapshot) {
-  if (planValue === null || typeof planValue !== "object" || Array.isArray(planValue)) return void 0;
-  const plan = planValue;
-  if (typeof plan.reference === "string") {
-    const matches = snapshot.state.documents.filter((item) => item.key === plan.reference);
-    if (matches.length !== 1) return void 0;
-    const document2 = matches[0];
-    const url = snapshot.urls[document2.key];
-    if (Object.entries(document2.groups).some(
-      ([name, identity]) => prepared.identities[name] !== identity
-    )) return void 0;
-    const parts2 = selectedDocumentParts(prepared, document2.groups);
-    if (url === void 0 || parts2 === void 0) return void 0;
-    return { key: document2.key, groups: document2.groups, parts: parts2, url, cached: true };
-  }
-  if (plan.upload === null || typeof plan.upload !== "object" || Array.isArray(plan.upload)) return void 0;
-  const groups = plan.upload.groups;
-  if (groups === null || typeof groups !== "object" || Array.isArray(groups) || Object.keys(groups).length === 0) {
-    return void 0;
-  }
-  const selected = groups;
-  if (Object.entries(selected).some(([name, identity]) => prepared.identities[name] !== identity)) return void 0;
-  const parts = selectedDocumentParts(prepared, selected);
-  if (parts === void 0) return void 0;
-  const digest = await sha256HexParts(parts);
-  return digest === void 0 ? void 0 : { key: `gref1:${digest}`, groups: selected, parts, cached: false };
-}
-function unsafeCandidate(error) {
-  if (error instanceof GeometryReferenceAcknowledgementError) throw error;
-  if (error instanceof GeometryReferenceRejectedError) throw error;
-  if (error instanceof TransportError && error.reason === "aborted") throw error;
-  if (error instanceof SubmissionUncertainError) {
-    throw new GeometryReferenceSubmissionError(
-      error.acceptedJobIds,
-      error.status === void 0 ? "accepted-response-invalid" : "endpoint-response-uncertain"
-    );
-  }
-  if (error instanceof TransportError && error.phase === "unknown-acceptance") {
-    throw new GeometryReferenceSubmissionError([], "endpoint-post-failed");
-  }
-  if (error instanceof TransportError && error.status !== void 0 && (error.status >= 300 && error.status < 400 || error.status >= 500)) {
-    throw new GeometryReferenceSubmissionError([], "endpoint-response-uncertain");
-  }
-  throw error;
-}
-async function executePlan(prepared, analysisType, partitionKey, scopeKey, transport3, recover, logger) {
-  const cache2 = getGeometryReuseCache();
-  try {
-    return await cache2.withScope(partitionKey, scopeKey, async () => {
-      const snapshot = cache2.snapshot(partitionKey, scopeKey);
-      let reference;
-      try {
-        reference = await referenceFromPlan(parsePlan(prepared.identities, snapshot), prepared, snapshot);
-      } catch {
-        safeLog(logger, "warn", "geometry_ref_fallback", "planning failed");
-        return { kind: "prepost" };
-      }
-      if (reference === void 0) {
-        cache2.observe(partitionKey, scopeKey, prepared.identities);
-        return { kind: "prepost" };
-      }
-      if (reference.url === void 0) {
-        try {
-          reference = { ...reference, url: await uploadGeometry(joinParts(reference.parts), transport3) };
-        } catch {
-          safeLog(logger, "warn", "geometry_ref_fallback", "geometry upload failed");
-          return { kind: "prepost" };
-        }
-      }
-      let referenceUrl = reference.url;
-      if (referenceUrl === void 0) return { kind: "prepost" };
-      let refreshed = false;
-      while (true) {
-        try {
-          const job = await submitBody(
-            analysisType,
-            bodyWithReference(prepared.body, reference.groups, referenceUrl),
-            transport3,
-            Object.keys(reference.groups).sort()
-          );
-          try {
-            cache2.acknowledge(partitionKey, scopeKey, {
-              key: reference.key,
-              groups: reference.groups,
-              url: referenceUrl,
-              current: prepared.identities,
-              expiresAt: expiryFromUrl(referenceUrl)
-            });
-          } catch {
-            safeLog(logger, "warn", "geometry_ref_state", "accepted state could not be saved");
-          }
-          return { kind: "job", job };
-        } catch (error) {
-          if (error instanceof GeometryReferenceAcknowledgementError) {
-            cache2.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
-          }
-          if (!(error instanceof GeometryReferenceRejectedError)) unsafeCandidate(error);
-          if (!recover) return { kind: "ref-rejected", code: error.code };
-          if (reference.cached && !refreshed && DEAD_REF_CODES.has(error.code)) {
-            cache2.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
-            try {
-              referenceUrl = await uploadGeometry(joinParts(reference.parts), transport3);
-              reference = { ...reference, url: referenceUrl, cached: false };
-              refreshed = true;
-              continue;
-            } catch {
-              safeLog(logger, "warn", "geometry_ref_fallback", "geometry refresh failed");
-              return { kind: "prepost" };
-            }
-          }
-          safeLog(logger, "warn", "geometry_ref_fallback", `server rejected ${error.code}`);
-          return { kind: "ref-rejected", code: error.code };
-        }
-      }
-    }, transport3.signal);
-  } catch (error) {
-    if (!(error instanceof GeometryReuseCapacityError)) throw error;
-    safeLog(logger, "warn", "geometry_ref_fallback", "scope capacity is full");
-    return { kind: "prepost" };
-  }
-}
-async function tryGeometryReuse(preparedSubmission, options, signal, beforeDispatch) {
-  if (INTERIOR_ANALYSES2.has(preparedSubmission.analysisType)) return void 0;
-  const prepared = await prepareGeometryGroups(preparedSubmission.body);
-  if (Object.keys(prepared.identities).length === 0) return void 0;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const headers = await options.auth();
-    const partitionKey = await credentialPartition(options.baseUrl, headers);
-    if (partitionKey === void 0) return void 0;
-    const transport3 = bound(options, partitionKey, signal, beforeDispatch);
-    try {
-      return await submitInPartition(preparedSubmission, prepared, partitionKey, transport3, options);
-    } catch (error) {
-      if (!(error instanceof AuthPartitionChangedError) || attempt === 1) throw error;
-    }
-  }
-  throw new Error("unreachable credential partition state");
-}
-async function submitInPartition(preparedSubmission, prepared, partitionKey, transport3, options) {
-  const cache2 = getGeometryReuseCache();
-  if (cache2.getCapability(partitionKey) === void 0) {
-    const first = await cache2.firstUse(
-      partitionKey,
-      () => establish(preparedSubmission, prepared, partitionKey, transport3, options),
-      transport3.signal
-    );
-    if (first.owned) return first.value;
-  }
-  if (cache2.getCapability(partitionKey) !== "supported") {
-    return submitBody(preparedSubmission.analysisType, prepared.body, transport3);
-  }
-  return referenced(preparedSubmission, prepared, partitionKey, transport3, options);
-}
-async function establish(preparedSubmission, prepared, partitionKey, transport3, options) {
-  const cache2 = getGeometryReuseCache();
-  try {
-    const outcome = await executePlan(
-      prepared,
-      preparedSubmission.analysisType,
-      partitionKey,
-      preparedSubmission.reuseScope ?? DIRECT_SCOPE,
-      transport3,
-      true,
-      options.logger
-    );
-    if (outcome.kind === "job") {
-      cache2.setCapability(partitionKey, "supported");
-      notifyCapability(options, "supported", [outcome.job.jobId]);
-      return outcome.job;
-    }
-    return await submitBody(preparedSubmission.analysisType, prepared.body, transport3);
-  } catch (error) {
-    if (error instanceof GeometryReferenceAcknowledgementError) {
-      cache2.setCapability(partitionKey, "unsupported");
-      notifyCapability(options, "unsupported", error.acceptedJobIds);
-      throw error;
-    }
-    if (error instanceof AuthPartitionChangedError) throw error;
-    if (error instanceof TransportError && (error.status === 400 || error.status === 422)) {
-      safeLog(options.logger, "warn", "geometry_ref_fallback", `server rejected ${error.status}`);
-      return await submitBody(preparedSubmission.analysisType, prepared.body, transport3);
-    }
-    throw error;
-  }
-}
-async function referenced(preparedSubmission, prepared, partitionKey, transport3, options) {
-  const cache2 = getGeometryReuseCache();
-  try {
-    const outcome = await executePlan(
-      prepared,
-      preparedSubmission.analysisType,
-      partitionKey,
-      preparedSubmission.reuseScope ?? DIRECT_SCOPE,
-      transport3,
-      true,
-      options.logger
-    );
-    if (outcome.kind === "job") return outcome.job;
-    return submitBody(preparedSubmission.analysisType, prepared.body, transport3);
-  } catch (error) {
-    if (error instanceof GeometryReferenceAcknowledgementError) {
-      cache2.setCapability(partitionKey, "unsupported");
-      notifyCapability(options, "unsupported", error.acceptedJobIds);
-    }
-    throw error;
-  }
-}
-
-// src/internal/geometry-reuse/options.ts
-function buildGeometryReuseOptions(options, fetch2, thresholdBytes, timeoutMs) {
-  return {
-    baseUrl: trimTrailingSlashes(String(options.baseUrl)),
-    gatewayBaseUrl: trimTrailingSlashes(String(options.gatewayBaseUrl ?? options.baseUrl)),
-    auth: options.auth,
-    fetch: fetch2,
-    thresholdBytes,
-    timeoutMs,
-    logger: options.logger ?? consoleLogger,
-    ...options.onGeometryReuseProbe === void 0 ? {} : {
-      onProbe: options.onGeometryReuseProbe
-    }
-  };
-}
-
-// src/internal/binary-artifact.ts
-function bodyArtifact(body, boxTrees, limits) {
-  for (const [name, value] of Object.entries(limits)) {
-    if (!Number.isSafeInteger(value) || value < 0 || value > 4294967295) {
-      throw new RangeError(`${name} must be a non-negative uint32 integer`);
-    }
-  }
-  const core2 = requireCore();
-  const encoded = core2.geometryArtifact(
-    JSON.stringify(body),
-    boxTrees,
-    BigInt(limits.maxGeometryBytes),
-    limits.maxMetadataBytes,
-    BigInt(limits.maxMeshes),
-    BigInt(limits.maxInstances)
-  );
-  const counts = JSON.parse(encoded.treeBoxes);
-  return {
-    archive: encoded.archive,
-    artifactDigest: encoded.artifactDigest,
-    geometryContentDigest: encoded.contentDigest,
-    encoding: encoded.encoding,
-    ...counts === null ? {} : { treeBoxes: counts }
-  };
-}
-
-// src/internal/facade-artifact-guard.ts
-var FacadeArtifactMismatchError = class extends Error {
-  constructor(analysisType, missing, unplanned) {
-    super(
-      `binary ${analysisType}: the facade artifact does not carry exactly the batch's planned target buildings (${missing.length} missing, ${unplanned.length} unplanned); refused before any paid submission`
-    );
-    this.analysisType = analysisType;
-    this.missing = missing;
-    this.unplanned = unplanned;
-  }
-  name = "FacadeArtifactMismatchError";
-};
-function isSurfaceBody(body) {
-  return typeof body["analysis-surfaces"] === "string";
-}
-function checkFacadeArtifact(analysisType, body, artifact) {
-  const geometries = body.geometries;
-  const planned = geometries instanceof KernelGroup ? [...geometries.ids ?? []] : geometries !== null && typeof geometries === "object" && !Array.isArray(geometries) ? Object.keys(geometries) : [];
-  const carried = artifact.targetIds;
-  if (carried === void 0) throw new FacadeArtifactMismatchError(analysisType, planned, ["<unsplit tile>"]);
-  const have = new Set(carried);
-  const want = new Set(planned);
-  const missing = planned.filter((id) => !have.has(id));
-  const unplanned = carried.filter((id) => !want.has(id));
-  if (missing.length > 0 || unplanned.length > 0 || have.size !== carried.length) {
-    throw new FacadeArtifactMismatchError(analysisType, missing, unplanned);
-  }
-}
-
-// src/internal/tree-boxes.ts
-var BOXING_DECISIONS = [
-  "capability-excludes-vegetation",
-  "fallback-model-list"
-];
-function treeBoxDecision(model, geometryGroups2) {
-  const groups = geometryGroups2 === void 0 ? null : [...geometryGroups2];
-  return requireCore().vegetationTreeBoxDecision(
-    model,
-    JSON.stringify(groups)
-  );
-}
-function decisionBoxesTrees(decision) {
-  return BOXING_DECISIONS.includes(decision);
-}
-function treeBoxLogLine(record4) {
-  return `binary ${record4.model}: ${record4.trees} tree(s) converted to ${record4.footprintM.toFixed(1)} m x ${record4.footprintM.toFixed(1)} m x ${record4.heightM.toFixed(1)} m boxes in the geometry layer (${record4.boxesSent} sent, ${record4.seatedOnTerrain} seated on terrain, ${record4.boxesSent - record4.seatedOnTerrain} on z=0); this model carries no vegetation group on the binary transport (${record4.decidedBy})`;
-}
-function treeBoxCollisionLine(record4) {
-  const ids = record4.idCollisions;
-  return `binary ${record4.model}: ${ids.length} tree id(s) already name a building in \`geometries\`; the building was kept and the box dropped (${ids.slice(0, 5).join(", ")})`;
-}
-function treeBoxOutOfTileLine(record4) {
-  return `binary ${record4.model}: ${record4.outsideTile} of ${record4.boxesSent} tree box(es) fall outside the 512 m inference tile this payload describes and cannot affect its result. They are still sent \u2014 dropping geometry silently is worse \u2014 but a whole site's trees on one payload is usually a missing per-tile assignment; runArea does that for you.`;
-}
-
-// src/internal/binary-submission.ts
-var MAX_CONTROL_METADATA_BYTES = 4194304;
-var GEOMETRY_GROUPS = [
-  "geometries",
-  "context-geometry",
-  "ground-geometry",
-  "vegetation",
-  "vegetation-instances",
-  "ground-materials"
-];
-async function capability(gateway, signal) {
-  const raw = await gateway.requestJson(
-    "/binary/v1/capabilities",
-    signal === void 0 ? {} : { signal }
-  );
-  const value = object(raw, "binary capability");
-  if (value.inputFormat !== "irbf" || value.resultFormat !== "irbf" || value.wireVersion !== 1) {
-    throw new TypeError("gateway has an incompatible binary wire format");
-  }
-  const limits = object(value.limits, "binary limits");
-  const parsedLimits = {
-    maxGeometryBytes: positive(limits.maxGeometryBytes, 67108864, "maxGeometryBytes"),
-    // Ground polygons and point vegetation share this bounded input metadata budget.
-    maxMetadataBytes: positive(limits.maxMetadataBytes, 8388608, "maxMetadataBytes"),
-    maxMeshes: positive(limits.maxMeshes, 1e5, "maxMeshes"),
-    maxInstances: positive(limits.maxInstances, 1e5, "maxInstances"),
-    maxResultBytes: positive(limits.maxResultBytes, 268435456, "maxResultBytes"),
-    maxResultCells: positive(limits.maxResultCells, 16777216, "maxResultCells"),
-    maxTriangleValues: positive(limits.maxTriangleValues, 67108864, "maxTriangleValues")
-  };
-  const models = object(value.models, "binary capability models");
-  for (const [name, raw2] of Object.entries(models)) {
-    const model = object(raw2, `binary model ${name}`);
-    if (!Array.isArray(model.geometryGroups) || !model.geometryGroups.every((item) => typeof item === "string") || !Array.isArray(model.resultFamilies) || !model.resultFamilies.every((item) => typeof item === "string")) {
-      throw new TypeError(`binary model ${name} is invalid`);
-    }
-  }
-  return { inputFormat: "irbf", resultFormat: "irbf", wireVersion: 1, models, limits: parsedLimits };
-}
-async function prepareBinary(prepared, supported) {
-  const model = supported.models[prepared.analysisType];
-  if (model === void 0 || !Array.isArray(model.geometryGroups) || !Array.isArray(model.resultFamilies) || model.resultFamilies.length === 0) {
-    throw new TypeError(`model ${prepared.analysisType} does not support binary transport`);
-  }
-  const decision = treeBoxDecision(prepared.analysisType, model.geometryGroups);
-  const trees = prepared.body.vegetation;
-  const boxes = decisionBoxesTrees(decision) && trees !== void 0 && trees !== null;
-  if (boxes && (typeof trees !== "object" || Array.isArray(trees))) {
-    throw new TypeError(`binary ${prepared.analysisType}: vegetation must be an object keyed by tree id to be boxed into the geometry layer`);
-  }
-  const body = { ...prepared.body };
-  if (boxes) delete body.vegetation;
-  const present2 = GEOMETRY_GROUPS.filter((name) => {
-    const value = body[name];
-    return value !== void 0 && value !== null && typeof value === "object" && !Array.isArray(value);
-  });
-  for (const name of present2) if (!model.geometryGroups.includes(name)) {
-    throw new TypeError(`model ${prepared.analysisType} does not support binary geometry group ${name}`);
-  }
-  const control = { ...body };
-  for (const name of GEOMETRY_GROUPS) delete control[name];
-  delete control["binary-results"];
-  const controlJson = JSON.stringify(control);
-  if (controlJson === void 0) throw new TypeError("binary control has no JSON wire form");
-  canonicalJsonBytes2(controlJson, Math.min(
-    supported.limits.maxMetadataBytes,
-    MAX_CONTROL_METADATA_BYTES
-  ), "binary control");
-  const tile = prepared.artifact === void 0 ? bodyArtifact(prepared.body, boxes, supported.limits) : prepared.artifact(boxes, supported.limits);
-  if (prepared.artifact !== void 0 && isSurfaceBody(prepared.body)) {
-    checkFacadeArtifact(prepared.analysisType, prepared.body, tile);
-  }
-  const artifact = tile;
-  const treeBoxes = tile.treeBoxes === void 0 ? void 0 : { ...tile.treeBoxes, model: prepared.analysisType, decidedBy: decision };
-  return {
-    artifact,
-    control,
-    limits: supported.limits,
-    ...treeBoxes === void 0 ? {} : { treeBoxes }
-  };
-}
-async function uploadGeometry2(uploadGateway, fetch2, prepared, timeoutMs, signal) {
-  const response = await uploadGateway.requestJson("/uploads/presign", {
-    method: "POST",
-    body: { content_length: prepared.artifact.archive.byteLength },
-    ...signal === void 0 ? {} : { signal }
-  });
-  const value = object(response, "presign response");
-  const uploadUrl = https(value["upload-url"], "upload-url");
-  const getUrl = https(value["get-url"], "get-url");
-  await uploadPresignedZip(uploadUrl, prepared.artifact.archive, {
-    fetch: fetch2,
-    timeoutMs,
-    ...signal === void 0 ? {} : { signal }
-  });
-  return getUrl;
-}
-function binarySubmission(binary, geometryUrl) {
-  return { geometry: {
-    url: geometryUrl,
-    encoding: binary.artifact.encoding,
-    artifactDigest: binary.artifact.artifactDigest,
-    contentDigest: binary.artifact.geometryContentDigest,
-    byteLength: binary.artifact.archive.byteLength
-  }, control: binary.control, limits: binary.limits };
-}
-async function submitBinary(gateway, prepared, binary, parseJob2, signal, beforeDispatch) {
-  const envelope = JSON.stringify({
-    inputFormat: "irbf",
-    resultFormat: "irbf",
-    wireVersion: 1,
-    geometry: binary.geometry,
-    control: binary.control
-  });
-  const body = canonicalJsonBytes2(
-    envelope,
-    Math.min(
-      binary.limits.maxMetadataBytes,
-      MAX_CONTROL_METADATA_BYTES
-    ) + 65536,
-    "binary submission envelope"
-  );
-  let response;
-  try {
-    response = await gateway.requestBytesWithHeaders(
-      `/binary/v1/async/${encodeURIComponent(prepared.analysisType)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        acceptHttpErrors: true,
-        ...signal === void 0 ? {} : { signal },
-        ...beforeDispatch === void 0 ? {} : { beforeDispatch }
-      }
-    );
-  } catch (error) {
-    if (error instanceof TransportError && error.phase !== "pre-dispatch") {
-      throw new SubmissionUncertainError([]);
-    }
-    throw error;
-  }
-  let raw;
-  try {
-    raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(response.content));
-  } catch {
-    throw new SubmissionUncertainError([]);
-  }
-  if (response.status < 200 || response.status >= 300) {
-    if (!preacceptRejection(response.status, raw)) {
-      throw new SubmissionUncertainError(jobIds(raw));
-    }
-    throw new TransportError(
-      `binary submission received HTTP ${response.status}`,
-      "response",
-      "http",
-      "POST",
-      response.status
-    );
-  }
-  let record4;
-  let job;
-  try {
-    record4 = object(raw, "binary accepted response");
-    job = parseJob2(record4);
-  } catch {
-    throw new SubmissionUncertainError(jobIds(raw));
-  }
-  try {
-    validateAck(record4.binary, binary.geometry);
-  } catch {
-    throw new SubmissionUncertainError([job.jobId]);
-  }
-  return job;
-}
-function preacceptRejection(status, raw) {
-  if (![400, 401, 402, 404, 413, 415, 422, 429].includes(status) || raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const value = raw;
-  return Object.keys(value).sort().join() === "code,detail,status,title,type" && value.status === status && value.code === "JOB_BINARY_REJECTED" && [value.type, value.title, value.detail].every((item) => typeof item === "string");
-}
-function validateAck(raw, geometry) {
-  const value = object(raw, "binary acknowledgement");
-  if (value.inputFormat !== "irbf" || value.resultFormat !== "irbf" || value.wireVersion !== 1 || value.artifactDigest !== geometry.artifactDigest || value.contentDigest !== geometry.contentDigest) {
-    throw new TypeError("binary acknowledgement does not match the submitted artifact");
-  }
-}
-function positive(value, cap, name) {
-  if (!Number.isSafeInteger(value) || value <= 0 || value > cap) throw new TypeError(`binary ${name} is invalid`);
-  return value;
-}
-function object(value, name) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${name} must be an object`);
-  return value;
-}
-function https(value, name) {
-  if (typeof value !== "string") throw new TypeError(`presign response has no ${name}`);
-  const url = new URL(value);
-  if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new TypeError(`presign response ${name} is invalid`);
-  return url.href;
-}
-function jobIds(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
-  const id = value.jobId;
-  return typeof id === "string" && id ? [id] : [];
-}
-function canonicalJsonBytes2(value, maxBytes, name) {
-  try {
-    return requireCore().canonicalMetadataJson(value, maxBytes, 32);
-  } catch (error) {
-    if (error instanceof Error && /byte limit/i.test(error.message)) {
-      throw new RangeError(`${name} exceeds its byte limit`);
-    }
-    throw error;
-  }
-}
-
-// src/internal/binary-admission.ts
-var limit = 2;
-var active2 = 0;
-var waiting3 = [];
-async function withBinaryAdmission(operation, signal) {
-  if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-  if (active2 < limit && waiting3.length === 0) active2 += 1;
-  else await new Promise((resolve, reject) => {
-    const waiter = { resolve, reject, ...signal === void 0 ? {} : { signal } };
-    if (signal !== void 0) {
-      const abort = () => {
-        const index2 = waiting3.indexOf(waiter);
-        if (index2 >= 0) waiting3.splice(index2, 1);
-        reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-      };
-      waiter.abort = abort;
-      signal.addEventListener("abort", abort, { once: true });
-    }
-    waiting3.push(waiter);
-  });
-  try {
-    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-    return await operation();
-  } finally {
-    active2 -= 1;
-    while (active2 < limit && waiting3.length > 0) {
-      const waiter = waiting3.shift();
-      if (waiter.signal !== void 0 && waiter.abort !== void 0) {
-        waiter.signal.removeEventListener("abort", waiter.abort);
-      }
-      active2 += 1;
-      waiter.resolve();
-    }
-  }
-}
-
-// src/internal/binary-url-cache.ts
-var FALLBACK_TTL_MS = 60 * 60 * 1e3;
-var SAFETY_MARGIN_MS = 60 * 1e3;
-var MAX_URL_LENGTH = 8192;
-var MAX_ENTRIES = 256;
-var entries2 = /* @__PURE__ */ new Map();
-var BinaryUrlCache = class {
-  constructor(enabled, now2 = Date.now) {
-    this.enabled = enabled;
-    this.now = now2;
-  }
-  get(key) {
-    if (!this.enabled) return void 0;
-    const entry = entries2.get(key);
-    if (entry === void 0) return void 0;
-    if (this.now() >= entry.expiresAt) {
-      entries2.delete(key);
-      return void 0;
-    }
-    entries2.delete(key);
-    entries2.set(key, entry);
-    return entry.url;
-  }
-  set(key, url) {
-    if (!this.enabled || url.length > MAX_URL_LENGTH) return;
-    const expiresAt = reusableUntil(url, this.now());
-    if (expiresAt === void 0 || expiresAt <= this.now()) return;
-    entries2.delete(key);
-    entries2.set(key, { url, expiresAt });
-    while (entries2.size > MAX_ENTRIES) entries2.delete(entries2.keys().next().value);
-  }
-};
-function reusableUntil(raw, now2) {
-  let url;
-  try {
-    url = new URL(raw);
-  } catch {
-    return void 0;
-  }
-  const date = url.searchParams.get("X-Amz-Date");
-  const seconds = url.searchParams.get("X-Amz-Expires");
-  if (date === null && seconds === null) return now2 + FALLBACK_TTL_MS - SAFETY_MARGIN_MS;
-  if (date === null || seconds === null || !/^\d{8}T\d{6}Z$/.test(date) || !/^\d+$/.test(seconds)) {
-    return void 0;
-  }
-  const signedAt = Date.UTC(
-    Number(date.slice(0, 4)),
-    Number(date.slice(4, 6)) - 1,
-    Number(date.slice(6, 8)),
-    Number(date.slice(9, 11)),
-    Number(date.slice(11, 13)),
-    Number(date.slice(13, 15))
-  );
-  const ttl = Number(seconds) * 1e3;
-  if (!Number.isSafeInteger(ttl) || ttl <= 0) return void 0;
-  const canonical = new Date(signedAt).toISOString().replace(/[-:]/g, "").replace(".000", "");
-  if (canonical !== date) return void 0;
-  return Math.min(signedAt + ttl, now2 + FALLBACK_TTL_MS) - SAFETY_MARGIN_MS;
-}
-
-// src/internal/binary-retention.ts
-var BUDGET_BYTES = 64 * 1024 * 1024;
-var BinaryRetention = class {
-  held = /* @__PURE__ */ new WeakMap();
-  bytes = 0;
-  get(prepared) {
-    return this.held.get(prepared);
-  }
-  /** Hold this artifact if the budget allows. Returns the bytes now held for it. */
-  keep(prepared, binary) {
-    if (this.held.has(prepared)) return binary.artifact.archive.byteLength;
-    if (this.bytes >= BUDGET_BYTES) return 0;
-    this.held.set(prepared, binary);
-    this.bytes += binary.artifact.archive.byteLength;
-    return binary.artifact.archive.byteLength;
-  }
-  /** Drop what is held for this submission. A no-op when nothing is. */
-  release(prepared) {
-    const binary = this.held.get(prepared);
-    if (binary === void 0) return;
-    this.held.delete(prepared);
-    this.bytes -= binary.artifact.archive.byteLength;
-  }
-  /** What this client is holding right now. Zero when every tile is released. */
-  get retainedBytes() {
-    return this.bytes;
-  }
-};
-
-// src/internal/status-batch.ts
-var STATUS_BATCH_LIMIT = 50;
-function rejectsTheForm(error) {
-  if (!(error instanceof TransportError) || error.status === void 0) return false;
-  return error.status === 400 || error.status === 404 || error.status === 405 || error.status === 501;
-}
-function chunk(ids) {
-  const chunks = [];
-  for (let start = 0; start < ids.length; start += STATUS_BATCH_LIMIT) {
-    chunks.push(ids.slice(start, start + STATUS_BATCH_LIMIT));
-  }
-  return chunks;
-}
-function readJobs(payload) {
-  if (Array.isArray(payload)) return { jobs: payload, batched: false };
-  if (payload !== null && typeof payload === "object") {
-    const jobs = payload.jobs;
-    if (Array.isArray(jobs)) return { jobs, batched: true };
-  }
-  return void 0;
-}
-async function fetchChunk(gateway, ids, signal) {
-  const query = ids.map((id) => encodeURIComponent(id)).join(",");
-  let payload;
-  try {
-    payload = await gateway.requestJson(
-      `/async/jobs?ids=${query}`,
-      signal === void 0 ? {} : { signal }
-    );
-  } catch (error) {
-    if (rejectsTheForm(error)) return "unsupported";
-    throw error;
-  }
-  const read = readJobs(payload);
-  if (read === void 0) return "unsupported";
-  const statuses = /* @__PURE__ */ new Map();
-  for (const entry of read.jobs) {
-    let job;
-    try {
-      job = jobFromResponse(entry);
-    } catch {
-      continue;
-    }
-    statuses.set(job.jobId, job);
-  }
-  return { statuses, batched: read.batched };
-}
-async function fetchStatusBatch(gateway, jobIds2, options = {}) {
-  const statuses = /* @__PURE__ */ new Map();
-  const unanswered = [];
-  let answered = 0;
-  let lacking = false;
-  if (jobIds2.length === 0) return { statuses, unanswered, batched: false, lacking: false };
-  const chunks = chunk(jobIds2);
-  const workers = Math.max(1, Math.min(options.maxWorkers ?? 5, chunks.length));
-  let cursor = 0;
-  await Promise.all(Array.from({ length: workers }, async () => {
-    while (cursor < chunks.length) {
-      const ids = chunks[cursor++];
-      if (ids === void 0) return;
-      let answer;
-      try {
-        answer = await fetchChunk(gateway, ids, options.signal);
-      } catch (error) {
-        if (options.signal?.aborted === true) throw error;
-        unanswered.push(...ids);
-        continue;
-      }
-      if (answer === "unsupported") {
-        lacking = true;
-        unanswered.push(...ids);
-        continue;
-      }
-      if (answer.batched) answered += 1;
-      else lacking = true;
-      for (const id of ids) {
-        const job = answer.statuses.get(id);
-        if (job === void 0) unanswered.push(id);
-        else statuses.set(id, job);
-      }
-    }
-  }));
-  return { statuses, unanswered, batched: answered > 0, lacking };
-}
-
-// src/internal/binary-submit-coordinator.ts
-function boundAuth(headers, expected, auth) {
-  return async () => {
-    const current = await auth();
-    if (await exactAuthHeadersDigest(current) !== expected) {
-      throw new AuthPartitionChangedError();
-    }
-    return headers;
-  };
-}
-async function resolveAuth(options) {
-  const deadline = new Deadline(options.signal, options.timeoutMs);
-  try {
-    const headers = await deadline.wait(() => options.auth());
-    return normalizeAuthHeaders(headers);
-  } catch {
-    const stopped = deadline.reason();
-    throw new TransportError(
-      stopped === "timeout" ? "gateway request timed out before dispatch" : stopped === "aborted" ? "gateway request was aborted before dispatch" : "gateway request authentication failed",
-      "pre-dispatch",
-      stopped ?? "auth",
-      "POST"
-    );
-  } finally {
-    deadline.close();
-  }
-}
-function transport(baseUrl, auth, options) {
-  return new GatewayTransport({ baseUrl, auth, fetch: options.fetch, timeoutMs: options.timeoutMs });
-}
-async function prepareUncached(options, fresh) {
-  return withBinaryAdmission(async () => {
-    try {
-      const binary = await options.prepare(fresh);
-      const geometryUrl = await uploadGeometry2(
-        options.uploadGateway,
-        options.fetch,
-        binary,
-        options.timeoutMs,
-        options.signal
-      );
-      return binarySubmission(binary, geometryUrl);
-    } finally {
-      options.releasePrepared();
-    }
-  }, options.signal);
-}
-async function uncached(options, fresh) {
-  const binary = await prepareUncached(options, fresh);
-  return submitBinary(
-    options.gateway,
-    options.prepared,
-    binary,
-    options.parseJob,
-    options.signal,
-    options.beforeDispatch
-  );
-}
-async function submitPreparedBinary(options) {
-  if (!options.reuseEnabled) return uncached(options, false);
-  const headers = await resolveAuth(options);
-  const digest = await exactAuthHeadersDigest(headers);
-  if (digest === void 0) return uncached(options, false);
-  const strictAuth = boundAuth(headers, digest, options.auth);
-  const gateway = transport(options.gateway.baseUrl, strictAuth, options);
-  const uploadGateway = transport(options.uploadGateway.baseUrl, strictAuth, options);
-  let paidDispatched = false;
-  const beforeDispatch = () => {
-    options.beforeDispatch?.();
-    paidDispatched = true;
-  };
-  try {
-    const binary = await withBinaryAdmission(async () => {
-      try {
-        const prepared = await options.prepare(false);
-        const key = [
-          gateway.baseUrl,
-          uploadGateway.baseUrl,
-          digest,
-          prepared.artifact.encoding,
-          prepared.artifact.artifactDigest
-        ].join("\n");
-        let url = options.urlCache.get(key);
-        if (url === void 0) {
-          url = await uploadGeometry2(
-            uploadGateway,
-            options.fetch,
-            prepared,
-            options.timeoutMs,
-            options.signal
-          );
-          options.urlCache.set(key, url);
-        }
-        return binarySubmission(prepared, url);
-      } finally {
-        options.releasePrepared();
-      }
-    }, options.signal);
-    return await submitBinary(
-      gateway,
-      options.prepared,
-      binary,
-      options.parseJob,
-      options.signal,
-      beforeDispatch
-    );
-  } catch (error) {
-    if (!(error instanceof AuthPartitionChangedError)) throw error;
-    if (paidDispatched) throw error;
-    return uncached(options, true);
-  }
-}
-
-// src/results/retired.ts
-var RETIRED_SIDECAR_KEYS = [
-  "values_bin",
-  "values_bin_dtype",
-  "values_bin_encoding",
-  "cell-tris_bin",
-  "cell-tris_bin_dtype",
-  "cell-tris_offsets_bin",
-  "cell-tris_bin_encoding",
-  "cell-tris_offsets_bin_encoding"
-];
-var RETIRED_ROOT_KEYS = [
-  "output_bin",
-  "output_bin_dtype",
-  "output_bin_shape",
-  "output_bin_encoding",
-  "values_bin",
-  "values_bin_dtype",
-  "values_bin_shape",
-  "values_bin_encoding"
-];
-function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function rejectRetiredResultFields(value) {
-  if (!isRecord(value)) return;
-  for (const field of RETIRED_ROOT_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(value, field)) {
-      throw new TypeError(`result contains retired field ${field}`);
-    }
-  }
-  if (!isRecord(value.surfaces)) return;
-  for (const [key, entry] of Object.entries(value.surfaces)) {
-    if (!isRecord(entry)) continue;
-    for (const field of RETIRED_SIDECAR_KEYS) {
-      if (Object.prototype.hasOwnProperty.call(entry, field)) {
-        throw new TypeError(`surface ${key} contains retired result field ${field}`);
-      }
-    }
-  }
-}
-
-// src/internal/binary-result.ts
-var F16_EXPONENT_SCALE = Array.from({ length: 31 }, (_, exponent) => 2 ** (exponent - 25));
-function decodeBinaryResultDocument(document2, limits) {
-  checkLimits(limits);
-  const source = typeof SharedArrayBuffer !== "undefined" && document2.buffer instanceof SharedArrayBuffer ? document2.slice() : document2;
-  const inspected = callCore("inspectBinaryResult", source, limits);
-  const decoded = { ...inspected, sections: inspected.sections.map((section) => {
-    const [offset, length] = section.byteRange;
-    return { ...section, bytes: source.subarray(offset, offset + length) };
-  }) };
-  return projectDecoded(decoded);
-}
-function decodeCompactGridDocument(document2, limits) {
-  checkLimits(limits);
-  const source = typeof SharedArrayBuffer !== "undefined" && document2.buffer instanceof SharedArrayBuffer ? document2.slice() : document2;
-  const decoded = callCore("inspectBinaryResult", source, limits);
-  if (decoded.family !== "numeric-grid" && decoded.family !== "categorical-grid") return void 0;
-  const metadata = object2(JSON.parse(decoded.metadataJson), "binary result metadata");
-  const sections = new Map(decoded.sections.map((section) => {
-    const [offset, length] = section.byteRange;
-    return [section.role, { ...section, bytes: source.subarray(offset, offset + length) }];
-  }));
-  const data = requireSection(sections, 1), validity = requireSection(sections, 2);
-  const shape = metadata.shape;
-  if (!Array.isArray(shape) || shape.length !== 2) throw new TypeError("grid shape is invalid");
-  const rows = shape[0], columns = shape[1];
-  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(columns)) {
-    throw new TypeError("grid shape is invalid");
-  }
-  const bits2 = validity.bytes.slice();
-  if (decoded.family === "categorical-grid") {
-    if (data.dtype !== "u32") throw new TypeError("categorical grid data must use u32 codes");
-    const raw = metadata.dictionary;
-    if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
-      throw new TypeError("categorical dictionary is missing");
-    }
-    return {
-      route: "compact-grid",
-      kind: "categorical",
-      shape: [rows, columns],
-      values: typed(data).slice(),
-      validity: bits2,
-      dictionary: Object.freeze(Array.from(raw))
-    };
-  }
-  if (data.dtype === "f64") {
-    return {
-      route: "compact-grid",
-      kind: "numeric",
-      shape: [rows, columns],
-      values: typed(data).slice(),
-      validity: bits2
-    };
-  }
-  const sourceValues = numericSource(data), divisor = valueDivisor(metadata, data);
-  const values = new Float32Array(Number(data.elementCount));
-  for (let index2 = 0; index2 < values.length; index2 += 1) {
-    values[index2] = sourceValues.at(index2) / divisor;
-  }
-  return {
-    route: "compact-grid",
-    kind: "numeric",
-    shape: [rows, columns],
-    values,
-    validity: bits2
-  };
-}
-function callCore(method, document2, limits) {
-  return requireCore()[method](
-    document2,
-    BigInt(limits.maxTotalBytes),
-    limits.maxMetadataBytes,
-    64,
-    BigInt(Math.max(limits.maxCells + 1, limits.maxTriangleValues)),
-    32,
-    BigInt(limits.maxCells),
-    BigInt(limits.maxTriangleValues)
-  );
-}
-function projectDecoded(decoded) {
-  const metadata = object2(JSON.parse(decoded.metadataJson), "binary result metadata");
-  const sections = new Map(decoded.sections.map((section) => [section.role, section]));
-  if (decoded.family === "surfaces") return {
-    family: decoded.family,
-    value: surfaces(metadata, sections)
-  };
-  const data = requireSection(sections, 1), validity = requireSection(sections, 2);
-  const dataValues = numericSource(data);
-  let dictionary;
-  if (decoded.family === "categorical-grid") {
-    dictionary = metadata.dictionary;
-    if (!Array.isArray(dictionary)) throw new TypeError("categorical dictionary is missing");
-  }
-  const attributes = { ...object2(metadata.attributes ?? {}, "result attributes") };
-  projectArrays(attributes, metadata.arrays, sections);
-  if (decoded.family === "vector") return { family: decoded.family, value: {
-    ...attributes,
-    output: materializeRange(
-      dataValues,
-      validity,
-      0,
-      Number(data.elementCount),
-      dictionary,
-      valueDivisor(metadata, data)
-    )
-  } };
-  const shape = metadata.shape;
-  if (!Array.isArray(shape) || shape.length !== 2) throw new TypeError("grid shape is invalid");
-  const rows = shape[0], columns = shape[1], matrix = [];
-  for (let row = 0; row < rows; row += 1) {
-    matrix.push(materializeRange(
-      dataValues,
-      validity,
-      row * columns,
-      (row + 1) * columns,
-      dictionary,
-      valueDivisor(metadata, data)
-    ));
-  }
-  return {
-    family: decoded.family,
-    value: metadata.root === "array" ? matrix : { ...attributes, output: matrix }
-  };
-}
-function checkLimits(limits) {
-  for (const [name, value] of Object.entries(limits)) checkLimit(value, name);
-}
-function projectArrays(target, raw, sections) {
-  if (raw === void 0) return;
-  if (!Array.isArray(raw)) throw new TypeError("binary result arrays must be an array");
-  for (const candidate of raw) {
-    const descriptor = object2(candidate, "binary result array descriptor");
-    const path = descriptor.path, shape = descriptor.shape;
-    const data = requireSection(sections, descriptor.dataRole);
-    const validity = descriptor.validityRole;
-    const value = materializeShape(
-      numericSource(data),
-      validity === void 0 ? void 0 : requireSection(sections, validity),
-      shape,
-      valueDivisor(descriptor, data)
-    );
-    let owner = target;
-    for (const key of path.slice(0, -1)) {
-      const child = Object.hasOwn(owner, key) ? owner[key] : void 0;
-      if (child === void 0) defineOwn(owner, key, {});
-      else if (child === null || typeof child !== "object" || Array.isArray(child)) {
-        throw new Error("binary result auxiliary path collides with metadata");
-      }
-      owner = owner[key];
-    }
-    defineOwn(owner, path[path.length - 1], value);
-  }
-}
-function materializeShape(values, validity, shape, divisor) {
-  let cursor = 0;
-  const visit = (depth) => {
-    if (depth === shape.length) {
-      const index2 = cursor++;
-      return validity !== void 0 && !validAt(validity, index2) ? null : values.at(index2) / divisor;
-    }
-    const output = new Array(shape[depth]);
-    for (let index2 = 0; index2 < output.length; index2 += 1) output[index2] = visit(depth + 1);
-    return output;
-  };
-  return visit(0);
-}
-function surfaces(metadata, sections) {
-  if (!Array.isArray(metadata.frames)) throw new TypeError("surface frames are missing");
-  const values = requireSection(sections, 1), valueValidity = requireSection(sections, 2);
-  const valueSource = numericSource(values);
-  const areas = sections.get(3), areaValidity = sections.get(4);
-  const offsets = sections.get(5);
-  const triangles = sections.has(6) ? typed(requireSection(sections, 6)) : void 0;
-  const triangleBits = sections.get(7);
-  const output = /* @__PURE__ */ Object.create(null);
-  for (const raw of metadata.frames) {
-    const frame = object2(raw, "surface frame"), shape = frame.shape;
-    if (!Array.isArray(shape) || shape.length !== 2) throw new TypeError("surface shape is invalid");
-    const start = frame.start, end = start + shape[0] * shape[1];
-    const attributes2 = object2(frame.attributes ?? {}, "surface attributes");
-    const item = {
-      ...attributes2,
-      nu: shape[0],
-      nv: shape[1],
-      values: materializeRange(
-        valueSource,
-        valueValidity,
-        start,
-        end,
-        void 0,
-        valueDivisor(metadata, values)
-      )
-    };
-    if (frame.hasCellArea === true && areas !== void 0 && areaValidity !== void 0) {
-      item["cell-area"] = materializeRange(numericSource(areas), areaValidity, start, end);
-    }
-    if (frame.hasCellTris === true && offsets !== void 0 && triangles !== void 0) {
-      const cells = new Array(end - start);
-      for (let cell = start; cell < end; cell += 1) {
-        if (triangleBits !== void 0 && !validAt(triangleBits, cell)) {
-          cells[cell - start] = null;
-          continue;
-        }
-        const first = u64OffsetAt(offsets, cell), last = u64OffsetAt(offsets, cell + 1);
-        const coordinates = new Array(last - first);
-        for (let index2 = first; index2 < last; index2 += 1) {
-          coordinates[index2 - first] = triangles[index2];
-        }
-        cells[cell - start] = coordinates;
-      }
-      item["cell-tris"] = cells;
-    }
-    output[String(frame.id)] = item;
-  }
-  const attributes = object2(metadata.attributes ?? {}, "surface root attributes");
-  return { ...attributes, surfaces: output };
-}
-function materializeRange(values, validity, start, end, dictionary, divisor = 1) {
-  const output = new Array(end - start);
-  for (let index2 = start; index2 < end; index2 += 1) {
-    const value = values.at(index2);
-    output[index2 - start] = !validAt(validity, index2) ? null : dictionary === void 0 ? value / divisor : dictionary[value];
-  }
-  return output;
-}
-function typed(section) {
-  if (section.dtype === "u8") return section.bytes;
-  if (section.dtype === "f16") throw new TypeError("f16 requires scalar projection");
-  const definitions = {
-    u32: [Uint32Array, 4],
-    i16: [Int16Array, 2],
-    i32: [Int32Array, 4],
-    f32: [Float32Array, 4],
-    f64: [Float64Array, 8],
-    u64: [BigUint64Array, 8]
-  };
-  const definition = definitions[section.dtype];
-  if (definition === void 0) throw new TypeError(`unsupported result dtype ${section.dtype}`);
-  const [Constructor, width] = definition;
-  if (section.bytes.buffer instanceof ArrayBuffer && section.bytes.byteOffset % width === 0) {
-    return new Constructor(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength / width);
-  }
-  const copy = new Uint8Array(section.bytes.length);
-  copy.set(section.bytes);
-  return new Constructor(copy.buffer, 0, copy.byteLength / width);
-}
-function numericSource(section) {
-  if (section.dtype === "u64") throw new TypeError("u64 is not a scalar result value dtype");
-  if (section.dtype === "f16") {
-    const view = new DataView(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength);
-    return { at: (index2) => decodeF16(view.getUint16(index2 * 2, true)) };
-  }
-  const values = typed(section);
-  return { at: (index2) => values[index2] };
-}
-function valueDivisor(owner, data) {
-  const raw = owner.valueDivisor;
-  if (raw === void 0 || raw === null) return 1;
-  if (data.dtype !== "i16" || !Number.isSafeInteger(raw) || raw < 1 || raw > 1e6) throw new TypeError("valueDivisor requires i16 data and a uint value from 1 through 1000000");
-  return raw;
-}
-function decodeF16(bits2) {
-  const sign = bits2 & 32768 ? -1 : 1;
-  const exponent = bits2 >>> 10 & 31, fraction = bits2 & 1023;
-  return exponent === 0 ? sign * fraction * F16_EXPONENT_SCALE[1] : exponent === 31 ? fraction === 0 ? sign * Infinity : NaN : sign * (fraction + 1024) * F16_EXPONENT_SCALE[exponent];
-}
-function validAt(section, index2) {
-  return (section.bytes[index2 >> 3] & 1 << (index2 & 7)) !== 0;
-}
-function u64OffsetAt(section, index2) {
-  if (section.dtype !== "u64") throw new TypeError("triangle offsets must use u64");
-  const position = index2 * 8;
-  const view = new DataView(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength);
-  if (view.getUint32(position + 4, true) !== 0) {
-    throw new RangeError("triangle offset exceeds the supported uint32 range");
-  }
-  return view.getUint32(position, true);
-}
-function defineOwn(owner, key, value) {
-  Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });
-}
-function requireSection(sections, role) {
-  const value = sections.get(role);
-  if (value === void 0) throw new Error(`binary result omitted role ${role}`);
-  return value;
-}
-function object2(value, name) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${name} must be an object`);
-  return value;
-}
-function checkLimit(value, name) {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 4294967295) throw new RangeError(`${name} must be a non-negative uint32 integer`);
-}
-
-// src/results/archive.ts
-var DEFAULT_MAX_COMPRESSED_BYTES = 64 * 1024 * 1024;
-var DEFAULT_MAX_EXPANDED_BYTES = 512 * 1024 * 1024;
-var INPUT_CHUNK_BYTES = 8 * 1024;
-function limit2(value, fallback, name) {
-  const resolved = value === void 0 ? fallback : value;
-  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
-    throw new TypeError(`${name} must be a positive safe integer`);
-  }
-  return resolved;
-}
-function join2(chunks, length) {
-  const result = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk2 of chunks) {
-    result.set(chunk2, offset);
-    offset += chunk2.length;
-  }
-  return result;
-}
-function feed(content, push) {
-  for (let offset = 0; offset < content.length; offset += INPUT_CHUNK_BYTES) {
-    const end = Math.min(offset + INPUT_CHUNK_BYTES, content.length);
-    push(content.subarray(offset, end), false);
-  }
-  push(new Uint8Array(), true);
-}
-function expandGzip(content, maximum) {
-  const chunks = [];
-  let length = 0;
-  let complete = false;
-  let lastMemberOffset = 0;
-  const stream = new Gunzip((chunk2, final) => {
-    if (chunk2.length > maximum - length) {
-      throw new Error("result archive exceeds the expanded byte limit");
-    }
-    if (chunk2.length > 0) chunks.push(chunk2);
-    length += chunk2.length;
-    complete ||= final;
-  });
-  stream.onmember = (offset) => {
-    lastMemberOffset = offset;
-    complete = false;
-  };
-  feed(content, (chunk2, final) => stream.push(chunk2, final));
-  if (content.length - lastMemberOffset < 18) {
-    throw new Error("result GZIP archive is truncated");
-  }
-  if (!complete) throw new Error("result GZIP archive is truncated");
-  return join2(chunks, length);
-}
-function expandZip(content, maximum) {
-  const chunks = [];
-  let length = 0;
-  let selected = false;
-  let complete = false;
-  const stream = new Unzip((file) => {
-    if (selected || file.name.endsWith("/")) return;
-    selected = true;
-    file.ondata = (error, chunk2, final) => {
-      if (error !== null) throw error;
-      if (chunk2.length > maximum - length) {
-        throw new Error("result archive exceeds the expanded byte limit");
-      }
-      if (chunk2.length > 0) chunks.push(chunk2);
-      length += chunk2.length;
-      complete ||= final;
-    };
-    file.start();
-  });
-  stream.register(UnzipInflate);
-  feed(content, (chunk2, final) => stream.push(chunk2, final));
-  if (!selected) throw new Error("result ZIP archive is empty");
-  if (!complete) throw new Error("result ZIP archive is truncated");
-  return join2(chunks, length);
-}
-function decompressResultArchive(content, options = {}) {
-  const compressed = limit2(
-    options.maxCompressedBytes,
-    DEFAULT_MAX_COMPRESSED_BYTES,
-    "maxCompressedBytes"
-  );
-  const expanded = limit2(
-    options.maxExpandedBytes,
-    DEFAULT_MAX_EXPANDED_BYTES,
-    "maxExpandedBytes"
-  );
-  if (content.length > compressed) {
-    throw new Error("result archive exceeds the compressed byte limit");
-  }
-  if (content[0] === 80 && content[1] === 75) {
-    return expandZip(content, expanded);
-  }
-  if (content[0] === 31 && content[1] === 139) {
-    return expandGzip(content, expanded);
-  }
-  throw new Error("result content is not a ZIP or GZIP archive");
-}
-
-// src/results/surface-record.ts
-var hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
-function ownValue(value, key) {
-  return hasOwn(value, key) ? value[key] : void 0;
-}
-function emptyMap() {
-  return /* @__PURE__ */ Object.create(null);
-}
-function setOwn(target, key, value) {
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true
-  });
-}
-function record2(value, name) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${name} must be an object`);
-  }
-  return value;
-}
-function finite(value, name) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new TypeError(`${name} must be a finite number`);
-  }
-  return value;
-}
-function count(value, name) {
-  const result = finite(value, name);
-  if (!Number.isSafeInteger(result) || result < 0 || result > 4294967295) {
-    throw new TypeError(`${name} must be an unsigned 32-bit integer`);
-  }
-  return result;
-}
-function vector(value, name) {
-  if (!Array.isArray(value) || value.length !== 3) {
-    throw new TypeError(`${name} must be a finite three-component vector`);
-  }
-  value.forEach((component, index2) => finite(component, `${name}[${index2}]`));
-}
-function validateNullableNumbers(value, expected, name) {
-  if (!Array.isArray(value) || value.length !== expected) {
-    throw new TypeError(`${name} must contain exactly ${expected} cells`);
-  }
-  value.forEach((item, index2) => {
-    if (item !== null) finite(item, `${name}[${index2}]`);
-  });
-}
-function validateCellTriangles(value, expected, name) {
-  if (value === void 0 || value === null) return;
-  if (!Array.isArray(value) || value.length !== expected) {
-    throw new TypeError(`${name} must contain exactly ${expected} cells`);
-  }
-  value.forEach((cell, cellIndex) => {
-    if (cell === null) return;
-    if (!Array.isArray(cell) || cell.length % 9 !== 0) {
-      throw new TypeError(`${name}[${cellIndex}] must contain complete triangles`);
-    }
-    cell.forEach((item, index2) => finite(item, `${name}[${cellIndex}][${index2}]`));
-  });
-}
-function validateEntry(entry, key, trustedBulk = false) {
-  vector(ownValue(entry, "origin"), `surface ${key} origin`);
-  vector(ownValue(entry, "u-axis"), `surface ${key} u-axis`);
-  vector(ownValue(entry, "v-axis"), `surface ${key} v-axis`);
-  const gridSize = finite(ownValue(entry, "grid-size"), `surface ${key} grid-size`);
-  if (gridSize <= 0) throw new TypeError(`surface ${key} grid-size must be positive`);
-  const nu = count(ownValue(entry, "nu"), `surface ${key} nu`);
-  const nv = count(ownValue(entry, "nv"), `surface ${key} nv`);
-  const expected = nu * nv;
-  if (!Number.isSafeInteger(expected)) {
-    throw new TypeError(`surface ${key} cell count is not representable`);
-  }
-  finite(ownValue(entry, "area"), `surface ${key} area`);
-  finite(ownValue(entry, "mean"), `surface ${key} mean`);
-  finite(ownValue(entry, "peak"), `surface ${key} peak`);
-  const values = ownValue(entry, "values");
-  if (trustedBulk) {
-    if (!Array.isArray(values) || values.length !== expected) {
-      throw new TypeError(`surface ${key} values must contain exactly ${expected} cells`);
-    }
-  } else if (values instanceof Float64Array) {
-    if (values.length !== expected) {
-      throw new TypeError(`surface ${key} values must contain exactly ${expected} cells`);
-    }
-    values.forEach((item, index2) => {
-      if (!Number.isFinite(item) && !Number.isNaN(item)) {
-        throw new TypeError(`surface ${key} values[${index2}] must be finite or masked`);
-      }
-    });
-  } else {
-    validateNullableNumbers(values, expected, `surface ${key} values`);
-  }
-  const cellArea = ownValue(entry, "cell-area");
-  if (cellArea !== void 0 && cellArea !== null) {
-    if (trustedBulk) {
-      if (!Array.isArray(cellArea) || cellArea.length !== expected) {
-        throw new TypeError(`surface ${key} cell-area must contain exactly ${expected} cells`);
-      }
-    } else validateNullableNumbers(cellArea, expected, `surface ${key} cell-area`);
-  }
-  const cellTriangles2 = ownValue(entry, "cell-tris");
-  if (trustedBulk) {
-    if (cellTriangles2 !== void 0 && cellTriangles2 !== null && (!Array.isArray(cellTriangles2) || cellTriangles2.length !== expected)) {
-      throw new TypeError(`surface ${key} cell-tris must contain exactly ${expected} cells`);
-    }
-  } else validateCellTriangles(cellTriangles2, expected, `surface ${key} cell-tris`);
-  return entry;
-}
-function parseRecord(rawValue, options, trustedBulk) {
-  const raw = record2(rawValue, "surface result");
-  if (!trustedBulk) rejectRetiredResultFields(raw);
-  const rawSurfaces = record2(ownValue(raw, "surfaces"), "surface result surfaces");
-  const surfaces2 = emptyMap();
-  for (const [key, value] of Object.entries(rawSurfaces)) {
-    setOwn(surfaces2, key, validateEntry(record2(value, `surface ${key}`), key, trustedBulk));
-  }
-  const complete = Object.values(surfaces2).every(
-    (entry) => entry["cell-tris"] !== void 0 && entry["cell-tris"] !== null
-  );
-  if (options.requireCellGeometry === true && !complete) {
-    throw new Error(
-      "surface cell geometry was omitted and no synthesis inputs were provided"
-    );
-  }
-  return {
-    route: "surface",
-    value: { ...raw, surfaces: surfaces2 },
-    cellGeometry: complete ? "complete" : "omitted"
-  };
-}
-function parseSurfaceRecord(rawValue, options = {}) {
-  return parseRecord(rawValue, options, false);
-}
-function parseValidatedIrBfSurfaceRecord(rawValue, options = {}) {
-  return parseRecord(rawValue, options, true);
-}
-
-// src/results/router.ts
-var IRBF_MAGIC = [73, 82, 66, 70, 13, 10, 26, 10];
-var RESULT_DECODE_LIMITS = {
-  maxTotalBytes: 268435456,
-  maxMetadataBytes: 4194304,
-  maxCells: 16777216,
-  maxTriangleValues: 67108864
-};
-function parseJson3(document2) {
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(document2));
-}
-function requireFiniteNumbers(value) {
-  const pending2 = [value];
-  while (pending2.length > 0) {
-    const item = pending2.pop();
-    if (typeof item === "number" && !Number.isFinite(item)) throw new Error("JSON result contains a non-finite number");
-    if (Array.isArray(item)) for (const child of item) pending2.push(child);
-    else if (item !== null && typeof item === "object") for (const child of Object.values(item)) pending2.push(child);
-  }
-}
-function isSurfaceResult(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, "surfaces")) return false;
-  const surfaces2 = value.surfaces;
-  return surfaces2 !== null && typeof surfaces2 === "object" && !Array.isArray(surfaces2);
-}
-function jsonRoute(document2, options) {
-  const decoded = requireCore().decodeGridDocument(document2, options.expectedGridKind);
-  let route = "";
-  let finiteNumbersValidated = false;
-  try {
-    route = decoded.route;
-    finiteNumbersValidated = decoded.finiteNumbersValidated === true;
-  } finally {
-    decoded.free();
-  }
-  const value = parseJson3(document2);
-  rejectRetiredResultFields(value);
-  if (route === "json-grid" && !finiteNumbersValidated) requireFiniteNumbers(value);
-  if (route !== "json-grid" && isSurfaceResult(value)) {
-    return options.surface === void 0 ? parseSurfaceRecord(value) : parseSurfaceRecord(value, options.surface);
-  }
-  return { route: "json", value };
-}
-function parseResultDocument(document2, options = {}) {
-  const irbf = document2.length >= IRBF_MAGIC.length && IRBF_MAGIC.every((value, index2) => document2[index2] === value);
-  if (!irbf) return jsonRoute(document2, options);
-  const decoded = decodeBinaryResultDocument(document2, RESULT_DECODE_LIMITS);
-  if (decoded.family === "surfaces") {
-    return options.surface === void 0 ? parseValidatedIrBfSurfaceRecord(decoded.value) : parseValidatedIrBfSurfaceRecord(decoded.value, options.surface);
-  }
-  const kind = decoded.family === "categorical-grid" ? "categorical" : decoded.family === "numeric-grid" ? "numeric" : void 0;
-  if (options.expectedGridKind !== void 0 && kind !== void 0 && options.expectedGridKind !== kind) {
-    throw new TypeError(`result grid kind is ${kind}, expected ${options.expectedGridKind}`);
-  }
-  return { route: "json", value: decoded.value };
-}
-function parseResultArchive(content, options = {}) {
-  return parseResultDocument(decompressResultArchive(content, options.archive), options);
-}
-
-// src/job-errors.ts
-var JobFailedError = class extends Error {
-  constructor(jobId, errorMessage) {
-    super("job failed");
-    this.jobId = jobId;
-    this.errorMessage = errorMessage;
-  }
-  name = "JobFailedError";
-};
-var JobTimeoutError = class extends Error {
-  constructor(jobId) {
-    super("job polling timed out");
-    this.jobId = jobId;
-  }
-  name = "JobTimeoutError";
-};
-var JobAbortedError = class extends Error {
-  constructor(jobId) {
-    super("job polling was aborted");
-    this.jobId = jobId;
-  }
-  name = "JobAbortedError";
-};
-var JobNotCompletedError = class extends Error {
-  constructor(jobId, status) {
-    super("job is not completed");
-    this.jobId = jobId;
-    this.status = status;
-  }
-  name = "JobNotCompletedError";
-};
-
-// src/job-model.ts
-var JobStatus = {
-  Pending: "pending",
-  Running: "running",
-  Succeeded: "succeeded",
-  Failed: "failed",
-  Unknown: "unknown"
-};
-function withTreeBoxes(job, binary) {
-  return binary?.treeBoxes === void 0 ? job : { ...job, treeBoxes: binary.treeBoxes };
-}
-function requireJobId(jobId) {
-  if (typeof jobId !== "string" || jobId.length === 0) throw new TypeError("jobId must be a non-empty string");
-  return jobId;
-}
-
-// src/area/facade-layout.ts
-var MAX_WORD = 4294967295;
-var LITTLE_ENDIAN = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
-function frames(raw) {
-  if (!Array.isArray(raw)) throw new TypeError("kernel frames must be an array");
-  return raw.map((frame) => {
-    const bytes = frame.cells_u64_le;
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength % 8 !== 0) {
-      throw new TypeError("kernel frame cells must be u64 LE bytes");
-    }
-    let words;
-    if (LITTLE_ENDIAN && bytes.byteOffset % 4 === 0) {
-      words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-    } else {
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      words = new Uint32Array(bytes.byteLength / 4);
-      for (let index2 = 0; index2 < words.length; index2 += 1) words[index2] = view.getUint32(index2 * 4, true);
-    }
-    for (let index2 = 0; index2 < words.length; index2 += 2) {
-      const high = words[index2 + 1];
-      if (high !== 0 && (high !== MAX_WORD || words[index2] !== MAX_WORD)) {
-        throw new RangeError("kernel frame cell index exceeds u32");
-      }
-    }
-    return { key: frame.key, words };
-  });
-}
-function frameViews(record4, frame, anchor) {
-  const { words } = frame;
-  const count2 = words.length / 2;
-  let first;
-  for (let index2 = 0; index2 < count2 && first === void 0; index2 += 1) {
-    if (words[index2 * 2 + 1] === 0) first = words[index2 * 2];
-  }
-  if (first === void 0) {
-    return {
-      triangleValues: new Float32Array(),
-      triangleOffsets: new Uint32Array(count2 + 1),
-      triangleMask: new Uint8Array(count2),
-      hasCellTris: true,
-      triangleAnchor: anchor
-    };
-  }
-  const base = record4.offsets[first];
-  const offsets = new Uint32Array(count2 + 1);
-  const mask = new Uint8Array(count2);
-  let cursor = 0;
-  let last = first;
-  for (let index2 = 0; index2 < count2; index2 += 1) {
-    if (words[index2 * 2 + 1] === 0) {
-      const sensor = words[index2 * 2];
-      if (record4.offsets[sensor] - base !== cursor) return void 0;
-      cursor = record4.offsets[sensor + 1] - base;
-      mask[index2] = 1;
-      last = sensor;
-    }
-    offsets[index2 + 1] = cursor;
-  }
-  return {
-    triangleValues: record4.cellTris.subarray(base, record4.offsets[last + 1]),
-    triangleOffsets: offsets,
-    triangleMask: mask,
-    hasCellTris: true,
-    triangleAnchor: anchor
-  };
-}
-function layoutRecord(buffers, serverHash) {
-  const cellTris = buffers.cell_tris, offsets = buffers.cell_tris_offsets;
-  if (cellTris === null || offsets === null) {
-    return { reason: "synth_error", detail: String(new TypeError("kernel returned no cell triangles")).slice(0, 200) };
-  }
-  if (buffers.sensor_layout_hash !== serverHash) return { reason: "hash_mismatch" };
-  let list;
-  try {
-    list = frames(buffers.frames);
-  } catch (error) {
-    return { reason: "synth_error", detail: String(error).slice(0, 200) };
-  }
-  const frameBytes = list.reduce((sum, frame) => sum + frame.words.byteLength, 0);
-  return { cellTris, offsets, frames: list, bytes: cellTris.byteLength + offsets.byteLength + frameBytes };
-}
-
-// src/area/facade-synthesis.ts
-var ECHO_KEYS = [
-  "mode",
-  "grid-size",
-  "offset",
-  "max-sensors",
-  "partial-cells",
-  "min-coverage",
-  "emit-cell-tris",
-  "surfgrid-version"
-];
-var MODES = /* @__PURE__ */ new Set(["facades", "roofs", "all"]);
-var DEFAULT_CACHE_BYTES = 256 * 1024 * 1024;
-function echoFrom(raw) {
-  if (raw === null || typeof raw !== "object") return void 0;
-  const echo = raw;
-  if (ECHO_KEYS.some((key) => !(key in echo))) return void 0;
-  const mode = echo.mode;
-  if (typeof mode !== "string" || !MODES.has(mode)) return void 0;
-  const numbers2 = ["grid-size", "offset", "min-coverage"].map((key) => Number(echo[key]));
-  if (numbers2.some((value) => !Number.isFinite(value))) return void 0;
-  const maxSensors = Number(echo["max-sensors"]);
-  if (!Number.isSafeInteger(maxSensors) || maxSensors < 0) return void 0;
-  return {
-    mode,
-    gridSize: numbers2[0],
-    offset: numbers2[1],
-    minCoverage: numbers2[2],
-    maxSensors: BigInt(maxSensors),
-    partialCells: Boolean(echo["partial-cells"])
-  };
-}
-var FacadeSynthesisStore = class {
-  constructor(maxBytes = DEFAULT_CACHE_BYTES) {
-    this.maxBytes = maxBytes;
-  }
-  inputs = /* @__PURE__ */ new Map();
-  /** Insertion-ordered: a `Map` is an LRU once a hit re-inserts its key. */
-  layouts = /* @__PURE__ */ new Map();
-  retained = 0;
-  hits = 0;
-  misses = 0;
-  /**
-   * Retain one accepted job's inputs. Two places release them, and between
-   * them they cover every accepted job: `take` on the merge that uses one, and
-   * `forget` for the rest — the merge releases the whole schedule it finished
-   * (its failed jobs included), and a submission that aborts releases what it
-   * captured before the abort. A capture no release path reaches would be held
-   * for the life of the client.
-   */
-  remember(jobId, input) {
-    this.inputs.set(jobId, input);
-  }
-  take(jobId) {
-    const input = this.inputs.get(jobId);
-    this.inputs.delete(jobId);
-    return input;
-  }
-  /** Release a capture no merge will ever consume. */
-  forget(jobId) {
-    this.inputs.delete(jobId);
-  }
-  get pendingCount() {
-    return this.inputs.size;
-  }
-  get retainedBytes() {
-    return this.retained;
-  }
-  /** Hits and misses since this client was built. A cache that never hits is
-   * indistinguishable from one that was never built, so it is countable: the
-   * F3 scene's layouts are 935 MB against the 256 MiB bound and score zero
-   * (`docs/DEVIATIONS.md` D88). */
-  get stats() {
-    return { hits: this.hits, misses: this.misses };
-  }
-  /** A retained layout, counted as a hit (and made the most recent), or nothing. */
-  lookup(key) {
-    const record4 = this.layouts.get(key);
-    if (record4 === void 0) return void 0;
-    this.hits += 1;
-    this.layouts.delete(key);
-    this.layouts.set(key, record4);
-    return record4;
-  }
-  /** Count one synthesized layout as a miss and retain it when it fits the bound. */
-  retain(key, record4) {
-    this.misses += 1;
-    if (this.maxBytes <= 0 || record4.bytes > this.maxBytes) return;
-    while (this.layouts.size > 0 && this.retained + record4.bytes > this.maxBytes) {
-      const [oldest, evicted] = this.layouts.entries().next().value;
-      this.layouts.delete(oldest);
-      this.retained -= evicted.bytes;
-    }
-    this.layouts.set(key, record4);
-    this.retained += record4.bytes;
-  }
-};
-function identityProbe(response) {
-  const probe = {
-    surfaces: {},
-    aggregates: { buildings: {} },
-    "min-legend": 0,
-    "max-legend": 0,
-    "sensor-count": 0
-  };
-  for (const key of ["sensor-layout-hash", "geometry-hashes", "synth-params"]) {
-    if (key in response) probe[key] = response[key];
-  }
-  return JSON.stringify(probe);
-}
-function withCellTrisFallback(result, fallbacks) {
-  return fallbacks.size === 0 ? result : { ...result, cellTrisFallback: [...fallbacks].sort() };
-}
-function synthesizeSurfaceTriangles(store, jobs, logger, fallbacks) {
-  const started = performance.now();
-  const core2 = requireCore();
-  const planned = [];
-  const outcomes = /* @__PURE__ */ new Map();
-  const needed = /* @__PURE__ */ new Map();
-  for (const job of jobs) {
-    const fell = (reason2, detail) => {
-      if (reason2 !== "already_present") fallbacks?.add(reason2);
-      logger.warn({
-        event: "facade_synthesis",
-        outcome: "fell_back",
-        reason: reason2,
-        jobId: job.jobId,
-        elapsedMs: Math.round(performance.now() - started),
-        ...detail === void 0 ? {} : { detail }
-      });
-      return void 0;
-    };
-    const input = store.take(job.jobId);
-    if (input === void 0) continue;
-    const surfaces2 = job.response.surfaces;
-    if (surfaces2 === null || typeof surfaces2 !== "object") {
-      fell("no_surfaces");
-      continue;
-    }
-    if (Object.values(surfaces2).some(
-      (grid) => grid["cell-tris"] != null
-    )) {
-      fell("already_present");
-      continue;
-    }
-    let identity;
-    try {
-      identity = JSON.parse(core2.decodeSurfaceIdentity(identityProbe(job.response)));
-    } catch (error) {
-      fell("no_hash", String(error).slice(0, 200));
-      continue;
-    }
-    const serverHash = identity["sensor-layout-hash"];
-    if (typeof serverHash !== "string" || serverHash.length === 0) {
-      fell("no_hash");
-      continue;
-    }
-    const echo = echoFrom(identity["synth-params"]);
-    if (echo === void 0) {
-      fell("no_echo");
-      continue;
-    }
-    if (!echo.partialCells) {
-      fell("not_clipped");
-      continue;
-    }
-    const keys = Object.keys(surfaces2);
-    const cacheKey2 = `${serverHash}:${JSON.stringify([...keys].sort())}`;
-    planned.push({ job, keys, cacheKey: cacheKey2, fell });
-    if (outcomes.has(cacheKey2) || needed.has(cacheKey2)) continue;
-    const hit = store.lookup(cacheKey2);
-    if (hit !== void 0) outcomes.set(cacheKey2, hit);
-    else needed.set(cacheKey2, { capture: input.capture, echo, serverHash });
-  }
-  synthesizeNeeded(store, needed, outcomes);
-  const attached = /* @__PURE__ */ new Map();
-  for (const { job, keys, cacheKey: cacheKey2, fell } of planned) {
-    const views = attach(outcomes.get(cacheKey2), job, keys, fell);
-    if (views === void 0) continue;
-    for (const [key, view] of views) attached.set(key, view);
-    logger.info({
-      event: "facade_synthesis",
-      outcome: "engaged",
-      jobId: job.jobId,
-      surfaces: views.size,
-      elapsedMs: Math.round(performance.now() - started)
-    });
-  }
-  return attached;
-}
-function synthesizeNeeded(store, needed, outcomes) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const entry of needed) {
-    const { echo } = entry[1];
-    const group = [echo.mode, echo.gridSize, echo.offset, echo.maxSensors, echo.partialCells, echo.minCoverage].map(String).join("|");
-    groups.set(group, [...groups.get(group) ?? [], entry]);
-  }
-  const core2 = requireCore();
-  for (const entries3 of groups.values()) {
-    const { echo } = entries3[0][1];
-    try {
-      core2.synthesizeSurfacesFromCaptures(entries3.map(([, need]) => need.capture), (index2, answer) => {
-        const [cacheKey2, need] = entries3[index2];
-        if (answer instanceof Error) {
-          outcomes.set(cacheKey2, { reason: "synth_error", detail: String(answer).slice(0, 200) });
-          return;
-        }
-        const record4 = layoutRecord(answer, need.serverHash);
-        if ("cellTris" in record4) store.retain(cacheKey2, record4);
-        outcomes.set(cacheKey2, record4);
-      }, echo.mode, echo.gridSize, echo.offset, echo.maxSensors, echo.partialCells, echo.minCoverage, true, true);
-    } catch (error) {
-      for (const [cacheKey2] of entries3) {
-        if (!outcomes.has(cacheKey2)) {
-          outcomes.set(cacheKey2, { reason: "synth_error", detail: String(error).slice(0, 200) });
-        }
-      }
-    }
-  }
-}
-function attach(outcome, job, keys, fell) {
-  if (!("cellTris" in outcome)) return fell(outcome.reason, outcome.detail);
-  const surfaces2 = job.response.surfaces;
-  const views = /* @__PURE__ */ new Map();
-  for (const frame of outcome.frames) {
-    if (!(frame.key in surfaces2)) return fell("frame_mismatch", frame.key);
-    const view = frameViews(outcome, frame, job.anchor);
-    if (view === void 0) return fell("frame_mismatch", frame.key);
-    views.set(frame.key, view);
-  }
-  if (views.size !== keys.length) return fell("frame_mismatch");
-  return views;
-}
-
-// src/jobs.ts
-var DEFAULT_POLL_TIMEOUT_SECONDS = 300;
-var BACKOFF_BASE_MS = 2e3;
-var BACKOFF_FLOOR_MS = 500;
-var BACKOFF_CAP_SECONDS = 10;
-var BIG_PAYLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
-var JobsService = class {
-  gateway;
-  uploadGateway;
-  fetch;
-  pollIntervalMs;
-  backoffCapMs;
-  downloadTimeoutMs;
-  requestTimeoutMs;
-  bigPayloadThresholdBytes;
-  geometryReuseEnabled;
-  geometryReuseOptions;
-  capabilityPromise;
-  /** `undefined` until the batched status route has been tried once. */
-  batchedStatus;
-  binaryPrepared = new BinaryRetention();
-  geometryUrls;
-  auth;
-  binaryUrlReuse;
-  /** Default `consoleLogger`, like every other service in this package. The
-   * only line it can emit that an earlier SDK did not is the D70 substitution
-   * report — and that is on a body an earlier SDK THREW on, so no working
-   * caller starts seeing new output. */
-  logger;
-  /** Bodies whose substitution has already been reported. */
-  loggedTreeBoxes = /* @__PURE__ */ new WeakSet();
-  /**
-   * This client's facade capture and layout cache (`area/facade-synthesis.ts`).
-   * Per client, dies with it: no disk, no IndexedDB, no module-global map, and
-   * nothing of it reaches an `AreaSchedule`.
-   */
-  facadeSynthesis = new FacadeSynthesisStore();
-  constructor(options) {
-    const fetcher = resolveFetch(options.fetch);
-    if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
-    this.fetch = fetcher;
-    this.pollIntervalMs = options.pollIntervalMs;
-    if (this.pollIntervalMs !== void 0) requireTimeout(this.pollIntervalMs);
-    const backoffCapSeconds = options.backoffCapSeconds ?? BACKOFF_CAP_SECONDS;
-    requireTimeout(backoffCapSeconds * 1e3);
-    this.backoffCapMs = backoffCapSeconds * 1e3;
-    this.downloadTimeoutMs = options.downloadTimeoutMs ?? 6e5;
-    requireTimeout(this.downloadTimeoutMs);
-    this.requestTimeoutMs = options.timeoutMs ?? 18e4;
-    requireTimeout(this.requestTimeoutMs);
-    this.bigPayloadThresholdBytes = options.bigPayloadThresholdBytes ?? BIG_PAYLOAD_THRESHOLD_BYTES;
-    this.binaryUrlReuse = options.binaryUrlReuse !== false;
-    this.logger = options.logger ?? consoleLogger;
-    this.geometryUrls = new BinaryUrlCache(this.binaryUrlReuse);
-    this.auth = options.auth;
-    if (!Number.isSafeInteger(this.bigPayloadThresholdBytes) || this.bigPayloadThresholdBytes < 0) {
-      throw new TypeError("bigPayloadThresholdBytes must be a non-negative safe integer");
-    }
-    this.gateway = new GatewayTransport(options);
-    this.geometryReuseEnabled = options.geometryReuseEnabled ?? true;
-    this.geometryReuseOptions = buildGeometryReuseOptions(
-      options,
-      this.fetch,
-      this.bigPayloadThresholdBytes,
-      this.requestTimeoutMs
-    );
-    this.uploadGateway = new GatewayTransport({
-      ...options,
-      baseUrl: options.gatewayBaseUrl ?? options.baseUrl
-    });
-  }
-  /** Decompress and route an already downloaded result archive. */
-  decompress(content, options) {
-    return parseResultArchive(content, options);
-  }
-  async submit(analysisType, payload, options = {}) {
-    const prepared = this.prepareSubmission(analysisType, payload, options);
-    return this.submitPrepared(prepared, options.signal === void 0 ? {} : { signal: options.signal });
-  }
-  prepareSubmission(analysisType, payload, options = {}) {
-    const transport3 = options.transport ?? "json";
-    if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
-      throw new TypeError("unsupported option binaryResults; use transport instead");
-    }
-    return {
-      analysisType,
-      transport: transport3,
-      body: prepareSubmissionBody(analysisType, payload, options)
-    };
-  }
-  async submitPrepared(prepared, options = {}) {
-    if (prepared.transport === "binary") {
-      let binary;
-      const parseJob2 = (response) => withTreeBoxes(jobFromResponse(response), binary);
-      return submitPreparedBinary({
-        prepared,
-        parseJob: parseJob2,
-        prepare: async (fresh) => {
-          if (!fresh) {
-            const retained = this.binaryPrepared.get(prepared);
-            if (retained !== void 0) {
-              binary = retained;
-              return retained;
-            }
-          }
-          binary = await this.prepareBinaryValue(prepared, options.signal);
-          return binary;
-        },
-        releasePrepared: () => this.binaryPrepared.release(prepared),
-        gateway: this.gateway,
-        uploadGateway: this.uploadGateway,
-        auth: this.auth,
-        fetch: this.fetch,
-        timeoutMs: this.requestTimeoutMs,
-        urlCache: this.geometryUrls,
-        reuseEnabled: this.binaryUrlReuse,
-        ...options.signal === void 0 ? {} : { signal: options.signal },
-        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch }
-      });
-    }
-    if (this.geometryReuseEnabled) {
-      const reused = await tryGeometryReuse(prepared, this.geometryReuseOptions, options.signal, options.beforeDispatch);
-      if (reused !== void 0) return reused;
-    }
-    let json;
-    try {
-      const bytes = jsonWireBytes(prepared.body, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value) : value);
-      if (bytes === void 0) throw new TypeError("request has no JSON wire form");
-      json = bytes;
-    } catch {
-      throw new TransportError("job request is not JSON serializable", "pre-dispatch", "validation", "POST");
-    }
-    const archive = requireCore().zipPayloadJson(json);
-    return submitArchive({
-      endpointPath: `/async/${encodeURIComponent(prepared.analysisType)}`,
-      archive,
-      gateway: this.gateway,
-      uploadGateway: this.uploadGateway,
-      fetch: this.fetch,
-      thresholdBytes: this.bigPayloadThresholdBytes,
-      timeoutMs: this.requestTimeoutMs,
-      parseAccepted: jobFromResponse,
-      ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
-      ...options.signal === void 0 ? {} : { signal: options.signal }
-    });
-  }
-  /**
-   * Finish all binary validation and encoding before a paid submission.
-   *
-   * What it encodes is RETAINED, under this client's byte budget
-   * (`internal/binary-retention.ts`), and `submitPrepared` sends exactly those
-   * bytes instead of encoding the same body a second time. The submit frees the
-   * artifact as soon as its upload has used it; a caller that preflights a
-   * whole plan and then does NOT submit some of it must call
-   * `releasePreflight` for those — `area/submission.ts` does.
-   */
-  async preflightPrepared(prepared, options = {}) {
-    if (prepared.transport !== "binary" || this.binaryPrepared.get(prepared) !== void 0) return;
-    const binary = await withBinaryAdmission(
-      () => this.prepareBinaryValue(prepared, options.signal),
-      options.signal
-    );
-    if (options.retain !== false) this.binaryPrepared.keep(prepared, binary);
-  }
-  /** Free what a preflight is holding for a submission that will not happen. */
-  releasePreflight(prepared) {
-    this.binaryPrepared.release(prepared);
-  }
-  async prepareBinaryValue(prepared, signal) {
-    this.capabilityPromise ??= capability(this.gateway, signal).catch((error) => {
-      this.capabilityPromise = void 0;
-      throw error;
-    });
-    const binary = await prepareBinary(prepared, await this.capabilityPromise);
-    if (binary.treeBoxes !== void 0 && !this.loggedTreeBoxes.has(prepared)) {
-      this.loggedTreeBoxes.add(prepared);
-      this.logger.info(treeBoxLogLine(binary.treeBoxes));
-      if (binary.treeBoxes.idCollisions.length > 0) {
-        this.logger.warn(treeBoxCollisionLine(binary.treeBoxes));
-      }
-      if (binary.treeBoxes.outsideTile > 0) {
-        this.logger.warn(treeBoxOutOfTileLine(binary.treeBoxes));
-      }
-    }
-    return binary;
-  }
-  async getStatusWithSignal(jobId, signal) {
-    const id = requireJobId(jobId);
-    const response = await this.gateway.requestJson(
-      `/async/jobs/${encodeURIComponent(id)}`,
-      signal === void 0 ? {} : { signal }
-    );
-    const job = jobFromResponse(response);
-    if (job.jobId !== id) throw new Error("job response ID does not match requested jobId");
-    return job;
-  }
-  async getStatus(jobId, options = {}) {
-    return this.getStatusWithSignal(jobId, options.signal);
-  }
-  /** Whether the batched status route has answered this client at least once.
-   *  `false` until it has, and `false` for ever once a gateway has shown it
-   *  lacks the route — which is what the area poll reads to choose its
-   *  interval (`internal/status-batch.ts`, `docs/DEVIATIONS.md` D121). */
-  get batchedStatusSupported() {
-    return this.batchedStatus === true;
-  }
-  /** Many job statuses in one request per 50 ids. Ids it could not settle
-   *  come back in `unanswered` for the caller to ask about per job; it never
-   *  throws for a gateway reason. A gateway that lacks the route is asked
-   *  once and never again. */
-  async getStatusBatch(jobIds2, options = {}) {
-    const ids = jobIds2.map(requireJobId);
-    if (this.batchedStatus === false) {
-      return { statuses: /* @__PURE__ */ new Map(), unanswered: [...ids], batched: false, lacking: true };
-    }
-    const sweep = await fetchStatusBatch(this.gateway, ids, options);
-    if (sweep.lacking) this.batchedStatus = false;
-    else if (sweep.batched) this.batchedStatus = true;
-    return sweep;
-  }
-  async notify(deadline, callback, job, attempt, elapsed, nextDelay) {
-    if (callback === void 0) return void 0;
-    try {
-      return await deadline.wait(() => Promise.resolve(callback(job, attempt, elapsed, nextDelay)));
-    } catch (error) {
-      if (deadline.reason() !== void 0) throw error;
-      return void 0;
-    }
-  }
-  async waitForCompletion(jobId, options = {}) {
-    const id = requireJobId(jobId);
-    const timeoutSeconds = options.timeout ?? DEFAULT_POLL_TIMEOUT_SECONDS;
-    requireTimeout(timeoutSeconds * 1e3);
-    const deadline = new Deadline(options.signal, timeoutSeconds * 1e3);
-    const startedAt = performance.now();
-    let attempt = 0;
-    try {
-      while (true) {
-        const job = await deadline.wait(() => this.getStatusWithSignal(id, deadline.controller.signal));
-        const terminal2 = job.status === JobStatus.Succeeded || job.status === JobStatus.Failed;
-        const elapsed = (performance.now() - startedAt) / 1e3;
-        const delayMs = this.pollIntervalMs ?? Math.max(
-          BACKOFF_FLOOR_MS,
-          Math.random() * Math.min(this.backoffCapMs, BACKOFF_BASE_MS * 2 ** attempt)
-        );
-        const nextDelay = terminal2 ? 0 : delayMs / 1e3;
-        const keepGoing = await this.notify(
-          deadline,
-          options.onPoll,
-          job,
-          attempt,
-          elapsed,
-          nextDelay
-        );
-        if (keepGoing === false) return job;
-        if (job.status === JobStatus.Succeeded) return job;
-        if (job.status === JobStatus.Failed) throw new JobFailedError(id, job.error ?? "");
-        attempt += 1;
-        await deadline.wait(() => delay(delayMs, deadline.controller.signal));
-      }
-    } catch (error) {
-      const stopped = deadline.reason();
-      if (stopped !== void 0) {
-        throw stopped === "timeout" ? new JobTimeoutError(id) : new JobAbortedError(id);
-      }
-      throw error;
-    } finally {
-      deadline.close();
-    }
-  }
-  async resultsUrl(jobId, signal) {
-    const response = await this.gateway.requestBytesWithHeaders(
-      `/async/jobs/${encodeURIComponent(jobId)}/results`,
-      signal === void 0 ? {} : { signal }
-    );
-    return parseResultsLink(response.headers.get("Link"));
-  }
-  download(url, signal) {
-    return downloadPresigned(url, {
-      fetch: this.fetch,
-      timeoutMs: this.downloadTimeoutMs,
-      ...signal === void 0 ? {} : { signal }
-    });
-  }
-  async downloadResults(jobId, options = {}) {
-    const id = requireJobId(jobId);
-    if (options.job !== void 0 && options.job.jobId !== id) {
-      throw new TypeError("supplied job ID does not match requested jobId");
-    }
-    const job = options.job ?? await this.getStatusWithSignal(id, options.signal);
-    if (job.status !== JobStatus.Succeeded) throw new JobNotCompletedError(id, job.status);
-    for (let attempt = 0; ; attempt += 1) {
-      const presignedUrl = await this.resultsUrl(id, options.signal);
-      try {
-        const downloaded = await this.download(presignedUrl, options.signal);
-        return { ...downloaded, jobId: id, presignedUrl };
-      } catch (error) {
-        if (attempt >= DOWNLOAD_RETRY_ATTEMPTS || !isRetryableDownloadError(error)) throw error;
-      }
-      await pauseBeforeRetry(options.signal);
-    }
-  }
-};
-
-// src/area/schedule.ts
-var STATUSES = /* @__PURE__ */ new Set([
-  "pending",
-  "running",
-  "completed",
-  "failed",
-  "skipped"
-]);
-function frozenMap(source) {
-  const map = new Map(source);
-  let proxy;
-  proxy = new Proxy(map, {
-    get(target, property) {
-      if (property === "set" || property === "delete" || property === "clear") {
-        return () => {
-          throw new TypeError("AreaSchedule.jobs is frozen");
-        };
-      }
-      if (property === "forEach") {
-        return (callback, thisArg) => target.forEach((value2, key) => callback.call(thisArg, value2, key, proxy));
-      }
-      const value = Reflect.get(target, property, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-    set() {
-      throw new TypeError("AreaSchedule.jobs is frozen");
-    },
-    deleteProperty() {
-      throw new TypeError("AreaSchedule.jobs is frozen");
-    },
-    defineProperty() {
-      throw new TypeError("AreaSchedule.jobs is frozen");
-    }
-  });
-  return proxy;
-}
-function freezeAreaSchedule(schedule2) {
-  const membership = schedule2.batchMembership === void 0 ? void 0 : Object.freeze(
-    Object.fromEntries(Object.entries(schedule2.batchMembership).map(([key, ids]) => [key, Object.freeze([...ids])]))
-  );
-  const counts = schedule2.batchSensorCounts === void 0 ? void 0 : Object.freeze({ ...schedule2.batchSensorCounts });
-  const polygon = Object.freeze({
-    ...schedule2.polygon,
-    coordinates: Object.freeze(schedule2.polygon.coordinates.map((ring) => Object.freeze(ring.map((position) => Object.freeze([...position])))))
-  });
-  const tilePositions = Object.freeze(schedule2.tilePositions.map((position) => Object.freeze({ ...position })));
-  return Object.freeze({
-    ...schedule2,
-    jobs: frozenMap(schedule2.jobs),
-    polygon,
-    tilePositions,
-    gridShape: Object.freeze([...schedule2.gridShape]),
-    failedSubmissions: Object.freeze([...schedule2.failedSubmissions]),
-    ...schedule2.uncertainSubmissions === void 0 ? {} : {
-      uncertainSubmissions: Object.freeze([...schedule2.uncertainSubmissions])
-    },
-    ...schedule2.invalidReferenceSubmissions === void 0 ? {} : {
-      invalidReferenceSubmissions: Object.freeze([...schedule2.invalidReferenceSubmissions])
-    },
-    ...schedule2.geometryProbeJobIds === void 0 ? {} : {
-      geometryProbeJobIds: Object.freeze([...schedule2.geometryProbeJobIds])
-    },
-    ...schedule2.geometryProbeUncertain === true ? { geometryProbeUncertain: true } : {},
-    ...membership === void 0 ? {} : { batchMembership: membership },
-    ...counts === void 0 ? {} : { batchSensorCounts: counts },
-    ...schedule2.webhookEvents === void 0 ? {} : {
-      webhookEvents: Object.freeze([...schedule2.webhookEvents])
-    }
-  });
-}
-function jsonJob(job) {
-  const copy = {
-    tileId: job.tileId,
-    row: job.row,
-    col: job.col,
-    status: job.status,
-    ...job.jobId === void 0 ? {} : { jobId: job.jobId },
-    ...job.error === void 0 ? {} : { error: job.error },
-    ...job.invalidReference === true ? { invalidReference: true } : {},
-    ...job.binary === void 0 ? {} : { binary: { ...job.binary } }
-  };
-  return copy;
-}
-function areaScheduleToJSON(schedule2) {
-  return {
-    jobs: [...schedule2.jobs].map(([key, job]) => [key, jsonJob(job)]),
-    polygon: schedule2.polygon,
-    configHash: schedule2.configHash,
-    ...schedule2.siteIdentity === void 0 ? {} : { siteIdentity: schedule2.siteIdentity },
-    tilePositions: schedule2.tilePositions.map((position) => ({ ...position })),
-    gridShape: [...schedule2.gridShape],
-    analysisType: schedule2.analysisType,
-    transport: schedule2.transport ?? "json",
-    ...schedule2.wireVersion === void 0 ? {} : { wireVersion: schedule2.wireVersion },
-    failedSubmissions: [...schedule2.failedSubmissions],
-    ...schedule2.uncertainSubmissions === void 0 ? {} : { uncertainSubmissions: [...schedule2.uncertainSubmissions] },
-    ...schedule2.invalidReferenceSubmissions === void 0 ? {} : {
-      invalidReferenceSubmissions: [...schedule2.invalidReferenceSubmissions]
-    },
-    ...schedule2.geometryProbeJobIds === void 0 ? {} : {
-      geometryProbeJobIds: [...schedule2.geometryProbeJobIds]
-    },
-    ...schedule2.geometryProbeUncertain === true ? { geometryProbeUncertain: true } : {},
-    submissionAbortStatus: schedule2.submissionAbortStatus,
-    surfaceFields: schedule2.surfaceFields ?? false,
-    ...schedule2.terrainContextMarginM === void 0 ? {} : { terrainContextMarginM: schedule2.terrainContextMarginM },
-    ...schedule2.maxSensorsPerJob === void 0 ? {} : { maxSensorsPerJob: schedule2.maxSensorsPerJob },
-    ...schedule2.weatherIdentity === void 0 ? {} : { weatherIdentity: schedule2.weatherIdentity },
-    ...schedule2.scheduleContractVersion === void 0 ? {} : { scheduleContractVersion: schedule2.scheduleContractVersion },
-    ...schedule2.batchingPolicyVersion === void 0 ? {} : { batchingPolicyVersion: schedule2.batchingPolicyVersion },
-    ...schedule2.batchMembership === void 0 ? {} : { batchMembership: structuredClone(schedule2.batchMembership) },
-    ...schedule2.batchSensorCounts === void 0 ? {} : { batchSensorCounts: { ...schedule2.batchSensorCounts } },
-    ...schedule2.webhookUrl === void 0 ? {} : { webhookUrl: schedule2.webhookUrl },
-    ...schedule2.webhookEvents === void 0 ? {} : { webhookEvents: [...schedule2.webhookEvents] }
-  };
-}
-function invalid(message) {
-  throw new TypeError(`invalid area schedule: ${message}`);
-}
-function object3(value, name) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) invalid(`${name} must be an object`);
-  return value;
-}
-function string(value, name) {
-  if (typeof value !== "string" || value.length === 0) invalid(`${name} must be a non-empty string`);
-  return value;
-}
-function index(value, name) {
-  if (!Number.isSafeInteger(value) || value < 0) invalid(`${name} must be a non-negative integer`);
-  return value;
-}
-function parseJob(key, value) {
-  const raw = object3(value, `job ${key}`);
-  if (raw.result !== void 0 || raw.lastJobSnapshot !== void 0) invalid(`job ${key} contains non-durable state`);
-  const tileId = string(raw.tileId, `job ${key}.tileId`);
-  if (tileId !== key) invalid(`job key ${key} does not match tileId ${tileId}`);
-  if (typeof raw.status !== "string" || !STATUSES.has(raw.status)) invalid(`job ${key} has invalid status`);
-  if (raw.jobId !== void 0 && (typeof raw.jobId !== "string" || raw.jobId.length === 0)) invalid(`job ${key} has invalid jobId`);
-  if (raw.error !== void 0 && typeof raw.error !== "string") invalid(`job ${key} has invalid error`);
-  if (raw.invalidReference !== void 0 && raw.invalidReference !== true) {
-    invalid(`job ${key} has invalid invalidReference marker`);
-  }
-  const binary = parseBinary(raw.binary, key);
-  return {
-    tileId,
-    row: index(raw.row, `job ${key}.row`),
-    col: index(raw.col, `job ${key}.col`),
-    status: raw.status,
-    ...raw.jobId === void 0 ? {} : { jobId: raw.jobId },
-    ...raw.error === void 0 ? {} : { error: raw.error },
-    ...raw.invalidReference === true ? { invalidReference: true } : {},
-    ...binary === void 0 ? {} : { binary }
-  };
-}
-function uniqueReferences(items, name) {
-  const unique2 = new Set(items);
-  if (unique2.size !== items.length) invalid(`${name} must not contain duplicates`);
-  return unique2;
-}
-function validateSubmissionReferences(jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions) {
-  const failed2 = uniqueReferences(failedSubmissions, "failedSubmissions");
-  const uncertain = uniqueReferences(uncertainSubmissions, "uncertainSubmissions");
-  const invalidReferences = uniqueReferences(
-    invalidReferenceSubmissions,
-    "invalidReferenceSubmissions"
-  );
-  for (const tileId of failed2) {
-    const job = jobs.get(tileId);
-    if (!job) invalid(`failed submission ${tileId} has no job`);
-    if (job.status !== "failed" || job.jobId !== void 0) {
-      invalid(`failed submission ${tileId} must be a failed job without a jobId`);
-    }
-    if (uncertain.has(tileId)) invalid(`submission ${tileId} is both failed and uncertain`);
-  }
-  for (const tileId of uncertain) {
-    const job = jobs.get(tileId);
-    if (!job) invalid(`uncertain submission ${tileId} has no job`);
-    if (job.jobId === void 0 && job.status !== "skipped") {
-      invalid(`uncertain submission ${tileId} without a jobId must be skipped`);
-    }
-  }
-  for (const tileId of invalidReferences) {
-    const job = jobs.get(tileId);
-    if (!job || job.status !== "failed" || job.invalidReference !== true) {
-      invalid(`invalid reference submission ${tileId} must remain a failed invalid-reference job`);
-    }
-    if (failed2.has(tileId) || uncertain.has(tileId)) {
-      invalid(`invalid reference submission ${tileId} is in another submission outcome list`);
-    }
-  }
-  for (const [tileId, job] of jobs) {
-    if (job.invalidReference === true && !invalidReferences.has(tileId)) {
-      invalid(`invalid-reference job ${tileId} is absent from invalidReferenceSubmissions`);
-    }
-  }
-}
-function areaScheduleFromJSON(value) {
-  const raw = object3(value, "root");
-  if (!Array.isArray(raw.jobs)) invalid("jobs must be an array");
-  const jobs = /* @__PURE__ */ new Map();
-  for (const entry of raw.jobs) {
-    if (!Array.isArray(entry) || entry.length !== 2) invalid("job entry must be a pair");
-    const key = string(entry[0], "job key");
-    if (jobs.has(key)) invalid(`duplicate job ${key}`);
-    jobs.set(key, parseJob(key, entry[1]));
-  }
-  const polygon = object3(raw.polygon, "polygon");
-  if (polygon.type !== "Polygon" || !Array.isArray(polygon.coordinates)) invalid("polygon must be GeoJSON Polygon");
-  if (!Array.isArray(raw.gridShape) || raw.gridShape.length !== 2) invalid("gridShape must contain two indexes");
-  if (!Array.isArray(raw.tilePositions) || !Array.isArray(raw.failedSubmissions)) invalid("schedule arrays are missing");
-  const tilePositions = raw.tilePositions.map((item, at) => {
-    const position = object3(item, `tilePositions[${at}]`);
-    return { row: index(position.row, "tile row"), col: index(position.col, "tile col"), tileId: string(position.tileId, "tileId") };
-  });
-  const failedSubmissions = raw.failedSubmissions.map((item) => string(item, "failed submission"));
-  if (raw.uncertainSubmissions !== void 0 && !Array.isArray(raw.uncertainSubmissions)) invalid("uncertainSubmissions must be an array");
-  const uncertainSubmissions = raw.uncertainSubmissions?.map((item) => string(item, "uncertain submission"));
-  if (raw.invalidReferenceSubmissions !== void 0 && !Array.isArray(raw.invalidReferenceSubmissions)) {
-    invalid("invalidReferenceSubmissions must be an array");
-  }
-  const invalidReferenceSubmissions = raw.invalidReferenceSubmissions?.map((item) => string(item, "invalid reference submission"));
-  if (raw.geometryProbeJobIds !== void 0 && !Array.isArray(raw.geometryProbeJobIds)) {
-    invalid("geometryProbeJobIds must be an array");
-  }
-  const geometryProbeJobIds = raw.geometryProbeJobIds?.map((item) => string(item, "geometry probe job ID"));
-  if (geometryProbeJobIds !== void 0) uniqueReferences(geometryProbeJobIds, "geometryProbeJobIds");
-  if (raw.geometryProbeUncertain !== void 0 && raw.geometryProbeUncertain !== true) {
-    invalid("geometryProbeUncertain must be true when present");
-  }
-  if ((geometryProbeJobIds?.length ?? 0) > 0 && raw.geometryProbeUncertain !== true) {
-    invalid("geometry probe job IDs require an uncertain-probe marker");
-  }
-  validateSubmissionReferences(
-    jobs,
-    failedSubmissions,
-    uncertainSubmissions ?? [],
-    invalidReferenceSubmissions ?? []
-  );
-  const abort = raw.submissionAbortStatus ?? null;
-  if (abort !== null && !Number.isSafeInteger(abort)) invalid("submissionAbortStatus must be an integer or null");
-  if (raw.surfaceFields !== void 0 && typeof raw.surfaceFields !== "boolean") invalid("surfaceFields must be Boolean");
-  if (raw.terrainContextMarginM !== void 0 && (typeof raw.terrainContextMarginM !== "number" || !Number.isFinite(raw.terrainContextMarginM) || raw.terrainContextMarginM < 0)) {
-    invalid("terrainContextMarginM must be a finite non-negative number");
-  }
-  if (raw.maxSensorsPerJob !== void 0 && (!Number.isSafeInteger(raw.maxSensorsPerJob) || raw.maxSensorsPerJob < 1)) {
-    invalid("maxSensorsPerJob must be a positive integer");
-  }
-  if (raw.batchingPolicyVersion !== void 0 && raw.batchingPolicyVersion !== 2) {
-    invalid("batchingPolicyVersion must be 2");
-  }
-  if (raw.weatherIdentity !== void 0 && (typeof raw.weatherIdentity !== "string" || !raw.weatherIdentity.startsWith("sha256:"))) {
-    invalid("weatherIdentity must be a sha256: digest");
-  }
-  if (raw.siteIdentity !== void 0 && (typeof raw.siteIdentity !== "string" || !/^sha256:[0-9a-f]{64}$/.test(raw.siteIdentity))) {
-    invalid("siteIdentity must be a sha256: digest");
-  }
-  if (raw.scheduleContractVersion !== void 0 && (!Number.isSafeInteger(raw.scheduleContractVersion) || raw.scheduleContractVersion < 1)) {
-    invalid("scheduleContractVersion must be a positive integer");
-  }
-  const membership = optionalStringArrays(raw.batchMembership, "batchMembership");
-  const counts = optionalPositiveIntegers(raw.batchSensorCounts, "batchSensorCounts");
-  if (membership === void 0 !== (counts === void 0)) invalid("exact batch records must be present together");
-  if (raw.batchingPolicyVersion === 2 !== (membership !== void 0)) {
-    invalid("exact batch policy and records must be present together");
-  }
-  if (raw.webhookEvents !== void 0 && !Array.isArray(raw.webhookEvents)) invalid("webhookEvents must be an array");
-  if (raw.webhookUrl !== void 0 && (typeof raw.webhookUrl !== "string" || raw.webhookUrl.length === 0)) {
-    invalid("webhookUrl must be a non-empty string");
-  }
-  const schedule2 = {
-    jobs,
-    polygon,
-    configHash: string(raw.configHash, "configHash"),
-    tilePositions,
-    ...raw.siteIdentity === void 0 ? {} : { siteIdentity: raw.siteIdentity },
-    gridShape: [index(raw.gridShape[0], "grid rows"), index(raw.gridShape[1], "grid cols")],
-    analysisType: string(raw.analysisType, "analysisType"),
-    failedSubmissions,
-    transport: raw.transport === void 0 ? "json" : transport2(raw.transport),
-    ...raw.wireVersion === void 0 ? {} : { wireVersion: wireVersion(raw.wireVersion) },
-    ...uncertainSubmissions === void 0 ? {} : { uncertainSubmissions },
-    ...invalidReferenceSubmissions === void 0 ? {} : { invalidReferenceSubmissions },
-    ...geometryProbeJobIds === void 0 ? {} : { geometryProbeJobIds },
-    ...raw.geometryProbeUncertain === true ? { geometryProbeUncertain: true } : {},
-    submissionAbortStatus: abort,
-    surfaceFields: raw.surfaceFields === true,
-    ...raw.terrainContextMarginM === void 0 ? {} : { terrainContextMarginM: raw.terrainContextMarginM },
-    ...raw.maxSensorsPerJob === void 0 ? {} : { maxSensorsPerJob: raw.maxSensorsPerJob },
-    ...raw.weatherIdentity === void 0 ? {} : { weatherIdentity: raw.weatherIdentity },
-    ...raw.scheduleContractVersion === void 0 ? {} : { scheduleContractVersion: raw.scheduleContractVersion },
-    ...raw.batchingPolicyVersion === void 0 ? {} : { batchingPolicyVersion: 2 },
-    ...membership === void 0 ? {} : { batchMembership: membership, batchSensorCounts: counts },
-    ...raw.webhookUrl === void 0 ? {} : { webhookUrl: raw.webhookUrl },
-    ...Array.isArray(raw.webhookEvents) ? { webhookEvents: raw.webhookEvents.map((item) => string(item, "webhook event")) } : {}
-  };
-  if (schedule2.transport === "binary" && schedule2.wireVersion !== 1) {
-    invalid("binary transport requires wireVersion 1");
-  }
-  if (schedule2.transport === "json" && schedule2.wireVersion !== void 0) {
-    invalid("JSON transport must not contain wireVersion");
-  }
-  for (const [key, job] of schedule2.jobs) {
-    if (schedule2.transport === "json" && job.binary !== void 0) {
-      invalid(`JSON job ${key} contains a binary acknowledgement`);
-    }
-  }
-  return freezeAreaSchedule(schedule2);
-}
-function parseBinary(value, key) {
-  if (value === void 0) return void 0;
-  const raw = object3(value, `job ${key}.binary`);
-  if (raw.inputFormat !== "irbf" || raw.resultFormat !== "irbf" || raw.wireVersion !== 1) {
-    invalid(`job ${key} has an incompatible binary acknowledgement`);
-  }
-  return {
-    inputFormat: "irbf",
-    resultFormat: "irbf",
-    wireVersion: 1,
-    artifactDigest: string(raw.artifactDigest, `job ${key} artifactDigest`),
-    contentDigest: string(raw.contentDigest, `job ${key} contentDigest`)
-  };
-}
-function transport2(value) {
-  if (value !== "json" && value !== "binary") invalid("transport must be json or binary");
-  return value;
-}
-function wireVersion(value) {
-  if (value !== 1) invalid("wireVersion must be 1");
-  return 1;
-}
-function optionalStringArrays(value, name) {
-  if (value === void 0) return void 0;
-  const raw = object3(value, name);
-  const entries3 = [];
-  for (const [key, items] of Object.entries(raw)) {
-    if (!Array.isArray(items)) invalid(`${name}.${key} must be an array`);
-    entries3.push([key, items.map((item) => string(item, `${name}.${key}`))]);
-  }
-  return Object.fromEntries(entries3);
-}
-function optionalPositiveIntegers(value, name) {
-  if (value === void 0) return void 0;
-  const raw = object3(value, name);
-  const entries3 = [];
-  for (const [key, item] of Object.entries(raw)) {
-    if (!Number.isSafeInteger(item) || item < 1) invalid(`${name}.${key} must be positive`);
-    entries3.push([key, item]);
-  }
-  return Object.fromEntries(entries3);
-}
-function computeAreaState(schedule2) {
-  let completedCount = 0, failedCount = 0, skippedCount = 0, pendingCount = 0, runningCount = 0;
-  for (const job of schedule2.jobs.values()) {
-    if (job.status === "completed") completedCount += 1;
-    else if (job.status === "failed") failedCount += 1;
-    else if (job.status === "skipped") skippedCount += 1;
-    else if (job.status === "pending") pendingCount += 1;
-    else runningCount += 1;
-  }
-  return {
-    totalCount: schedule2.jobs.size,
-    completedCount,
-    failedCount,
-    skippedCount,
-    pendingCount,
-    runningCount,
-    isComplete: pendingCount === 0 && runningCount === 0
-  };
-}
-
-// src/area/poll.ts
-var failures = /* @__PURE__ */ new WeakMap();
-var FAILURE_LIMIT = 5;
-var FAILURE_MIN_SPAN_MS = 1e4;
-function workerCount(value) {
-  const count2 = value ?? 5;
-  if (!Number.isSafeInteger(count2) || count2 < 1) throw new TypeError("maxWorkers must be a positive integer");
-  return count2;
-}
-function applySnapshot(job, snapshot) {
-  job.lastJobSnapshot = snapshot;
-  if (snapshot.status === JobStatus.Succeeded) job.status = "completed";
-  else if (snapshot.status === JobStatus.Failed) {
-    job.status = "failed";
-    job.error = snapshot.error ?? "job failed";
-  } else if (snapshot.status === JobStatus.Running) job.status = "running";
-  else job.status = "pending";
-}
-async function pollOne(service, job, signal) {
-  if (job.invalidReference === true || !job.jobId || job.status === "completed" || job.status === "failed" || job.status === "skipped") return;
-  if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-  try {
-    const snapshot = await service.getStatus(job.jobId, signal === void 0 ? {} : { signal });
-    failures.delete(job);
-    applySnapshot(job, snapshot);
-  } catch (error) {
-    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-    const now2 = performance.now();
-    const previous = failures.get(job);
-    const count2 = (previous?.count ?? 0) + 1;
-    const sinceMs = previous?.sinceMs ?? now2;
-    failures.set(job, { count: count2, sinceMs });
-    if (count2 >= FAILURE_LIMIT && now2 - sinceMs >= FAILURE_MIN_SPAN_MS) {
-      job.status = "skipped";
-      job.error = error instanceof Error ? error.message : String(error);
-    }
-  }
-}
-function revivePolledOut(schedule2) {
-  let revived = 0;
-  for (const job of schedule2.jobs.values()) {
-    if (job.status !== "skipped" || !job.jobId) continue;
-    job.status = "pending";
-    failures.delete(job);
-    revived += 1;
-  }
-  return revived;
-}
-async function pollBatched(service, pending2, options) {
-  const getStatusBatch = service.getStatusBatch;
-  if (getStatusBatch === void 0) return pending2;
-  const byId = /* @__PURE__ */ new Map();
-  for (const job of pending2) if (job.jobId) byId.set(job.jobId, job);
-  if (byId.size === 0) return pending2;
-  let sweep;
-  try {
-    sweep = await getStatusBatch.call(service, [...byId.keys()], {
-      ...options.signal === void 0 ? {} : { signal: options.signal },
-      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers }
-    });
-  } catch (error) {
-    if (options.signal?.aborted === true) throw error;
-    return pending2;
-  }
-  for (const [id, job] of byId) {
-    const snapshot = sweep.statuses.get(id);
-    if (snapshot === void 0) continue;
-    failures.delete(job);
-    applySnapshot(job, snapshot);
-  }
-  return sweep.unanswered.map((id) => byId.get(id)).filter((job) => job !== void 0);
-}
-var perJobRequests = /* @__PURE__ */ new WeakMap();
-function lastPerJobRequests(schedule2) {
-  return perJobRequests.get(schedule2) ?? 0;
-}
-async function checkAreaState(service, schedule2, options = {}) {
-  const pending2 = [...schedule2.jobs.values()].filter((job) => Boolean(job.jobId) && job.status !== "completed" && job.status !== "failed" && job.status !== "skipped");
-  const remaining = service.getStatusBatch === void 0 || pending2.length === 0 ? pending2 : await pollBatched(service, pending2, options);
-  perJobRequests.set(schedule2, remaining.length);
-  const count2 = Math.min(workerCount(options.maxWorkers), Math.max(1, remaining.length));
-  let cursor = 0;
-  await Promise.all(Array.from({ length: count2 }, async () => {
-    while (cursor < remaining.length) {
-      const job = remaining[cursor++];
-      if (job) await pollOne(service, job, options.signal);
-    }
-  }));
-  const state = computeAreaState(schedule2);
-  try {
-    options.onProgress?.(state);
-  } catch {
-  }
-  return state;
-}
-
 // src/internal/submission-stopped.ts
 var SubmissionStoppedError = class extends TransportError {
   constructor() {
@@ -11372,17 +12452,159 @@ var SubmissionStoppedError = class extends TransportError {
   }
 };
 
-// src/area/submission.ts
+// src/area/submit-pool.ts
 function concurrency(value) {
   const count2 = value ?? 8;
   if (!Number.isSafeInteger(count2) || count2 < 1) throw new TypeError("maxWorkers must be a positive integer");
   return count2;
 }
-function effectiveOptions(options) {
+function tileStatus(job) {
+  if (job.status === JobStatus.Succeeded) return "completed";
+  if (job.status === JobStatus.Failed) return "failed";
+  if (job.status === JobStatus.Running) return "running";
+  return "pending";
+}
+function unknownAcceptance(error, posted) {
+  return error instanceof SubmissionUncertainError || error instanceof TransportError && error.phase === "unknown-acceptance" && (error.reason !== "aborted" || posted);
+}
+function failed(entry, error) {
+  return {
+    tileId: entry.key,
+    row: entry.row,
+    col: entry.col,
+    status: "failed",
+    error: error instanceof Error ? error.message : String(error)
+  };
+}
+function reportAccepted(options, jobId, tileKey) {
+  if (jobId === void 0 || options.onAccepted === void 0) return;
+  try {
+    options.onAccepted(jobId, tileKey);
+  } catch {
+  }
+}
+async function submitEntries(service, entries3, options = {}) {
+  const jobs = /* @__PURE__ */ new Map();
+  for (const [key, job] of options.priorJobs ?? []) jobs.set(key, { ...job });
+  const failedSubmissions = [];
+  const uncertainSubmissions = new Set(options.priorUncertain ?? []);
+  const invalidReferenceSubmissions = [...options.priorInvalidReference ?? []];
+  let submissionAbortStatus = null;
+  let invalidReferenceAbort = false;
+  const beforeDispatch = () => {
+    if (invalidReferenceAbort) throw new SubmissionStoppedError();
+  };
+  let cursor = 0;
+  const workers = Math.min(concurrency(options.maxWorkers), Math.max(1, entries3.length));
+  const uploads = /* @__PURE__ */ new Map();
+  await Promise.all(Array.from({ length: workers }, async () => {
+    while (cursor < entries3.length) {
+      const entry = entries3[cursor++];
+      if (!entry) continue;
+      if (invalidReferenceAbort) {
+        jobs.set(entry.key, {
+          tileId: entry.key,
+          row: entry.row,
+          col: entry.col,
+          status: "skipped",
+          error: "submission stopped after an invalid geometry reference"
+        });
+        continue;
+      }
+      if (submissionAbortStatus !== null || options.signal?.aborted) {
+        failedSubmissions.push(entry.key);
+        jobs.set(entry.key, failed(entry, options.signal?.reason ?? "submission stopped"));
+        continue;
+      }
+      let posted = false;
+      try {
+        const capture = options.beforeSubmit?.(entry);
+        const job = await service.submitPrepared(
+          entry.prepared,
+          {
+            beforeDispatch: () => {
+              beforeDispatch();
+              posted = true;
+            },
+            uploads,
+            ...options.signal === void 0 ? {} : { signal: options.signal },
+            ...entry.idempotencyKey === void 0 ? {} : { idempotencyKey: entry.idempotencyKey }
+          }
+        );
+        options.afterAccepted?.(capture, job.jobId);
+        jobs.set(entry.key, {
+          tileId: entry.key,
+          row: entry.row,
+          col: entry.col,
+          jobId: job.jobId,
+          status: tileStatus(job),
+          lastJobSnapshot: job,
+          ...job.binary === void 0 ? {} : { binary: job.binary },
+          ...job.treeBoxes === void 0 ? {} : { treeBoxes: job.treeBoxes },
+          ...job.error === void 0 ? {} : { error: job.error }
+        });
+        uncertainSubmissions.delete(entry.key);
+        reportAccepted(options, job.jobId, entry.key);
+      } catch (error) {
+        if (error instanceof SubmissionStoppedError) {
+          jobs.set(entry.key, {
+            tileId: entry.key,
+            row: entry.row,
+            col: entry.col,
+            status: "skipped",
+            error: error.message
+          });
+        } else if (error instanceof GeometryReferenceSubmissionError) {
+          invalidReferenceAbort = true;
+          invalidReferenceSubmissions.push(entry.key);
+          uncertainSubmissions.delete(entry.key);
+          const accepted = error.acceptedJobIds[0];
+          jobs.set(entry.key, {
+            tileId: entry.key,
+            row: entry.row,
+            col: entry.col,
+            ...accepted === void 0 ? {} : { jobId: accepted },
+            status: "failed",
+            invalidReference: true,
+            error: error.message
+          });
+          reportAccepted(options, accepted, entry.key);
+        } else if (unknownAcceptance(error, posted)) {
+          uncertainSubmissions.add(entry.key);
+          const accepted = error instanceof SubmissionUncertainError ? error.acceptedJobIds[0] : void 0;
+          jobs.set(entry.key, {
+            tileId: entry.key,
+            row: entry.row,
+            col: entry.col,
+            ...accepted === void 0 ? {} : { jobId: accepted },
+            status: accepted === void 0 ? "skipped" : "pending",
+            error: "submission outcome is unknown; do not resubmit automatically"
+          });
+          reportAccepted(options, accepted, entry.key);
+        } else {
+          if (error instanceof TransportError && error.status === 402) submissionAbortStatus = 402;
+          uncertainSubmissions.delete(entry.key);
+          failedSubmissions.push(entry.key);
+          jobs.set(entry.key, failed(entry, error));
+        }
+      }
+    }
+  }));
+  return {
+    jobs,
+    failedSubmissions,
+    uncertainSubmissions: [...uncertainSubmissions],
+    invalidReferenceSubmissions,
+    submissionAbortStatus
+  };
+}
+
+// src/area/submission.ts
+function effectiveOptions(options, analysisType) {
   if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
     throw new TypeError("unsupported option binaryResults; use transport instead");
   }
-  const transport3 = options.transport ?? options.retryFrom?.transport ?? "json";
+  const transport3 = areaTransport(options, analysisType);
   if (options.transport !== void 0 && options.retryFrom?.transport !== void 0 && options.transport !== options.retryFrom.transport) {
     throw new Error("retryFrom transport mismatch");
   }
@@ -11401,24 +12623,10 @@ function effectiveOptions(options) {
     ...options.webhookEvents !== void 0 || options.retryFrom?.webhookEvents === void 0 ? {} : { webhookEvents: [...options.retryFrom.webhookEvents] }
   };
 }
-function tileStatus(job) {
-  if (job.status === JobStatus.Succeeded) return "completed";
-  if (job.status === JobStatus.Failed) return "failed";
-  if (job.status === JobStatus.Running) return "running";
-  return "pending";
-}
-function unknownAcceptance(error, posted) {
-  return error instanceof SubmissionUncertainError || error instanceof TransportError && error.phase === "unknown-acceptance" && (error.reason !== "aborted" || posted);
-}
-function copyPriorJobs(schedule2) {
-  const jobs = /* @__PURE__ */ new Map();
-  if (!schedule2) return jobs;
-  for (const [key, job] of schedule2.jobs) jobs.set(key, { ...job });
-  return jobs;
-}
 function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options) {
   const siteIdentity = options.retryFrom === void 0 ? plan.siteIdentity : options.retryFrom.siteIdentity;
   const sensorCap = options.maxSensorsPerJob ?? options.retryFrom?.maxSensorsPerJob;
+  const attempts = plan.retryContext?.attempts;
   return {
     jobs,
     polygon: plan.polygon,
@@ -11430,8 +12638,8 @@ function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, i
     failedSubmissions,
     uncertainSubmissions,
     invalidReferenceSubmissions,
-    transport: options.transport ?? "json",
-    ...options.transport === "binary" ? { wireVersion: 1 } : {},
+    transport: areaTransport(options, plan.analysisType),
+    ...areaTransport(options, plan.analysisType) === "binary" ? { wireVersion: 1 } : {},
     submissionAbortStatus,
     surfaceFields: plan.surfaceFields,
     terrainContextMarginM: plan.terrainContextMarginM,
@@ -11447,7 +12655,9 @@ function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, i
     ...plan.batchMembership === void 0 ? {} : { batchMembership: plan.batchMembership },
     ...plan.batchSensorCounts === void 0 ? {} : { batchSensorCounts: plan.batchSensorCounts },
     ...options.webhookUrl === void 0 ? {} : { webhookUrl: options.webhookUrl },
-    ...options.webhookEvents === void 0 ? {} : { webhookEvents: [...options.webhookEvents] }
+    ...options.webhookEvents === void 0 ? {} : { webhookEvents: [...options.webhookEvents] },
+    runId: plan.runId,
+    ...attempts === void 0 ? {} : { attempts }
   };
 }
 var AreaGeometryReferenceError = class extends Error {
@@ -11466,22 +12676,6 @@ var AreaGeometryProbeError = class extends Error {
   }
   name = "AreaGeometryProbeError";
 };
-function reportAccepted(options, jobId, tileKey) {
-  if (jobId === void 0 || options.onAccepted === void 0) return;
-  try {
-    options.onAccepted(jobId, tileKey);
-  } catch {
-  }
-}
-function failed(entry, error) {
-  return {
-    tileId: entry.key,
-    row: entry.row,
-    col: entry.col,
-    status: "failed",
-    error: error instanceof Error ? error.message : String(error)
-  };
-}
 function facadeCaptureFor(service, plan, entry) {
   if (service.facadeSynthesis === void 0 || plan.localCellTris !== true) return void 0;
   if (entry.capture === void 0) return void 0;
@@ -11503,21 +12697,10 @@ async function submitAreaPlan(service, plan, options = {}) {
     throw new AreaGeometryProbeError(options.retryFrom, options.retryFrom.geometryProbeJobIds ?? []);
   }
   checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries3.length > 0);
-  const jobs = copyPriorJobs(options.retryFrom);
-  const failedSubmissions = [];
-  const uncertainSubmissions = [...options.retryFrom?.uncertainSubmissions ?? []];
-  const invalidReferenceSubmissions = [
-    ...options.retryFrom?.invalidReferenceSubmissions ?? []
-  ];
-  let submissionAbortStatus = null;
-  let invalidReferenceAbort = false;
-  const beforeDispatch = () => {
-    if (invalidReferenceAbort) throw new SubmissionStoppedError();
-  };
-  let cursor = 0;
-  const workers = Math.min(concurrency(options.maxWorkers), Math.max(1, entries3.length));
+  const workers = concurrency(options.maxWorkers);
+  let outcome;
   try {
-    if ((options.transport ?? "json") === "binary") {
+    if (areaTransport(options, plan.analysisType) === "binary") {
       for (const entry of entries3) {
         await service.preflightPrepared(
           entry.prepared,
@@ -11525,97 +12708,32 @@ async function submitAreaPlan(service, plan, options = {}) {
         );
       }
     }
-    await Promise.all(Array.from({ length: workers }, async () => {
-      while (cursor < entries3.length) {
-        const entry = entries3[cursor++];
-        if (!entry) continue;
-        if (invalidReferenceAbort) {
-          jobs.set(entry.key, {
-            tileId: entry.key,
-            row: entry.row,
-            col: entry.col,
-            status: "skipped",
-            error: "submission stopped after an invalid geometry reference"
-          });
-          continue;
-        }
-        if (submissionAbortStatus !== null || options.signal?.aborted) {
-          failedSubmissions.push(entry.key);
-          jobs.set(entry.key, failed(entry, options.signal?.reason ?? "submission stopped"));
-          continue;
-        }
-        let posted = false;
-        try {
-          const capture = facadeCaptureFor(service, plan, entry);
-          const job = await service.submitPrepared(
-            entry.prepared,
-            {
-              beforeDispatch: () => {
-                beforeDispatch();
-                posted = true;
-              },
-              ...options.signal === void 0 ? {} : { signal: options.signal }
-            }
-          );
-          rememberFacadeInputs(service, capture, job.jobId);
-          jobs.set(entry.key, {
-            tileId: entry.key,
-            row: entry.row,
-            col: entry.col,
-            jobId: job.jobId,
-            status: tileStatus(job),
-            lastJobSnapshot: job,
-            ...job.binary === void 0 ? {} : { binary: job.binary },
-            ...job.treeBoxes === void 0 ? {} : { treeBoxes: job.treeBoxes },
-            ...job.error === void 0 ? {} : { error: job.error }
-          });
-          reportAccepted(options, job.jobId, entry.key);
-        } catch (error) {
-          if (error instanceof SubmissionStoppedError) {
-            jobs.set(entry.key, {
-              tileId: entry.key,
-              row: entry.row,
-              col: entry.col,
-              status: "skipped",
-              error: error.message
-            });
-          } else if (error instanceof GeometryReferenceSubmissionError) {
-            invalidReferenceAbort = true;
-            invalidReferenceSubmissions.push(entry.key);
-            const accepted = error.acceptedJobIds[0];
-            jobs.set(entry.key, {
-              tileId: entry.key,
-              row: entry.row,
-              col: entry.col,
-              ...accepted === void 0 ? {} : { jobId: accepted },
-              status: "failed",
-              invalidReference: true,
-              error: error.message
-            });
-            reportAccepted(options, accepted, entry.key);
-          } else if (unknownAcceptance(error, posted)) {
-            uncertainSubmissions.push(entry.key);
-            const accepted = error instanceof SubmissionUncertainError ? error.acceptedJobIds[0] : void 0;
-            jobs.set(entry.key, {
-              tileId: entry.key,
-              row: entry.row,
-              col: entry.col,
-              ...accepted === void 0 ? {} : { jobId: accepted },
-              status: accepted === void 0 ? "skipped" : "pending",
-              error: "submission outcome is unknown; do not resubmit automatically"
-            });
-            reportAccepted(options, accepted, entry.key);
-          } else {
-            if (error instanceof TransportError && error.status === 402) submissionAbortStatus = 402;
-            failedSubmissions.push(entry.key);
-            jobs.set(entry.key, failed(entry, error));
-          }
-        }
-      }
-    }));
+    outcome = await submitEntries(service, entries3, {
+      maxWorkers: workers,
+      ...options.signal === void 0 ? {} : { signal: options.signal },
+      ...options.onAccepted === void 0 ? {} : { onAccepted: options.onAccepted },
+      ...options.retryFrom === void 0 ? {} : {
+        priorJobs: options.retryFrom.jobs,
+        // D224: the kernel plan's held-uncertain list, not the raw saved
+        // one -- a key the pre-plan sweep resolved to `completed` is gone
+        // (nothing to carry), and one resolved to `failed` is a fresh
+        // `computeFailed` entry in `plan.resubmit`, not a carried record.
+        priorUncertain: plan.retryContext?.carryUncertain ?? options.retryFrom.uncertainSubmissions ?? [],
+        priorInvalidReference: options.retryFrom.invalidReferenceSubmissions ?? []
+      },
+      beforeSubmit: (entry) => facadeCaptureFor(service, plan, entry),
+      afterAccepted: (capture, jobId) => rememberFacadeInputs(service, capture, jobId)
+    });
   } finally {
     for (const entry of entries3) service.releasePreflight?.(entry.prepared);
   }
+  const {
+    jobs,
+    failedSubmissions,
+    uncertainSubmissions,
+    invalidReferenceSubmissions,
+    submissionAbortStatus
+  } = outcome;
   const schedule2 = freezeAreaSchedule(scheduleFromPlan(
     plan,
     jobs,
@@ -11639,7 +12757,7 @@ async function submitAreaPlan(service, plan, options = {}) {
   return schedule2;
 }
 async function runArea(service, input, polygon, options = {}) {
-  const effective = effectiveOptions(options);
+  const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
   concurrency(effective.maxWorkers);
   const plan = await planAreaSubmission(service, input, polygon, effective);
   return submitAreaPlan(service, plan, effective);
@@ -11950,176 +13068,97 @@ function throwable(error) {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-// src/results/surface-analysis.ts
-var ZERO_ANCHOR = [0, 0];
-function cellTriangles(entry) {
-  if (!entry.hasCellTris) return void 0;
-  if (entry.triangleOffsets.length !== entry.triangleMask.length + 1 || entry.triangleOffsets[0] !== 0 || entry.triangleOffsets.at(-1) !== entry.triangleValues.length) {
-    throw new Error(`surface merge returned invalid triangle offsets for ${entry.key}`);
-  }
-  const cells = [];
-  const [anchorX, anchorY] = entry.triangleAnchor ?? ZERO_ANCHOR;
-  for (let index2 = 0; index2 < entry.triangleMask.length; index2 += 1) {
-    const start = entry.triangleOffsets[index2];
-    const end = entry.triangleOffsets[index2 + 1];
-    if (start > end || end > entry.triangleValues.length || (end - start) % 9 !== 0) {
-      throw new Error(`surface merge returned invalid triangles for ${entry.key}`);
-    }
-    if (entry.triangleMask[index2] === 0) {
-      cells.push(null);
-      continue;
-    }
-    const coordinates = new Array(end - start);
-    if (anchorX === 0 && anchorY === 0) {
-      for (let at = start; at < end; at += 1) coordinates[at - start] = entry.triangleValues[at];
-    } else {
-      for (let at = start; at < end; at += 1) {
-        const axis = (at - start) % 3;
-        coordinates[at - start] = entry.triangleValues[at] + (axis === 0 ? anchorX : axis === 1 ? anchorY : 0);
-      }
-    }
-    cells.push(coordinates);
-  }
-  return cells;
-}
-function mergeViewFromColumns(columns) {
-  const { ids, idOffsets, values, valueOffsets, hasCellTris } = columns;
-  const noValues = new Float64Array(0), noOffsets = new Uint32Array(0), noMask = new Uint8Array(0);
-  const entries3 = [];
-  for (let index2 = 0; index2 + 1 < valueOffsets.length; index2 += 1) {
-    const start = valueOffsets[index2], end = valueOffsets[index2 + 1];
-    const key = ids.slice(idOffsets[index2], idOffsets[index2 + 1]);
-    if (hasCellTris[index2] !== 1) {
-      entries3.push({
-        key,
-        values: values.slice(start, end),
-        triangleValues: noValues,
-        triangleOffsets: noOffsets,
-        triangleMask: noMask,
-        hasCellTris: false
-      });
-      continue;
-    }
-    const base = columns.triangleOffsets[start];
-    const triangleOffsets = new Uint32Array(end - start + 1);
-    for (let at = start; at <= end; at += 1) {
-      triangleOffsets[at - start] = columns.triangleOffsets[at] - base;
-    }
-    entries3.push({
-      key,
-      values: values.slice(start, end),
-      triangleValues: columns.triangleValues.slice(base, columns.triangleOffsets[end]),
-      triangleOffsets,
-      triangleMask: columns.triangleMask.slice(start, end),
-      hasCellTris: true
-    });
-  }
-  return { metadataJson: columns.metadataJson, entries: entries3 };
-}
-function record3(value, name) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${name} must be an object`);
-  }
-  return value;
-}
-function number(value, name) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new TypeError(`${name} must be a finite number`);
-  }
-  return value;
-}
-function vector2(value, name) {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "number")) {
-    throw new TypeError(`${name} must be a number array`);
-  }
-  return value;
-}
-function surfaceAnalysisFromMergeView(view, hostFields) {
-  const raw = record3(
-    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(view.metadataJson)),
-    "surface merge metadata"
-  );
-  const rawSurfaces = record3(raw.surfaces, "surface merge surfaces");
-  const entryMap = new Map(view.entries.map((entry) => [entry.key, entry]));
-  const surfaces2 = /* @__PURE__ */ Object.create(null);
-  for (const [key, value] of Object.entries(rawSurfaces)) {
-    const kernelFields = record3(value, `surface ${key}`);
-    const host = hostFields?.get(key);
-    if (hostFields !== void 0 && host === void 0) throw new Error(`surface merge returned unknown surface ${key}`);
-    const fields = host === void 0 ? kernelFields : { ...host, ...kernelFields };
-    const entry = entryMap.get(key);
-    if (entry === void 0) throw new Error(`surface merge omitted values for ${key}`);
-    const cellArea = fields["cell-area"];
-    const cellTris = cellTriangles(entry);
-    surfaces2[key] = {
-      ...fields,
-      origin: vector2(fields.origin, `surface ${key} origin`),
-      uAxis: vector2(fields["u-axis"], `surface ${key} u-axis`),
-      vAxis: vector2(fields["v-axis"], `surface ${key} v-axis`),
-      gridSize: number(fields["grid-size"], `surface ${key} grid-size`),
-      nu: number(fields.nu, `surface ${key} nu`),
-      nv: number(fields.nv, `surface ${key} nv`),
-      values: entry.values,
-      area: number(fields.area, `surface ${key} area`),
-      mean: number(fields.mean, `surface ${key} mean`),
-      peak: number(fields.peak, `surface ${key} peak`),
-      ...Array.isArray(cellArea) ? { cellArea } : {},
-      ...cellTris === void 0 ? {} : { cellTris }
-    };
-    entryMap.delete(key);
-  }
-  if (entryMap.size !== 0) throw new Error("surface merge returned unknown value buffers");
+// src/results/surface-columns.ts
+function surfaceColumnsFromJoin(joined) {
   return {
-    surfaces: surfaces2,
-    aggregates: record3(raw.aggregates, "surface merge aggregates"),
-    minLegend: number(raw["min-legend"], "surface merge min-legend"),
-    maxLegend: number(raw["max-legend"], "surface merge max-legend"),
-    sensorCount: number(raw["sensor-count"], "surface merge sensor-count")
+    kind: "surface-columns",
+    version: 1,
+    surfaceCount: joined.surfaceCount,
+    ids: joined.ids,
+    idOffsets: joined.idOffsets,
+    origin: joined.origin,
+    uAxis: joined.uAxis,
+    vAxis: joined.vAxis,
+    gridSize: joined.gridSize,
+    nu: joined.nu,
+    nv: joined.nv,
+    area: joined.area,
+    mean: joined.mean,
+    peak: joined.peak,
+    cellOffsets: joined.cellOffsets,
+    values: joined.values,
+    cellAreaState: joined.cellAreaState,
+    ...joined.cellArea === void 0 ? {} : { cellArea: joined.cellArea },
+    ...joined.extraJson === void 0 ? {} : { extra: JSON.parse(joined.extraJson) },
+    ...joined.triangles === void 0 ? {} : { triangles: joined.triangles },
+    aggregates: JSON.parse(joined.aggregatesJson),
+    minLegend: joined.minLegend,
+    maxLegend: joined.maxLegend,
+    sensorCount: joined.sensorCount,
+    ...joined.fallbackReasons.length === 0 ? {} : { cellTrisFallback: [...joined.fallbackReasons] }
   };
 }
-function hasCellGeometry(surface) {
-  return surface.cellTris !== void 0;
+function emptySurfaceColumns() {
+  const none = new Float64Array(0);
+  return {
+    kind: "surface-columns",
+    version: 1,
+    surfaceCount: 0,
+    ids: "",
+    idOffsets: Uint32Array.of(0),
+    origin: none,
+    uAxis: none.slice(),
+    vAxis: none.slice(),
+    gridSize: none.slice(),
+    nu: new Uint32Array(0),
+    nv: new Uint32Array(0),
+    area: none.slice(),
+    mean: none.slice(),
+    peak: none.slice(),
+    cellOffsets: Uint32Array.of(0),
+    values: none.slice(),
+    cellAreaState: new Uint8Array(0),
+    aggregates: {},
+    minLegend: 0,
+    maxLegend: 0,
+    sensorCount: 0
+  };
 }
-function isVertical(surface) {
-  const normalZ = surface.uAxis[0] * surface.vAxis[1] - surface.uAxis[1] * surface.vAxis[0];
+function surfaceId(result, row) {
+  return result.ids.slice(result.idOffsets[row], result.idOffsets[row + 1]);
+}
+var indices = /* @__PURE__ */ new WeakMap();
+function surfaceIndex(result) {
+  let index2 = indices.get(result);
+  if (index2 === void 0) {
+    const map = /* @__PURE__ */ new Map();
+    for (let row = 0; row < result.surfaceCount; row += 1) map.set(surfaceId(result, row), row);
+    indices.set(result, map);
+    index2 = map;
+  }
+  return index2;
+}
+function isVertical(result, row) {
+  const u = 3 * row;
+  const normalZ = result.uAxis[u] * result.vAxis[u + 1] - result.uAxis[u + 1] * result.vAxis[u];
   return Math.abs(normalZ) <= 0.5;
 }
-function surfaceTriangles(surface) {
-  if (surface.cellTris === void 0) {
-    throw new Error("cell-tris was not emitted for this surface");
-  }
-  return iterTriangles(surface.cellTris, surface.values);
-}
-function* iterTriangles(cells, values) {
-  for (let cell = 0; cell < cells.length; cell += 1) {
-    const coordinates = cells[cell];
-    if (coordinates === null || coordinates === void 0) continue;
-    const rawValue = values[cell];
-    const value = rawValue === void 0 || Number.isNaN(rawValue) ? null : rawValue;
-    for (let at = 0; at + 8 < coordinates.length; at += 9) {
-      yield {
-        value,
-        vertices: [
-          [coordinates[at], coordinates[at + 1], coordinates[at + 2]],
-          [coordinates[at + 3], coordinates[at + 4], coordinates[at + 5]],
-          [coordinates[at + 6], coordinates[at + 7], coordinates[at + 8]]
-        ]
-      };
-    }
-  }
-}
-
-// src/area/merge-surface-decode.ts
-var ARRAY = 2;
-function nullableCells(cells, start, end) {
-  const out = new Array(end - start);
-  for (let at = start; at < end; at += 1) {
-    const value = cells[at];
-    out[at - start] = Number.isNaN(value) ? null : value;
+function vertexValues(result, group) {
+  const table = result.triangles;
+  if (table === void 0) throw new Error("this result has no triangles");
+  const base = table.groupTriangles[group];
+  const out = new Float32Array((table.groupTriangles[group + 1] - base) * 3);
+  const first = result.cellOffsets[table.groupSurfaces[group]];
+  const last = result.cellOffsets[table.groupSurfaces[group + 1]];
+  for (let cell = first; cell < last; cell += 1) {
+    const start = table.cellOffsets[cell], end = table.cellOffsets[cell + 1];
+    if (end > start) out.fill(result.values[cell], (start - base) * 3, (end - base) * 3);
   }
   return out;
 }
-function decodeSurfaceJob(content) {
+
+// src/area/merge-surface-decode.ts
+function decodeSurfaceHandle(content) {
   const limits = RESULT_DECODE_LIMITS;
   const archive = requireCore().decodeSurfaceArchive(
     content,
@@ -12132,39 +13171,31 @@ function decodeSurfaceJob(content) {
     archive.free();
     return void 0;
   }
-  try {
-    const root = JSON.parse(archive.takeRootJson());
-    const pairs = JSON.parse(archive.takeFieldsJson());
-    const cellArea = archive.takeCellArea();
-    const offsets = archive.valueOffsets;
-    const areaState = archive.cellAreaState;
-    const keys = [];
-    const fields = [];
-    pairs.forEach(([key, value], index2) => {
-      if (areaState[index2] === ARRAY) {
-        value["cell-area"] = nullableCells(cellArea, offsets[index2], offsets[index2 + 1]);
-      }
-      keys.push(key);
-      fields.push(value);
-    });
-    return { archive, root, keys, fields, cellTrisState: archive.cellTrisState };
-  } catch (error) {
-    archive.free();
-    throw error;
-  }
+  return archive;
 }
-function synthesisView(job) {
-  const surfaces2 = /* @__PURE__ */ Object.create(null);
-  job.keys.forEach((key, index2) => {
-    const fields = job.fields[index2];
-    Object.defineProperty(surfaces2, key, {
-      configurable: true,
-      enumerable: true,
-      writable: true,
-      value: job.cellTrisState[index2] === ARRAY ? { ...fields, "cell-tris": true } : fields
-    });
+function decodeSurfaceChunk(indices2, contents, decoded) {
+  if (indices2.length === 0) return;
+  const limits = RESULT_DECODE_LIMITS;
+  const handles = requireCore().decodeSurfaceArchives(
+    indices2.map((index2) => contents[index2]),
+    BigInt(limits.maxTotalBytes),
+    limits.maxMetadataBytes,
+    BigInt(limits.maxCells),
+    BigInt(limits.maxTriangleValues)
+  );
+  indices2.forEach((index2, at) => {
+    contents[index2] = void 0;
+    decoded[index2] = handles[at];
   });
-  return { ...job.root, surfaces: surfaces2 };
+}
+function checkSurfaceBatch(entryIds, decoded) {
+  const refused = decoded.findIndex((handle2) => handle2?.route !== "surface");
+  if (refused === -1) return;
+  const handle = decoded[refused];
+  const entryId = entryIds[refused];
+  throw new Error(`Cannot merge surface results: download failed for ${entryId}`, {
+    cause: new Error(handle.route === "error" ? handle.error : `surface entry ${entryId} returned a non-surface result`)
+  });
 }
 
 // src/area/merge-surface.ts
@@ -12192,9 +13223,7 @@ async function mergeSurfaceAreaJobs(jobsService, schedule2, options = {}) {
   if (missing.length > 0) {
     throw new Error(`Cannot merge surface results with missing submissions: ${JSON.stringify(missing.sort())}`);
   }
-  if (schedule2.jobs.size === 0) {
-    return { surfaces: {}, aggregates: {}, minLegend: 0, maxLegend: 0, sensorCount: 0 };
-  }
+  if (schedule2.jobs.size === 0) return emptySurfaceColumns();
   const incomplete2 = [...schedule2.jobs.values()].filter((job) => job.status !== "completed" || !job.jobId);
   if (incomplete2.length > 0) {
     throw new Error(`Cannot merge surface results: jobs not succeeded: ${JSON.stringify(incomplete2.map((job) => job.jobId ?? job.tileId))}`);
@@ -12202,6 +13231,10 @@ async function mergeSurfaceAreaJobs(jobsService, schedule2, options = {}) {
   const scheduled = [...schedule2.jobs.entries()];
   const decoded = Array(scheduled.length);
   const errors = Array(scheduled.length);
+  const batch = coreThreads() > 1;
+  const contents = Array(batch ? scheduled.length : 0);
+  const waiting4 = [];
+  const decodeWaiting = () => decodeSurfaceChunk(waiting4.splice(0), contents, decoded);
   try {
     await parallel(
       scheduled.map((entry, index2) => ({ entry, index: index2 })),
@@ -12212,7 +13245,13 @@ async function mergeSurfaceAreaJobs(jobsService, schedule2, options = {}) {
             ...job.lastJobSnapshot === void 0 ? {} : { job: job.lastJobSnapshot },
             ...options.signal === void 0 ? {} : { signal: options.signal }
           });
-          const value = decodeSurfaceJob(result.content);
+          if (batch) {
+            contents[index2] = result.content;
+            waiting4.push(index2);
+            if (waiting4.length >= 2 * coreThreads()) decodeWaiting();
+            return;
+          }
+          const value = decodeSurfaceHandle(result.content);
           if (value === void 0) {
             throw new Error(`surface entry ${entryId} returned a non-surface result`);
           }
@@ -12231,60 +13270,69 @@ async function mergeSurfaceAreaJobs(jobsService, schedule2, options = {}) {
         cause: errors[failedAt]
       });
     }
-    return unionDecoded(jobsService, schedule2, scheduled, decoded, options);
+    if (batch) {
+      decodeWaiting();
+      checkSurfaceBatch(scheduled.map(([entryId]) => entryId), decoded);
+    }
+    return join3(jobsService, schedule2, scheduled, decoded, options.logger ?? consoleLogger);
   } finally {
-    for (const value of decoded) value?.archive.free();
+    for (const value of decoded) value?.free();
   }
 }
-function unionDecoded(jobsService, schedule2, scheduled, decoded, options) {
+function join3(jobsService, schedule2, scheduled, decoded, logger) {
+  const started = performance.now();
   const positions2 = new Map(schedule2.tilePositions.map((position) => [position.tileId, position]));
   const core2 = requireCore();
-  const merger = new core2.SurfaceAreaMerger();
-  const synthesized = /* @__PURE__ */ new Map();
-  const hostFields = /* @__PURE__ */ new Map();
   const store = jobsService.facadeSynthesis;
-  const fallbacks = /* @__PURE__ */ new Set();
-  let consumed = false;
   try {
-    const anchors = scheduled.map(([entryId]) => {
+    const anchors = new Float64Array(scheduled.length * 2);
+    scheduled.forEach(([entryId], index2) => {
       const position = positions2.get(entryId);
       if (position === void 0) throw new Error(`surface entry ${entryId} has no tile position`);
       const [swX, swY] = core2.tileSwOffset(position.row, position.col, schedule2.analysisType);
-      return [swX, swY];
+      anchors[index2 * 2] = swX;
+      anchors[index2 * 2 + 1] = swY;
     });
-    if (store !== void 0) {
-      const jobs = scheduled.flatMap(([, job], index2) => job.jobId === void 0 ? [] : [{
-        jobId: job.jobId,
-        response: synthesisView(decoded[index2]),
-        anchor: anchors[index2]
-      }]);
-      const views = synthesizeSurfaceTriangles(store, jobs, options.logger ?? consoleLogger, fallbacks);
-      for (const [key, view2] of views) synthesized.set(key, view2);
-    }
-    scheduled.forEach(([entryId], index2) => {
-      const value = decoded[index2];
-      value.keys.forEach((key, at) => hostFields.set(key, value.fields[at]));
-      const [swX, swY] = anchors[index2];
-      decoded[index2] = void 0;
-      merger.pushArchive(entryId, JSON.stringify(value.root), value.archive, swX, swY);
-    });
-    consumed = true;
-    const view = mergeViewFromColumns(merger.finish());
-    if (synthesized.size === 0) return withCellTrisFallback(surfaceAnalysisFromMergeView(view, hostFields), fallbacks);
-    return withCellTrisFallback(surfaceAnalysisFromMergeView({
-      metadataJson: view.metadataJson,
-      entries: view.entries.map((entry) => {
-        const views = synthesized.get(entry.key);
-        return views === void 0 ? entry : { ...entry, ...views };
-      })
-    }, hostFields), fallbacks);
+    const captures = scheduled.map(([, job]) => job.jobId === void 0 ? void 0 : store?.take(job.jobId)?.capture);
+    const handles = decoded.map((handle) => handle);
+    decoded.fill(void 0);
+    const joined = core2.joinSurfaceJobs(handles, scheduled.map(([entryId]) => entryId), anchors, captures);
+    report(joined, scheduled, captures, logger, started);
+    return surfaceColumnsFromJoin(joined);
   } finally {
-    if (!consumed) merger.free();
     if (store !== void 0) {
       for (const entry of schedule2.jobs.values()) {
         if (entry.jobId !== void 0) store.forget(entry.jobId);
       }
     }
+  }
+}
+function report(joined, scheduled, captures, logger, started) {
+  const elapsedMs = Math.round(performance.now() - started);
+  const host = (job) => joined.jobOrder[job];
+  const fell = /* @__PURE__ */ new Set();
+  for (const { job, reason: reason2, detail } of joined.fallbacks) {
+    fell.add(job);
+    logger.warn({
+      event: "facade_synthesis",
+      outcome: "fell_back",
+      reason: reason2,
+      jobId: scheduled[host(job)]?.[1].jobId,
+      elapsedMs,
+      ...detail === void 0 ? {} : { detail }
+    });
+  }
+  const table = joined.triangles;
+  if (table === void 0) return;
+  for (let job = 0; job < captures.length; job += 1) {
+    if (captures[host(job)] === void 0 || fell.has(job) || table.groupEngaged[job] !== 1) continue;
+    logger.info({
+      event: "facade_synthesis",
+      outcome: "engaged",
+      jobId: scheduled[host(job)]?.[1].jobId,
+      surfaces: table.groupSurfaces[job + 1] - table.groupSurfaces[job],
+      elapsedMs
+    });
   }
 }
 
@@ -12462,10 +13510,13 @@ async function mergeAreaJobs(jobsService, schedule2, options = {}) {
     const shape = merged.shape;
     if (shape.length !== 2) throw new Error("area merge returned an invalid grid shape");
     const bounds = merged.bounds;
+    const values = merged.values;
+    const range2 = dense.legend === void 0 ? core2.legendRange(values) : void 0;
     return {
-      mergedGrid: merged.values,
+      mergedGrid: values,
       gridShape: [shape[0], shape[1]],
       ...dense.legend === void 0 ? {} : { legend: dense.legend },
+      ...range2 === void 0 ? {} : { minLegend: range2[0], maxLegend: range2[1] },
       failedJobs,
       skippedJobs,
       failedTiles,
@@ -12486,34 +13537,15 @@ function parseSurfaceResult(document2, options = {}) {
 }
 
 // src/area/poll-schedule.ts
-var POLL_BACKOFF_BASE_S = 15;
-var POLL_BACKOFF_CAP_S = 75;
-var POLL_BATCHED_INTERVAL_S = 2;
-var POLL_BATCHED_FAST_INTERVAL_S = 1;
-var POLL_BATCHED_FAST_WINDOW_S = 10;
-var POLL_BATCHED_FAST_MAX_JOBS = 50;
-var POLL_JITTER_MIN = 0.8;
-function areaPollDelayS(attempt, batched, elapsedS, openJobs2) {
-  const fast = elapsedS < POLL_BATCHED_FAST_WINDOW_S && openJobs2 <= POLL_BATCHED_FAST_MAX_JOBS;
-  const batchedWindow = fast ? POLL_BATCHED_FAST_INTERVAL_S : POLL_BATCHED_INTERVAL_S;
-  const window = batched ? batchedWindow : Math.min(POLL_BACKOFF_CAP_S, POLL_BACKOFF_BASE_S * 2 ** attempt);
-  return window * (POLL_JITTER_MIN + (1 - POLL_JITTER_MIN) * Math.random());
+function nextSweepRequests(state, batched, perJob) {
+  const open = openJobs(state);
+  return batched ? Math.ceil(open / STATUS_BATCH_LIMIT) + perJob : open;
 }
 function openJobs(state) {
   return state.pendingCount + state.runningCount;
 }
 
-// src/client.ts
-var AreaTimeoutError = class extends Error {
-  areaState;
-  constructor(message, areaState) {
-    super(message);
-    this.name = "AreaTimeoutError";
-    this.areaState = areaState;
-  }
-};
-var DEFAULT_BASE_URL = "https://api.infrared.city/v2";
-var DEFAULT_AREA_TIMEOUT_S = 3600;
+// src/area/wait-schedule.ts
 function abortableSleep(milliseconds, signal) {
   if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException("aborted", "AbortError"));
   return new Promise((resolve, reject) => {
@@ -12529,6 +13561,542 @@ function abortableSleep(milliseconds, signal) {
     signal?.addEventListener("abort", abort, { once: true });
   });
 }
+async function waitForSchedule(service, schedule2, options) {
+  let state;
+  await poll(async () => {
+    const sweep = {
+      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+      ...options.signal === void 0 ? {} : { signal: options.signal },
+      ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress }
+    };
+    state = options.check === void 0 ? await checkAreaState(service, schedule2, sweep) : await options.check(sweep);
+    const record3 = lastSweepRecord(schedule2);
+    return {
+      done: state.isComplete,
+      nextRequests: nextSweepRequests(state, service.batchedStatusSupported === true, record3.perJob),
+      failed: record3.failures > 0,
+      retryAfterS: record3.retryAfterS
+    };
+  }, {
+    timeoutS: options.timeoutS,
+    // Nothing submitted (every tile uncertain or skipped): no first delay.
+    firstSweepNow: ![...schedule2.jobs.values()].some((job) => Boolean(job.jobId)),
+    sleep: (ms) => abortableSleep(ms, options.signal),
+    onTimeout: () => options.onTimeout(state)
+  });
+  return state;
+}
+
+// src/area/run-and-wait-retry.ts
+async function runAreaAndWaitRounds(jobs, runArea2, checkAreaState2, input, polygon, options, schedule0) {
+  let schedule2 = schedule0;
+  const waitRound = () => waitForSchedule(jobs, schedule2, {
+    timeoutS: options.areaTimeout,
+    check: (sweep) => checkAreaState2(schedule2, sweep),
+    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+    ...options.signal === void 0 ? {} : { signal: options.signal },
+    ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress },
+    onTimeout: options.onTimeout
+  });
+  await waitRound();
+  const retries = options.retries ?? 1;
+  for (let round = 0; round < retries; round += 1) {
+    if (schedule2.submissionAbortStatus !== null) break;
+    const ctx = await buildRetryContext(jobs, schedule2, {
+      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+      ...options.signal === void 0 ? {} : { signal: options.signal }
+    });
+    if (ctx.resubmitKeys.size === 0) break;
+    schedule2 = await runArea2(input, polygon, { ...options, retryFrom: schedule2 });
+    await waitRound();
+  }
+  return schedule2;
+}
+
+// src/parts/result-format.ts
+var DEFAULT_DAYLIGHT_RESULT_FORMAT = "irbf";
+var DAYLIGHT_POINTS_FAMILY = "daylight-points";
+function resolveResultFormat(value) {
+  return value ?? DEFAULT_DAYLIGHT_RESULT_FORMAT;
+}
+function binaryResultSupported(capability2, analysisType) {
+  return capability2.models[analysisType]?.resultFamilies.includes(DAYLIGHT_POINTS_FAMILY) === true;
+}
+
+// src/parts/interior-binary.ts
+var decoder5 = new TextDecoder("utf-8", { fatal: true });
+function interiorRouteSupported(capability2, analysisType, wanted = "json") {
+  const model = capability2.models[analysisType];
+  return model !== void 0 && (model.resultFamilies.includes("json") || wanted === "irbf" && binaryResultSupported(capability2, analysisType));
+}
+function encodeInteriorArtifact(bytes, analysisType, limits) {
+  try {
+    const core2 = requireCore();
+    const encoded = core2.interiorArtifact(
+      bytes,
+      analysisType,
+      BigInt(limits.maxGeometryBytes),
+      limits.maxMetadataBytes,
+      BigInt(limits.maxMeshes),
+      BigInt(limits.maxInstances)
+    );
+    return {
+      artifact: {
+        archive: encoded.archive,
+        artifactDigest: encoded.artifactDigest,
+        geometryContentDigest: encoded.contentDigest,
+        encoding: encoded.encoding
+      },
+      control: encoded.control
+    };
+  } catch {
+    return void 0;
+  }
+}
+function interiorPartBinary(shared2, limits, part) {
+  const bytes = requireCore().daylightPartBody(shared2.control, JSON.stringify(part));
+  const control = JSON.parse(decoder5.decode(bytes));
+  return { artifact: shared2.artifact, control, limits };
+}
+async function planInteriorRoute(service, analysisType, bytes, options, logger, wanted = "json") {
+  if (options.transport !== void 0 || service.binaryCapability === void 0) return void 0;
+  let capability2;
+  try {
+    capability2 = await service.binaryCapability(options.signal);
+  } catch (error) {
+    logger.info({
+      event: "analysis_parts_binary",
+      outcome: "capability_unavailable",
+      analysisType,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return void 0;
+  }
+  if (!interiorRouteSupported(capability2, analysisType, wanted)) return void 0;
+  const shared2 = encodeInteriorArtifact(bytes, analysisType, capability2.limits);
+  if (shared2 === void 0) {
+    logger.info({
+      event: "analysis_parts_binary",
+      outcome: "encode_refused",
+      analysisType,
+      message: "the request carries a field the interior frame cannot encode; parts are sent as JSON"
+    });
+    return void 0;
+  }
+  const resultFormat = wanted === "irbf" && binaryResultSupported(capability2, analysisType) ? "irbf" : "json";
+  return { shared: shared2, limits: capability2.limits, resultFormat };
+}
+
+// src/parts/plan.ts
+var SPLIT_ANALYSES = /* @__PURE__ */ new Set(["daylight-factor"]);
+function splitsAnalysis(analysisType) {
+  return SPLIT_ANALYSES.has(analysisType);
+}
+function checkMaxParts(value) {
+  if (value === void 0) return;
+  if (!Number.isSafeInteger(value) || value < 1) throw new TypeError("maxParts must be a positive integer");
+}
+function retryTarget(prior) {
+  if (prior === void 0) return void 0;
+  const target = JSON.parse(prior.plan).target;
+  return typeof target === "number" ? target : void 0;
+}
+function planRequest(jobs, input, options, logger, target) {
+  checkMaxParts(options.maxParts);
+  const payload = prepareAnalysisPayload(input);
+  const analysisType = String(payload["analysis-type"]);
+  const prepared = jobs.prepareSubmission(analysisType, payload, {
+    ...options.webhookUrl === void 0 ? {} : { webhookUrl: options.webhookUrl },
+    ...options.webhookEvents === void 0 ? {} : { webhookEvents: options.webhookEvents },
+    ...options.transport === void 0 ? {} : { transport: options.transport }
+  });
+  if (!SPLIT_ANALYSES.has(analysisType) || prepared.transport !== "json" || options.maxParts === 1) {
+    return { analysisType, prepared };
+  }
+  const bytes = preparedJsonBytes(prepared);
+  const one = { ...prepared, json: () => bytes };
+  const effectiveTarget = target ?? retryTarget(options.retryFrom);
+  let planText;
+  try {
+    planText = requireCore().daylightParts(bytes, effectiveTarget);
+  } catch (error) {
+    logger.warn({
+      event: "analysis_parts",
+      outcome: "unplanned",
+      analysisType,
+      message: "the request is sent as one job",
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return { analysisType, prepared: one, bytes };
+  }
+  const plan = JSON.parse(planText);
+  for (const note of plan.notes) logger.warn({ event: "analysis_parts", analysisType, note });
+  if (options.maxParts !== void 0 && plan.parts.length > options.maxParts) {
+    throw new RangeError(
+      `the ${analysisType} request plans ${plan.parts.length} parts (${plan.total_sensors} sensors), more than maxParts ${options.maxParts}; nothing was sent. Pass maxParts: 1 to send one job.`
+    );
+  }
+  return { analysisType, prepared: one, bytes, plan, planText };
+}
+function partEntries(request, keys, interior) {
+  const { plan, bytes, prepared } = request;
+  if (plan === void 0 || bytes === void 0) throw new Error("the request has no parts plan");
+  const entries3 = [];
+  plan.parts.forEach((part, index2) => {
+    if (keys !== void 0 && !keys.has(part.key)) return;
+    if (interior !== void 0) {
+      entries3.push({
+        key: part.key,
+        row: 0,
+        col: index2,
+        prepared: {
+          ...prepared,
+          transport: "binary",
+          interiorResultFormat: interior.resultFormat,
+          interiorBinary: interiorPartBinary(interior.shared, interior.limits, part)
+        }
+      });
+      return;
+    }
+    const text = JSON.stringify(part);
+    entries3.push({
+      key: part.key,
+      row: 0,
+      col: index2,
+      prepared: { ...prepared, json: () => requireCore().daylightPartBody(bytes, text) }
+    });
+  });
+  return entries3;
+}
+
+// src/parts/submit.ts
+function retryableParts(schedule2) {
+  const uncertain = new Set(schedule2.uncertainSubmissions);
+  return schedule2.partKeys.filter((key) => {
+    if (uncertain.has(key)) return false;
+    const job = schedule2.jobs.get(key);
+    return job === void 0 || job.status === "failed" || job.status === "skipped" && !job.jobId;
+  });
+}
+function checkRetry(prior, request, digest) {
+  if (digest === void 0 || prior.requestDigest === void 0) {
+    throw new Error("retryFrom needs a SHA-256 digest of the request, and this runtime or the saved schedule has none; start a fresh run");
+  }
+  if (prior.analysisType !== request.analysisType || prior.requestDigest !== digest) {
+    throw new Error("retryFrom is a run of a different request; retry with the same request or start a fresh run");
+  }
+  if (prior.plan !== request.planText) {
+    throw new Error("retryFrom plan mismatch: the kernel plans this request differently now; start a fresh run");
+  }
+}
+async function submitParts(service, request, options = {}, logger = silentLogger) {
+  const { plan, planText, bytes } = request;
+  if (plan === void 0 || planText === void 0 || bytes === void 0) {
+    throw new Error("the request has no parts plan");
+  }
+  const hex = await sha256Hex(bytes);
+  const requestDigest = hex === void 0 ? void 0 : `sha256:${hex}`;
+  const prior = options.retryFrom;
+  if (prior !== void 0) checkRetry(prior, request, requestDigest);
+  const interior = plan.parts.length > 1 ? await planInteriorRoute(
+    service,
+    request.analysisType,
+    bytes,
+    options,
+    logger,
+    resolveResultFormat(options.resultFormat)
+  ) : void 0;
+  const entries3 = partEntries(
+    request,
+    prior === void 0 ? void 0 : new Set(retryableParts(prior)),
+    interior
+  );
+  const outcome = await submitEntries(service, entries3, {
+    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+    ...options.signal === void 0 ? {} : { signal: options.signal },
+    ...options.onAccepted === void 0 ? {} : { onAccepted: options.onAccepted },
+    ...prior === void 0 ? {} : { priorJobs: prior.jobs, priorUncertain: prior.uncertainSubmissions }
+  });
+  const schedule2 = Object.freeze({
+    analysisType: request.analysisType,
+    ...requestDigest === void 0 ? {} : { requestDigest },
+    plan: planText,
+    partKeys: Object.freeze(plan.parts.map((part) => part.key)),
+    jobs: outcome.jobs,
+    failedSubmissions: Object.freeze(outcome.failedSubmissions),
+    uncertainSubmissions: Object.freeze(outcome.uncertainSubmissions),
+    submissionAbortStatus: outcome.submissionAbortStatus,
+    resultFormat: resolveResultFormat(options.resultFormat)
+  });
+  try {
+    options.onProgress?.(computeAreaState(schedule2));
+  } catch {
+  }
+  return schedule2;
+}
+
+// src/parts/types.ts
+var AnalysisPartsError = class extends Error {
+  constructor(message, failedParts, schedule2, downloadFailedParts = [], options) {
+    super(message, options);
+    this.failedParts = failedParts;
+    this.schedule = schedule2;
+    this.downloadFailedParts = downloadFailedParts;
+  }
+  name = "AnalysisPartsError";
+};
+
+// src/parts/merge.ts
+function framesOf(core2, parts) {
+  const frames = [];
+  for (const part of parts) {
+    if (isDaylightFrame(part)) {
+      frames.push(part);
+      continue;
+    }
+    try {
+      frames.push(core2.daylightFrameFromJson(part));
+    } catch {
+      return void 0;
+    }
+  }
+  return frames;
+}
+function mergeFormat(schedule2, options) {
+  return resolveResultFormat(options.resultFormat ?? schedule2.resultFormat);
+}
+function join4(plan, parts, format, logger) {
+  const core2 = requireCore();
+  const jsonJoin = () => core2.daylightMerge(plan, parts.map((p) => isDaylightFrame(p) ? core2.daylightJsonFromFrame(p) : p));
+  if (format === "json") return jsonJoin();
+  const frames = framesOf(core2, parts);
+  if (frames === void 0) return jsonJoin();
+  try {
+    return core2.daylightMergeBinary(plan, frames);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("65 535 rooms")) throw error;
+    logger?.warn({
+      event: "daylight_result",
+      outcome: "json",
+      message: "the merged result has more than 65 535 rooms; it is returned as JSON"
+    });
+    return jsonJoin();
+  }
+}
+function missingParts(schedule2) {
+  const retry = new Set(retryableParts(schedule2));
+  return schedule2.partKeys.filter((key) => {
+    if (retry.has(key)) return true;
+    const job = schedule2.jobs.get(key);
+    return job === void 0 || !job.jobId;
+  });
+}
+async function mergePartsDocument(service, schedule2, options = {}) {
+  revivePolledOut(schedule2);
+  await checkAreaState(service, schedule2, {
+    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+    ...options.signal === void 0 ? {} : { signal: options.signal }
+  });
+  const missing = missingParts(schedule2);
+  if (missing.length > 0) {
+    const uncertain = missing.filter((key) => schedule2.uncertainSubmissions.includes(key));
+    throw new AnalysisPartsError(
+      `${missing.length} of ${schedule2.partKeys.length} ${schedule2.analysisType} parts have no result: ${JSON.stringify(missing)}` + (uncertain.length === 0 ? "" : `; outcome unknown, never resent: ${JSON.stringify(uncertain)}`) + ". Pass this error's schedule as retryFrom to send the failed parts again.",
+      missing,
+      schedule2
+    );
+  }
+  const open = schedule2.partKeys.filter((key) => schedule2.jobs.get(key)?.status !== "completed");
+  if (open.length > 0) {
+    throw new AnalysisPartsError(
+      `Cannot join the parts: not finished: ${JSON.stringify(open)}; merge this error's schedule again later.`,
+      [],
+      schedule2
+    );
+  }
+  const documents = Array(schedule2.partKeys.length);
+  const errors = Array(schedule2.partKeys.length);
+  await parallel(
+    schedule2.partKeys.map((key, index2) => ({ key, index: index2 })),
+    workerCount2(options.maxWorkers),
+    async ({ key, index: index2 }) => {
+      const job = schedule2.jobs.get(key);
+      try {
+        const result = await service.downloadResults(job.jobId, {
+          ...job.lastJobSnapshot === void 0 ? {} : { job: job.lastJobSnapshot },
+          ...options.signal === void 0 ? {} : { signal: options.signal }
+        });
+        documents[index2] = decompressResultArchive(result.content);
+      } catch (error) {
+        errors[index2] = throwable(error);
+      }
+    }
+  );
+  if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("aborted", "AbortError");
+  const failed2 = schedule2.partKeys.filter((_key, index2) => errors[index2] !== void 0);
+  if (failed2.length > 0) {
+    throw new AnalysisPartsError(
+      `Cannot join the parts: download failed for ${JSON.stringify(failed2)}; call mergeParts with this error's schedule to download them again.`,
+      [],
+      schedule2,
+      failed2,
+      { cause: errors[schedule2.partKeys.indexOf(failed2[0])] }
+    );
+  }
+  if (!splitsAnalysis(schedule2.analysisType)) return requireCore().daylightMerge(schedule2.plan, documents);
+  return join4(schedule2.plan, documents, mergeFormat(schedule2, options), options.logger);
+}
+
+// src/parts/run.ts
+var PartsTimeoutError = class extends Error {
+  constructor(message, schedule2) {
+    super(message);
+    this.schedule = schedule2;
+  }
+  name = "PartsTimeoutError";
+};
+function logWarnings(value, analysisType, logger) {
+  if (value === null || typeof value !== "object") return;
+  if (value instanceof DaylightFactorResult) {
+    if (value.warnings.length > 0) logger.warn({ event: "analysis_warnings", analysisType, warnings: value.warnings });
+    return;
+  }
+  const warnings = value.warnings;
+  if (!Array.isArray(warnings) || warnings.length === 0) return;
+  logger.warn({ event: "analysis_warnings", analysisType, warnings });
+}
+function splits(request) {
+  return request.plan !== void 0 && request.plan.parts.length > 1;
+}
+function daylightValue(document2, format, logger) {
+  if (isDaylightFrame(document2)) {
+    const result = new DaylightFactorResult(document2);
+    return format === "irbf" ? result : result.toJson();
+  }
+  if (format === "irbf") {
+    try {
+      const core2 = requireCore();
+      return new DaylightFactorResult(core2.daylightFrameFromJson(document2));
+    } catch (error) {
+      logger.info({
+        event: "daylight_result",
+        outcome: "json",
+        message: "the result has no exact binary frame",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(document2));
+}
+async function runPlannedAndWait(jobs, logger, request, options = {}) {
+  const timeoutS = options.timeout ?? defaultPollTimeoutS();
+  requireTimeout(timeoutS * 1e3);
+  if (options.archive !== void 0) checkArchiveOptions(options.archive);
+  if (!splits(request)) {
+    if (options.retryFrom !== void 0) {
+      throw new Error("retryFrom needs a request that plans into more than one part");
+    }
+    const signal = options.signal === void 0 ? {} : { signal: options.signal };
+    const daylight = splitsAnalysis(request.analysisType);
+    const format = resolveResultFormat(options.resultFormat);
+    const job = await jobs.submitPrepared(request.prepared, signal);
+    const completed = await jobs.waitForCompletion(job.jobId, {
+      ...signal,
+      ...options.timeout === void 0 ? {} : { timeout: options.timeout },
+      ...options.onPoll === void 0 ? {} : { onPoll: options.onPoll }
+    });
+    const download = await jobs.downloadResults(completed.jobId, { job: completed, ...signal });
+    const archive = options.archive;
+    if (!daylight) return decompressResultValue(jobs, download.content, archive === void 0 ? void 0 : { archive });
+    const value = daylightValue(decompressResultArchive(download.content, archive), format, logger);
+    logWarnings(value, request.analysisType, logger);
+    return value;
+  }
+  const schedule2 = await submitParts(jobs, request, options, logger);
+  try {
+    return await waitAndJoin(jobs, logger, request, schedule2, timeoutS, options);
+  } catch (error) {
+    throw withSchedule(error, schedule2);
+  }
+}
+function withSchedule(error, schedule2) {
+  if (error !== null && typeof error === "object" && error.schedule === schedule2) {
+    return error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new AnalysisPartsError(
+    `${schedule2.analysisType} parts stopped after submission: ${message}. This error's schedule holds the accepted jobs: merge it again, or pass it as retryFrom.`,
+    [],
+    schedule2,
+    [],
+    { cause: error }
+  );
+}
+async function waitAndJoin(jobs, logger, request, schedule2, timeoutS, options) {
+  await waitForSchedule(jobs, schedule2, {
+    timeoutS,
+    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+    ...options.signal === void 0 ? {} : { signal: options.signal },
+    ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress },
+    onTimeout: (last) => new PartsTimeoutError(
+      `${request.analysisType} parts timed out after ${timeoutS}s: ${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed`,
+      schedule2
+    )
+  });
+  const format = mergeFormat(schedule2, options);
+  const document2 = await mergePartsDocument(jobs, schedule2, { ...options, resultFormat: format, logger });
+  const value = daylightValue(document2, format, logger);
+  logWarnings(value, request.analysisType, logger);
+  return value;
+}
+async function runAndWaitParts(jobs, logger, input, options = {}) {
+  return runPlannedAndWait(jobs, logger, planRequest(jobs, input, options, logger), options);
+}
+async function runParts(jobs, logger, input, options = {}) {
+  const request = planRequest(jobs, input, options, logger);
+  if (!splits(request)) {
+    throw new Error(`the ${request.analysisType} request is one job; submit it with run or analyses.execute`);
+  }
+  return submitParts(jobs, request, options, logger);
+}
+function previewParts(jobs, logger, input, options = {}, target) {
+  const { analysisType, plan } = planRequest(jobs, input, options, logger, target);
+  const parts = plan === void 0 ? [] : plan.parts.map((part) => ({
+    key: part.key,
+    floorKeys: [...part.floor_keys],
+    sensors: part.sensors
+  }));
+  const partCount = Math.max(1, parts.length);
+  return {
+    analysisType,
+    partCount,
+    totalSensors: plan?.total_sensors ?? 0,
+    parts,
+    tokensPerJob: DEFAULT_TOKENS_PER_JOB,
+    estimatedCostTokens: partCount * DEFAULT_TOKENS_PER_JOB,
+    ...plan?.unsplit_reason == null ? {} : { unsplitReason: plan.unsplit_reason },
+    notes: plan?.notes ?? []
+  };
+}
+async function mergePartsValue(jobs, logger, schedule2, options = {}) {
+  const format = mergeFormat(schedule2, options);
+  const document2 = await mergePartsDocument(jobs, schedule2, { ...options, resultFormat: format, logger });
+  const value = splitsAnalysis(schedule2.analysisType) ? daylightValue(document2, format, logger) : parseResultDocument(document2).value;
+  logWarnings(value, schedule2.analysisType, logger);
+  return value;
+}
+
+// src/client.ts
+var AreaTimeoutError = class extends Error {
+  areaState;
+  constructor(message, areaState) {
+    super(message);
+    this.name = "AreaTimeoutError";
+    this.areaState = areaState;
+  }
+};
+var DEFAULT_BASE_URL = "https://api.infrared.city/v2";
+var DEFAULT_AREA_TIMEOUT_S = 3600;
 function envValue(env, name) {
   if (env?.[name] !== void 0) return env[name];
   return globalThis.process?.env?.[name];
@@ -12627,16 +14195,35 @@ var InfraredClient = class {
     const payload = prepareAnalysisPayload(input);
     return this.analyses.execute(payload, options);
   }
-  async runAndWait(input, options = {}) {
-    const job = await this.run(input, options);
-    const completed = await this.jobs.waitForCompletion(job.jobId, options);
-    const download = await this.jobs.downloadResults(completed.jobId, {
-      job: completed,
-      ...options.signal === void 0 ? {} : { signal: options.signal }
-    });
-    return decompressResultValue(this.jobs, download.content);
+  /**
+   * Submit, wait and return the decoded result. A `daylight-factor` request
+   * whose floors the kernel packs into more than one part is sent as parts,
+   * in parallel, and joined into the result the single request gives, byte
+   * for byte (D221); `maxParts: 1` sends one job. Any other request, and a
+   * request of one part, is one job, sent as `run` sends it. A
+   * `daylight-factor` result is a `DaylightFactorResult` by default, or the
+   * JSON value with `resultFormat: "json"` (D234).
+   */
+  runAndWait(input, options = {}) {
+    return runAndWaitParts(this.jobs, this.logger, input, options);
   }
-  runArea(input, polygon, options = {}) {
+  /** Submit a request as its kernel parts (D221); returns the durable schedule. */
+  runParts(input, options = {}) {
+    return runParts(this.jobs, this.logger, input, options);
+  }
+  /** Poll every open part once. */
+  checkPartsState(schedule2, options = {}) {
+    return checkAreaState(this.jobs, schedule2, options);
+  }
+  /** Download and join a finished parts run; throws `AnalysisPartsError` naming a failed part. */
+  mergeParts(schedule2, options = {}) {
+    return mergePartsValue(this.jobs, this.logger, schedule2, options);
+  }
+  /** The parts, sensors and tokens a `runAndWait` of `input` would bill; sends nothing. */
+  previewParts(input, options = {}) {
+    return previewParts(this.jobs, this.logger, input, options);
+  }
+  async runArea(input, polygon, options = {}) {
     return runArea(this.jobs, input, polygon, options);
   }
   checkAreaState(schedule2, options = {}) {
@@ -12653,38 +14240,23 @@ var InfraredClient = class {
     if (typeof areaTimeout !== "number" || !Number.isFinite(areaTimeout) || areaTimeout <= 0) {
       throw new TypeError("areaTimeout must be a positive finite number");
     }
-    const schedule2 = await this.runArea(input, polygon, options);
-    const started = performance.now();
-    const deadline = started + areaTimeout * 1e3;
-    let attempt = 0;
-    while (true) {
-      const state = await this.checkAreaState(schedule2, {
-        ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-        ...options.signal === void 0 ? {} : { signal: options.signal },
-        ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress }
-      });
-      if (state.isComplete) break;
-      const remainingS = (deadline - performance.now()) / 1e3;
-      if (remainingS <= 0) {
-        throw new AreaTimeoutError(
-          `Area analysis timed out after ${areaTimeout}s: ${state.completedCount}/${state.totalCount} completed, ${state.failedCount} failed, ${state.runningCount} running`,
-          state
-        );
-      }
-      const elapsedS = (performance.now() - started) / 1e3;
-      const delayS = Math.min(
-        remainingS,
-        areaPollDelayS(
-          attempt,
-          this.jobs.batchedStatusSupported,
-          elapsedS,
-          // A sweep that also asked per job is not a one-request sweep.
-          openJobs(state) + (lastPerJobRequests(schedule2) > 0 ? POLL_BATCHED_FAST_MAX_JOBS : 0)
+    const schedule0 = await this.runArea(input, polygon, options);
+    const schedule2 = await runAreaAndWaitRounds(
+      this.jobs,
+      (i, p, o) => this.runArea(i, p, o),
+      (s, o) => this.checkAreaState(s, o),
+      input,
+      polygon,
+      {
+        ...options,
+        areaTimeout,
+        onTimeout: (last) => new AreaTimeoutError(
+          `Area analysis timed out after ${areaTimeout}s: ${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed, ${last.runningCount} running`,
+          last
         )
-      );
-      await abortableSleep(delayS * 1e3, options.signal);
-      attempt += 1;
-    }
+      },
+      schedule0
+    );
     if (schedule2.surfaceFields === true) {
       return this.mergeSurfaceAreaJobs(schedule2, {
         ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
@@ -12758,6 +14330,20 @@ function coreVersion() {
 var packagedBytes;
 var packagedInitialization;
 function initializeCore2(options = {}) {
+  const { threads, ...source } = options;
+  if (threads !== void 0 && threads !== 1) return initializeThreadedCore(source, threads);
+  const explicit = threads === 1 || source.url !== void 0 || source.bytes !== void 0 || source.module !== void 0;
+  const loading = initializeSerialCore(source);
+  if (!explicit) return loading;
+  return loading.then(() => {
+    if (coreThreads() !== 1) {
+      throw new CoreInitializationError(
+        `the Infrared core is already initialized with ${coreThreads()} thread(s)`
+      );
+    }
+  });
+}
+function initializeSerialCore(options) {
   if (options.url !== void 0 || options.bytes !== void 0 || options.module !== void 0) {
     return initializeCore(options);
   }
@@ -12773,9 +14359,39 @@ function initializeCore2(options = {}) {
   });
   return packagedInitialization;
 }
+var MAX_THREADS = 64;
+function initializeThreadedCore(options, threads) {
+  if (!Number.isSafeInteger(threads) || threads < 1 || threads > MAX_THREADS) {
+    return Promise.reject(new CoreInitializationError(
+      `threads must be an integer from 1 to ${MAX_THREADS}`
+    ));
+  }
+  if (options.url !== void 0 || options.bytes !== void 0 || options.module !== void 0) {
+    return Promise.reject(new CoreInitializationError(
+      "the threaded core is the packaged one: pass threads without url, bytes or module"
+    ));
+  }
+  if (Number(process.versions.node.split(".")[0]) < 22) {
+    return Promise.reject(new CoreInitializationError(
+      `the threaded core needs Node 22 or later; this is Node ${process.versions.node}`
+    ));
+  }
+  const glue = new URL("../generated-threads/infrared-core.js", import_meta_url);
+  return Promise.resolve().then(() => (init_node_loader(), node_loader_exports)).then(({ packagedCoreBytes: packagedCoreBytes2 }) => packagedCoreBytes2(new URL("../generated-threads/infrared-core_bg.wasm", import_meta_url))).catch((error) => {
+    throw new CoreInitializationError(
+      "this package has no threaded core (npm run build:wasm:threads builds it)",
+      { cause: error }
+    );
+  }).then((bytes) => initializeCoreSource({
+    source: bytes,
+    identity: `threads:${threads}`,
+    threaded: { threads, glue: () => import(glue.href) }
+  }));
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   AnalysesName,
+  AnalysisPartsError,
   AnalysisService,
   AreaGeometryProbeError,
   AreaGeometryReferenceError,
@@ -12789,12 +14405,15 @@ function initializeCore2(options = {}) {
   CoreNotReadyError,
   CoreTerminalError,
   CoreVersionSkewError,
+  DEFAULT_DAYLIGHT_RESULT_FORMAT,
   DEFAULT_MAX_LONG_AXIS_PX,
   DEFAULT_STATIC_BASE_URL,
   DEFAULT_TOKENS_PER_JOB,
+  DaylightFactorResult,
   ESTIMATED_SECONDS_PER_TILE,
   EpwParseError,
   FacadeArtifactMismatchError,
+  FacadeCountContractError,
   GeodataDependencyError,
   GeodataError,
   GeodataFetchError,
@@ -12815,10 +14434,12 @@ function initializeCore2(options = {}) {
   LocalCleaner,
   MAX_REGISTRY_BYTES,
   MAX_STATIC_BYTES,
+  NO_ROOM,
   OvertureFileLimitError,
   OvertureReadTooLargeError,
   PER_JOB_MODEL_KEYS,
   PHYSICS_TIERS,
+  PartsTimeoutError,
   REGISTRY_URL,
   ReadMarginError,
   RegistryFetchError,
@@ -12846,6 +14467,7 @@ function initializeCore2(options = {}) {
   areaScheduleToJSON,
   buildAuthResolver,
   checkAreaState,
+  cleanMesh,
   cleanV3Local,
   clearRegistryCache,
   clearWeatherCatalogCache,
@@ -12866,10 +14488,10 @@ function initializeCore2(options = {}) {
   getTilingConfig,
   gridImageSize,
   groundReadDistanceM,
-  hasCellGeometry,
   initializeCore,
   isVertical,
   jobFromResponse,
+  legendRange,
   mergeAreaJobs,
   mergeSurfaceAreaJobs,
   normalizeGrid,
@@ -12883,6 +14505,7 @@ function initializeCore2(options = {}) {
   preparedWeatherIdentity,
   previewAreaBatches,
   readMarginM,
+  registryFixedRange,
   renderGridPng,
   requiredMarginM,
   resolveBracketName,
@@ -12892,12 +14515,15 @@ function initializeCore2(options = {}) {
   runArea,
   serializeToKebab,
   setOwnKey,
+  sharedLegendRange,
   silentLogger,
   submitAreaPlan,
-  surfaceTriangles,
+  surfaceId,
+  surfaceIndex,
   toCamelCase,
   toKebabCase,
   validatePolygon,
   vegetationRegistryDocument,
+  vertexValues,
   windClassOrdinals
 });

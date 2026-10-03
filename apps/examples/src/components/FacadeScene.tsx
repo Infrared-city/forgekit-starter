@@ -3,29 +3,35 @@
 // on origin + i*gridSize*uAxis + j*gridSize*vAxis and reaches half a cell to
 // each side. Coordinates are metres from the area's south-west corner: x east,
 // y north, z up. See AGENTS.md "Facades and roofs".
-import type { SurfaceAnalysisResponse } from '@infrared-city/infrared-sdk-ts'
+// The SDK gives the result as columns: surface `row` has its vectors at
+// [3*row, 3*row + 3) and its cells at [cellOffsets[row], cellOffsets[row + 1]).
+import type { SurfaceColumns } from '@infrared-city/infrared-sdk-ts'
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { ramp, type Scale } from '../lib/colors'
 
-function buildMesh(result: SurfaceAnalysisResponse, scale: Scale): THREE.Mesh {
+function buildMesh(result: SurfaceColumns, scale: Scale): THREE.Mesh {
   const pos: number[] = []
   const col: number[] = []
   const grey = [0.6, 0.6, 0.6]
-  for (const s of Object.values(result.surfaces)) {
-    const [ox, oy, oz] = s.origin
-    const g = s.gridSize
-    const u = s.uAxis.map((a) => a * g)
-    const v = s.vAxis.map((a) => a * g)
-    for (let j = 0; j < s.nv; j++) {
-      for (let i = 0; i < s.nu; i++) {
-        const value = s.values[j * s.nu + i]
-        if (value === undefined) continue
-        const c =
-          value === null || Number.isNaN(value)
-            ? grey
-            : ramp((value - scale.min) / (scale.max - scale.min)).map((x) => x / 255)
+  for (let row = 0; row < result.surfaceCount; row++) {
+    const [ox, oy, oz] = result.origin.subarray(3 * row, 3 * row + 3)
+    const g = result.gridSize[row]
+    const u = Array.from(result.uAxis.subarray(3 * row, 3 * row + 3), (a) => a * g)
+    const v = Array.from(result.vAxis.subarray(3 * row, 3 * row + 3), (a) => a * g)
+    const nu = result.nu[row]
+    const nv = result.nv[row]
+    const first = result.cellOffsets[row]
+    const count = result.cellOffsets[row + 1] - first
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const k = j * nu + i
+        if (k >= count) continue
+        const value = result.values[first + k]
+        const c = Number.isNaN(value)
+          ? grey
+          : ramp((value - scale.min) / (scale.max - scale.min)).map((x) => x / 255)
         // Four corners of the cell (centre +- half a cell). Swap y and z: three.js uses y up.
         const p = (ci: number, cj: number) => {
           const a = ci - 0.5
@@ -55,7 +61,7 @@ function buildMesh(result: SurfaceAnalysisResponse, scale: Scale): THREE.Mesh {
   )
 }
 
-export function FacadeScene({ result, scale }: { result: SurfaceAnalysisResponse; scale: Scale }) {
+export function FacadeScene({ result, scale }: { result: SurfaceColumns; scale: Scale }) {
   const el = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

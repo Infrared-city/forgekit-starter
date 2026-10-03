@@ -7,6 +7,7 @@ import { buildRequest, type DemoAnalysis } from '../demo/analyses'
 import { buildDemoScene, DEMO_POLYGON, type Variant } from '../demo/scene'
 import { DEMO_CENTER } from '../demo/scene-layout'
 import { errorText, getClient } from '../lib/infrared'
+import { isSurfaceColumns, surfacesFromColumns } from '../lib/surfaces'
 import { type DemoResult, perDay } from './results'
 
 interface Props {
@@ -61,16 +62,8 @@ export function RunYourself({ analysis, variant, onResult }: Props) {
         ...options,
         onProgress: (s) => setStatus(`Running: ${s.completedCount} of ${s.totalCount} done`),
       })
-      if ('surfaces' in r) {
-        const surfaces = Object.fromEntries(
-          Object.entries(r.surfaces).map(([k, s]) => [
-            k,
-            {
-              ...s,
-              values: Array.from(s.values, (v) => (v === null || Number.isNaN(v) ? null : v)),
-            },
-          ]),
-        )
+      if (isSurfaceColumns(r)) {
+        const surfaces = surfacesFromColumns(r)
         onResult(perDay({ kind: 'facades', surfaces }, analysis.perDay ?? 1))
       } else {
         const [rows, cols] = r.gridShape

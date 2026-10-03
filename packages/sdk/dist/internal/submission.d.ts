@@ -11,6 +11,10 @@ export interface SubmitArchiveOptions<T> {
     readonly timeoutMs: number;
     readonly signal?: AbortSignal;
     readonly parseAccepted: (value: unknown) => T;
+    /** The area retry `Idempotency-Key` for this submit (D224). Unset for a
+     * direct, non-area submit: that path keeps today's single-attempt D59
+     * behaviour. */
+    readonly idempotencyKey?: string;
 }
 export declare class SubmissionUncertainError extends Error {
     readonly acceptedJobIds: readonly string[];

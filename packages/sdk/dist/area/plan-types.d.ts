@@ -9,6 +9,7 @@
  */
 import type { PreparedSubmission } from "../jobs.js";
 import type { Polygon } from "./types.js";
+import type { AreaRetryContext } from "./retry-context.js";
 import type { TilePosition } from "./schedule-types.js";
 export interface SubmissionEntry {
     readonly key: string;
@@ -20,6 +21,9 @@ export interface SubmissionEntry {
      * for the body's `terrain-alignment` (`null` when the body does not send it).
      */
     readonly capture?: (alignment: string | null) => Uint8Array;
+    /** This entry's `Idempotency-Key` header value (D224), from the kernel's
+     * retry plan or, on a fresh run, attempt 1 of the run's own id. */
+    readonly idempotencyKey?: string;
 }
 export interface AreaSubmissionPlan {
     readonly polygon: Polygon;
@@ -48,4 +52,10 @@ export interface AreaSubmissionPlan {
     readonly terrainContextMarginM: number;
     /** The weather this plan's payloads were built from, if it is provable. */
     readonly weatherIdentity?: string;
+    /** The area retry identity (D224): the run id every entry's
+     * `Idempotency-Key` is derived from, kept on the schedule. */
+    readonly runId: string;
+    /** Present only on a `retryFrom` plan: the kernel's retry plan, read by
+     * `submission.ts` to stamp the schedule and carry the uncertain list. */
+    readonly retryContext?: AreaRetryContext;
 }

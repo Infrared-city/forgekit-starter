@@ -91,6 +91,19 @@ export interface AreaSchedule {
     readonly batchSensorCounts?: Readonly<Record<string, number>>;
     readonly webhookUrl?: string;
     readonly webhookEvents?: readonly string[];
+    /**
+     * The area retry identity (D224): a random id made once per schedule (one
+     * per `runArea` payload) and kept across every `retryFrom`. Absent on a
+     * schedule written before this field; a retry of one then gets a fresh id
+     * from the kernel plan and starts stamping it.
+     */
+    readonly runId?: string;
+    /** The attempt of the CURRENT job or submit of each schedule key. A
+     * missing key is attempt 1. See `ir_geo::area_retry`. The per-key cap is
+     * one kernel constant; a schedule does not store
+     * it, and a retry plan's exhausted keys are never stored either -- they
+     * stay failed and the caller sees them in the PLAN, not the schedule. */
+    readonly attempts?: Readonly<Record<string, number>>;
 }
 export interface AreaScheduleJSON {
     readonly jobs: Array<[string, AreaJob]>;
@@ -118,6 +131,8 @@ export interface AreaScheduleJSON {
     readonly batchSensorCounts?: Readonly<Record<string, number>>;
     readonly webhookUrl?: string;
     readonly webhookEvents?: readonly string[];
+    readonly runId?: string;
+    readonly attempts?: Readonly<Record<string, number>>;
 }
 export interface AreaState {
     readonly totalCount: number;
@@ -158,6 +173,17 @@ export interface AreaResult {
     readonly gridShape: readonly [number, number];
     /** Sorted observed labels indexed by categorical `mergedGrid` ordinals. */
     readonly legend?: readonly string[];
+    /**
+     * The colour-scale range: the EXACT min/max of the finite cells of the
+     * finished merged, clipped grid, measured by the kernel (#390). Absent when
+     * no cell is finite, and for a categorical result (`legend`), whose grid
+     * holds class codes, not measurements. The backend's own `min-legend` /
+     * `max-legend` estimate is never used. Other display modes (trimmed, fixed,
+     * shared across results) are `legendRange` / `sharedLegendRange`.
+     */
+    readonly minLegend?: number;
+    /** Upper end of the range; set exactly when `minLegend` is. */
+    readonly maxLegend?: number;
     readonly failedJobs: readonly TileFailure[];
     readonly skippedJobs: readonly string[];
     readonly executionTime: number;

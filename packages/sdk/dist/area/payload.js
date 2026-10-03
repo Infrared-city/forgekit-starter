@@ -3,7 +3,7 @@ import { requireCore } from "../internal/core.js";
 import { CoreNotReadyError } from "../internal/errors.js";
 import { weatherWindow, weatherWindowJson } from "../internal/weather-window.js";
 import { WeatherDocument } from "../weather-epw.js";
-import { BASE, LOCATION, MODEL_INPUT_NAMES, PERIOD_ALIASES, SURFACE, TERRAIN, TOP_LEVEL_ALIASES, } from "./payload-aliases.js";
+import { BASE, FAST, LOCATION, MODEL_INPUT_NAMES, PERIOD_ALIASES, SURFACE, TERRAIN, TOP_LEVEL_ALIASES, } from "./payload-aliases.js";
 import { THERMAL_CONTROL_KEYS, THERMAL_MODELS, rejectThermalControls, validatePhysics, } from "./thermal-controls.js";
 function define(target, key, value) {
     Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
@@ -202,8 +202,20 @@ function modelTransform(input) {
         // for a picture this SDK's kernel draws for free, so no request this SDK
         // builds asks for it (D88).
         const raw = { ...input };
-        if (raw["analysis-surfaces"] != null)
+        if (raw["analysis-surfaces"] != null) {
             raw["emit-cell-tris"] = false;
+            // infrared-core #674: every surface request names the bundled kernel's
+            // roof-gate version, so the worker runs the gate THIS SDK was tested
+            // against rather than guessing from an absent field (old SDKs omit it
+            // and keep the frozen v5 layout; see UPGRADING.md). An explicit caller
+            // value is kept as is -- `prepareSubmissionBody` repeats this same
+            // "set only if absent" rule for a direct submission that never reaches
+            // this function (`internal/submit-body.ts`).
+            if (raw["surfgrid-version"] == null)
+                raw["surfgrid-version"] = requireCore().surfgridVersion();
+        }
+        if (raw["mesh-cleaning"] === "auto")
+            delete raw["mesh-cleaning"];
         return raw;
     }
     const type = input.analysisType ?? input["analysis-type"];
@@ -225,8 +237,16 @@ function modelTransform(input) {
     // synthesized locally after the merge -- `area/facade-synthesis.ts`,
     // ADR 0008, `docs/DEVIATIONS.md` D88. The wire-shaped `analysis-type` path
     // above returns before this and still passes the field through untouched.
-    if (output.analysisSurfaces != null)
+    if (output.analysisSurfaces != null) {
         output.emitCellTris = false;
+        // infrared-core #674: same as the wire-shaped pass-through above.
+        if (output.surfgridVersion == null)
+            output.surfgridVersion = requireCore().surfgridVersion();
+    }
+    // "auto" IS the default (#555): sent and hashed as nothing, so an explicit
+    // "auto" and an omitted field are the same request.
+    if (output.meshCleaning === "auto")
+        delete output.meshCleaning;
     if (output.dateFilters === undefined) {
         if (byoWeather !== undefined) {
             throw new TypeError("weather (a parsed EPW document) requires dateFilters: the window is " +
@@ -243,7 +263,7 @@ function modelTransform(input) {
                 "input to solar-radiation, thermal-comfort-index and " +
                 "thermal-comfort-statistics");
         }
-        output = pick(output, [...BASE, ...LOCATION, "accuracy", ...SURFACE, ...TERRAIN]);
+        output = pick(output, [...BASE, ...LOCATION, "accuracy", ...SURFACE, ...TERRAIN, ...FAST]);
         output.timePeriod = period;
         return output;
     }
@@ -275,7 +295,7 @@ function modelTransform(input) {
             output = pick(output, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]);
         }
         else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
-            output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS]);
+            output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]);
         }
         else {
             // Every other analysis reads no weather array at all — a wind rose is
@@ -307,7 +327,7 @@ function modelTransform(input) {
         output.diffuseHorizontalRadiation = series(rows, "diffuseHorizontalRadiation");
     }
     else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
-        output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS]);
+        output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]);
         output.timePeriod = period;
         for (const key of [
             "horizontalInfraredRadiationIntensity", "diffuseHorizontalRadiation",
