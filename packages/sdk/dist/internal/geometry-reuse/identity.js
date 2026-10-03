@@ -174,6 +174,8 @@ export function selectedDocumentParts(prepared, groups) {
     parts.push(CLOSE);
     return parts;
 }
+/** The request field that declares the referenced groups. */
+export const GROUPS_FIELD = "geometry-$ref-groups";
 export function bodyWithReference(body, groups, url) {
     const output = {};
     for (const [name, value] of Object.entries(body)) {
@@ -185,5 +187,14 @@ export function bodyWithReference(body, groups, url) {
     Object.defineProperty(output, "geometry-$ref", {
         configurable: true, enumerable: true, value: url, writable: true,
     });
+    // The declaration (`geometry-ref-wire.md` §1.1): lets the accept path check
+    // the reference without reading the document. A server that predates it
+    // ignores it and resolves in full. Transport only.
+    const declared = Object.keys(groups).sort();
+    if (declared.length > 0) {
+        Object.defineProperty(output, GROUPS_FIELD, {
+            configurable: true, enumerable: true, value: declared, writable: true,
+        });
+    }
     return output;
 }

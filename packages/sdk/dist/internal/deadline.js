@@ -1,4 +1,5 @@
-export const MAX_TIMEOUT_MS = 2_147_483_647;
+import { MAX_TIMEOUT_MS, SendGuard } from "./send-guard.js";
+export { MAX_TIMEOUT_MS };
 export function requireTimeout(timeoutMs) {
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
         throw new TypeError(`timeoutMs must be in (0, ${MAX_TIMEOUT_MS}]`);
@@ -14,6 +15,7 @@ export class Deadline {
     timedOut = false;
     callerAborted = false;
     timer;
+    guard;
     onCallerAbort;
     constructor(caller, timeoutMs) {
         this.caller = caller;
@@ -25,11 +27,30 @@ export class Deadline {
             this.onCallerAbort();
         else
             caller?.addEventListener("abort", this.onCallerAbort, { once: true });
-        this.timer = setTimeout(() => {
-            this.timedOut = true;
-            this.timeout.abort();
-            this.controller.abort();
-        }, requireTimeout(timeoutMs));
+        this.timer = setTimeout(() => this.expire(), requireTimeout(timeoutMs));
+    }
+    expire() {
+        this.timedOut = true;
+        this.timeout.abort();
+        this.controller.abort();
+    }
+    /**
+     * Hand the timeout to a send guard at the dispatch of a request body
+     * (`send-body.ts`): this deadline's own timer stops, and the guard's stall,
+     * budget and response rules end the request from here, as a timeout.
+     */
+    guardSend(limits, observesProgress) {
+        clearTimeout(this.timer);
+        this.timer = undefined;
+        this.guard?.close();
+        this.guard = new SendGuard(limits, () => this.expire());
+        if (!this.controller.signal.aborted)
+            this.guard.start(observesProgress);
+        return this.guard;
+    }
+    /** Which send rule stopped the request, when a send guard did. */
+    sendStop() {
+        return this.guard?.stop;
     }
     reason() {
         if (this.callerAborted)
@@ -75,6 +96,7 @@ export class Deadline {
     }
     close() {
         clearTimeout(this.timer);
+        this.guard?.close();
         this.caller?.removeEventListener("abort", this.onCallerAbort);
     }
 }

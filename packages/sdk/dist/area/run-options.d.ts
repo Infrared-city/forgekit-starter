@@ -2,6 +2,7 @@ import type { AreaBuildings } from "../buildings.js";
 import type { AreaGroundMaterials } from "../ground-materials-service.js";
 import type { AreaVegetation } from "../vegetation.js";
 import type { JobsService, PreparedSubmission } from "../jobs.js";
+import type { BinaryCapability } from "../internal/binary-submission.js";
 import type { FacadeSynthesisStore } from "./facade-synthesis.js";
 import type { TerrainContext } from "./types.js";
 import type { AreaSchedule, AreaState } from "./schedule-types.js";
@@ -25,6 +26,12 @@ export type AreaJobsService = Pick<JobsService, "prepareSubmission" | "preflight
     /** OPTIONAL for the same reason: the client's facade capture + layout cache
      * (`area/facade-synthesis.ts`). Its absence means nothing is captured. */
     readonly facadeSynthesis?: FacadeSynthesisStore;
+    /**
+     * OPTIONAL for the same reason: the live `/binary/v1/capabilities` document
+     * (D228 auto-routing for daylight-factor parts). Its absence means "assume
+     * no binary route" — the parts stay on the JSON path they always used.
+     */
+    readonly binaryCapability?: (signal?: AbortSignal) => Promise<BinaryCapability>;
 };
 export type AreaStatusService = Pick<JobsService, "getStatus"> & {
     /**
@@ -95,6 +102,8 @@ export interface RunAreaOptions {
      */
     readonly onAccepted?: (jobId: string, tileKey: string) => void;
     readonly signal?: AbortSignal;
+    /** Unset: binary, or JSON for an analysis with no binary route (D196); a
+     * `retryFrom` keeps its saved transport. Pass `"json"` for JSON. */
     readonly transport?: "json" | "binary";
 }
 export interface CheckAreaStateOptions {

@@ -65,14 +65,6 @@ emit_cell_tris?: boolean | null, return_buffers?: boolean | null,
 compact_cells?: Compact,
 ): Compact extends true ? SurfaceSynthesisCompactBuffers : SurfaceSynthesisResult;
 
-export function synthesizeSurfacesFromCaptures<Compact extends boolean | null | undefined = false>(
-captures: Uint8Array[],
-on_answer: (index: number,
-answer: (Compact extends true ? SurfaceSynthesisCompactBuffers : SurfaceSynthesisBuffers) | Error) => void,
-mode: string, grid_size: number, offset: number,
-max_sensors: bigint, partial_cells?: boolean | null, min_coverage?: number | null,
-emit_cell_tris?: boolean | null, compact_cells?: Compact,
-): void;
 
 
 
@@ -222,6 +214,17 @@ export class Site {
      */
     facadeFrames(tiles: Uint32Array, id_counts: Uint32Array, ids: string[], body: boolean, identity: boolean, capture: boolean, alignment: string | null | undefined, artifact: boolean, box_trees: boolean, max_total_bytes: bigint, max_metadata_bytes: number, max_meshes: bigint, max_instances: bigint): Array<any>;
     /**
+     * One scene frame per tile and a target range per job (#602). The jobs
+     * are given as for `facadeFrames`; give every job of a tile in one call.
+     * Returns `{scenes, jobs}`: a scene is `{tile, archive, artifactDigest,
+     * contentDigest, encoding, treeBoxes, frameByteLength,
+     * metadataByteLength, meshCount, instanceCount}`; a job is `{targets:
+     * {scene, start, count}, targetIds}` (a range of `scenes[scene]`'s
+     * `geometries`), `{artifact}` (its own frame, as `facadeFrames` answers
+     * it) or `{error}`.
+     */
+    facadeScenes(tiles: Uint32Array, id_counts: Uint32Array, ids: string[], box_trees: boolean, max_total_bytes: bigint, max_metadata_bytes: number, max_meshes: bigint, max_instances: bigint): object;
+    /**
      * Tiles `start..end`'s presence masks (`present`: one byte per tile, bit
      * `i` for group `i` in `arenaGroups()` order) and `geometries` /
      * `context-geometry` group hashes (`meshGroupHashes`: two per tile, `""`
@@ -248,6 +251,32 @@ export class Site {
      * Ids the shrink band gave up that NO tile's core took (D63).
      */
     unowned(): string[];
+    /**
+     * The constructor with the site's terrain read once (`SiteTerrain`, WP1)
+     * in place of the `ground-geometry` document: the same arguments less
+     * that one, and the handle last. A building edit reads no terrain.
+     */
+    static withTerrain(building_ids: string[], building_coordinates: Uint8Array, building_offsets: Uint32Array, context_ids: string[], context_coordinates: Uint8Array, context_offsets: Uint32Array, rows: Uint32Array, cols: Uint32Array, tile_ids: string[], inference_size_m: number, context_size_m: number, step_m: number, site_lon: number, site_lat: number, geometries: string | null | undefined, context_geometry: string | null | undefined, vegetation: string | null | undefined, ground_materials: string | null | undefined, polygon_json: string, terrain_margin_m: number | null | undefined, terrain: SiteTerrain): Site;
+}
+
+/**
+ * One site terrain, read once.
+ */
+export class SiteTerrain {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Read one `ground-geometry` document (`{mesh_key: mesh}` JSON text).
+     * Only a document that is not a JSON object is refused here; a bad mesh
+     * is refused by the `Site` built on it, with the document path's text.
+     */
+    constructor(document: string);
+    /**
+     * The kernel group hash of the whole terrain (`geometryGroupHash` of
+     * `ground-geometry` over the document), or `undefined` when a mesh cannot
+     * be read for the hash.
+     */
+    readonly groupHash: string | undefined;
 }
 
 export class SurfaceArchive {
@@ -255,55 +284,26 @@ export class SurfaceArchive {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * The `cell-area` cells, cut by `valueOffsets`; NaN is `null`.
+     * Why a batch decode refused this archive; `undefined` otherwise.
      */
-    takeCellArea(): Float64Array;
+    readonly error: string | undefined;
     /**
-     * `[[id, fields], ...]`: each surface's fields without `values` and
-     * `cell-tris`; an array `cell-area` is the placeholder `0`.
-     */
-    takeFieldsJson(): string;
-    /**
-     * Every root field except `surfaces`, as JSON object text.
-     */
-    takeRootJson(): string;
-    /**
-     * One byte per surface: 0 absent, 1 `null`, 2 array.
-     */
-    readonly cellAreaState: Uint8Array;
-    /**
-     * One byte per surface: 0 absent, 1 `null`, 2 array.
-     */
-    readonly cellTrisState: Uint8Array;
-    /**
-     * `"surface"`, or `"not-surface"` for a valid result of another shape
-     * (a grid, other JSON, another IRBF family).
+     * `"surface"`, `"not-surface"` for a valid result of another shape (a
+     * grid, other JSON, another IRBF family), or `"error"` for an archive a
+     * batch decode refused.
      */
     readonly route: string;
-    readonly valueOffsets: Uint32Array;
 }
 
-export class SurfaceAreaMerger {
-    free(): void;
-    [Symbol.dispose](): void;
-    /**
-     * Finish with JS-owned COLUMNS, not one object per surface: `metadataJson`
-     * (`Uint8Array`), `ids` (one string) cut by `idOffsets` (UTF-16 units),
-     * `values` cut by `valueOffsets`, `hasCellTris` (one byte per surface),
-     * and — only when some surface has cell triangles — `triangleValues`,
-     * `triangleOffsets` and `triangleMask`, one entry per cell of every
-     * surface. No result borrows WASM memory.
-     */
-    finish(): any;
-    constructor();
-    /**
-     * Add one job that `decodeSurfaceArchive` decoded. The handle is
-     * consumed: its values and triangles move into the merge. `rootJson` is
-     * the response root without `surfaces`, as the host holds it (the host
-     * `JSON.stringify` of its parsed root, which is what the retired `pushJob` read).
-     */
-    pushArchive(entry_id: string, root_json: string, archive: SurfaceArchive, sw_x: number, sw_y: number): void;
-}
+/**
+ * Read a gbXML document into the analytical building model v1 (JSON).
+ *
+ * `data` is the gbXML file as bytes (UTF-8, or UTF-16 with a byte-order
+ * mark). Returns the model as a JSON string: SI units, +Y = true north,
+ * every geometry default and export defect as a counted line in
+ * `warnings`. Throws only when `data` is not a gbXML document.
+ */
+export function analyticalFromGbxml(data: Uint8Array): string;
 
 /**
  * The 4 built-in low-poly tree templates → `{registry_id: {coordinates,
@@ -311,6 +311,18 @@ export class SurfaceAreaMerger {
  * `instancesFromPoints` so the frontend shows the archetype geometry + dims.
  */
 export function archetypeMeshes(): string;
+
+/**
+ * The `Idempotency-Key` header value of one tile submit (D224). See
+ * `ir_geo::area_retry`.
+ */
+export function areaIdempotencyKey(run_id: string, job_key: string, attempt: number): string;
+
+/**
+ * The per-key attempt cap of an area retry, the first attempt included
+ * (D224). One kernel constant; a schedule does not store it.
+ */
+export function areaRetryMaxAttempts(): number;
 
 /**
  * `infrared_sdk.tiling.transforms.assign_buildings_to_tiles` port. Buildings
@@ -354,6 +366,13 @@ export function batchBuildings(buildings_json: string, batch_size: number, halo_
  * with a missing member meets every rectangle.
  */
 export function bboxMeetsRows(rows: Float64Array, west: number, south: number, east: number, north: number): Uint8Array;
+
+/**
+ * The body fields a binary geometry document carries: every geometry group
+ * plus the BYO `sensor-points` / `sensor-normals`. A host sends every other
+ * body field as control.
+ */
+export function binaryGeometryFields(): Array<any>;
 
 /**
  * `ir_geo::tiling::categorical::build_cat_map` binding. JSON array of category
@@ -444,6 +463,33 @@ export function canonicalMetadataJson(metadata_json: string, max_bytes: number, 
 export function checkMaxSensorsPerJob(max_sensors_per_job: number): void;
 
 /**
+ * The next step after one keyed tile submit send (D224): `"resend"`,
+ * `"uncertain"`, `"definite_fail"` or `"accepted"`. `answer` is `"status"`
+ * (with `status`), `"before_send"`, `"after_send"` or `"unreadable_2xx"`.
+ * `sends_done` counts the sends of this key so far, at least 1. Throws on an
+ * unknown `answer`. See `ir_geo::area_retry`.
+ */
+export function classifySubmitSend(answer: string, sends_done: number, status?: number | null): string;
+
+/**
+ * Clean ONE mesh: weld bit-identical positions, drop degenerate and exact
+ * duplicate triangles, make the winding consistent (the authored majority
+ * wins), and turn closed components outward.
+ *
+ * Returns `{ coordinates, indices, report }`. When nothing changed, the
+ * INPUT arrays come back as they are.
+ */
+export function cleanMesh(coordinates: any, indices: Uint32Array): object;
+
+/**
+ * Clean many meshes, each on its own. `vertOffsets` / `faceOffsets` hold
+ * `entities + 1` starts (in vertices and in triangles); each entity's indices
+ * are local to its own vertices. Returns
+ * `{ coordinates, vertOffsets, indices, faceOffsets, reports }`.
+ */
+export function cleanMeshes(coordinates: any, vert_offsets: Uint32Array, indices: Uint32Array, face_offsets: Uint32Array): object;
+
+/**
  * `infrared_sdk.tiling.merger.clip_to_polygon` port. base64-f32 grid in/out;
  * cells whose centre is outside `polygon_meters` (`[[x,y],...]`) become NaN.
  */
@@ -521,10 +567,58 @@ export function coreVersion(): string;
  * constructing synthesis output arrays. The count never coarsens and a valid
  * zero-survivor scene returns `0n`.
  *
- * `workBudget` limits the conservative cell-work bound, not the retained
- * count. JavaScript receives the `u64` result as a lossless `BigInt`.
+ * `workBudget` limits the region grid cells the count walks, not the
+ * retained count (#603). JavaScript receives the `u64` result as a lossless
+ * `BigInt`.
  */
-export function countSurfaces(geometries_json: string, mode: string, grid_size: number, offset: number, work_budget: bigint, terrain_coordinates?: Float64Array | null, terrain_indices?: Uint32Array | null, partial_cells?: boolean | null, min_coverage?: number | null): bigint;
+export function countSurfaces(geometries_json: string, mode: string, grid_size: number, offset: number, work_budget: bigint, terrain_coordinates?: Float64Array | null, terrain_indices?: Uint32Array | null, partial_cells?: boolean | null, min_coverage?: number | null, mesh_cleaning?: string | null): bigint;
+
+/**
+ * The daylight-points frame of a worker JSON result. Throws when the result
+ * has no exact frame.
+ */
+export function daylightFrameFromJson(result: Uint8Array): Uint8Array;
+
+/**
+ * The worker's JSON bytes of a daylight-points frame, byte for byte.
+ */
+export function daylightJsonFromFrame(frame: Uint8Array): Uint8Array;
+
+/**
+ * Join the part results (unzipped JSON bytes, in plan order) into the bytes
+ * of the single-request result. Throws when they do not join.
+ */
+export function daylightMerge(plan: string, results: Uint8Array[]): Uint8Array;
+
+/**
+ * Join the part results (each a daylight-points frame or the worker's JSON
+ * bytes, in plan order; `plan` as JSON) into the frame of the
+ * single-request result. Throws when they do not join or have no exact
+ * frame.
+ */
+export function daylightMergeBinary(plan: string, parts: Uint8Array[]): Uint8Array;
+
+/**
+ * The request body of one part (`part`: one entry of the plan's `parts`,
+ * JSON): the request with only `floors` changed.
+ */
+export function daylightPartBody(request: Uint8Array, part: string): Uint8Array;
+
+/**
+ * Pack a request's floors into parts of whole floors of at most `target`
+ * sensors (default 300 000, `PART_SENSOR_TARGET`): the plan as JSON `{tier, target,
+ * total_sensors, parts: [{key, floors, floor_keys, sensors, range?}],
+ * unsplit_reason}`.
+ */
+export function daylightParts(request: Uint8Array, target?: number | null): string;
+
+/**
+ * The exact sensors per floor of a daylight-factor request body, as the
+ * worker makes them: JSON `{tier, floors: [{key, selector, sensors,
+ * sensors_sha256}], total}`. Throws the worker's 422 text for a floor the
+ * worker would refuse.
+ */
+export function daylightSensorCounts(request: Uint8Array): string;
 
 /**
  * Validate a result frame and return independent owned section byte arrays.
@@ -533,6 +627,16 @@ export function countSurfaces(geometries_json: string, mode: string, grid_size: 
  * before any output array is allocated. Output sections do not retain input.
  */
 export function decodeBinaryResult(buffer: Uint8Array, max_total_bytes: bigint, max_metadata_bytes: number, max_sections: number, max_elements_per_section: bigint, max_metadata_depth: number, max_cells: bigint, max_triangle_values: bigint): any;
+
+/**
+ * Validate a daylight-points frame and describe it: `{schema_version,
+ * layout, sensor_count, legend, sections, groups, rooms, buildings,
+ * warnings, chunk}` (snake_case keys, as the Python binding). `sections`
+ * gives each per-sensor column's `{offset, count, dtype}` inside `frame`:
+ * copy the frame once into a fresh `Uint8Array` and build
+ * `new Float64Array(u8.buffer, u8.byteOffset + offset, count)` views.
+ */
+export function decodeDaylightResult(frame: Uint8Array): any;
 
 export function decodeGridDocument(response_bytes: Uint8Array, expected_kind?: string | null): GridDocumentDecode;
 
@@ -551,6 +655,15 @@ export function decodeResultArchive(archive: Uint8Array): ResultArchiveDecode;
  * JSON or strict IRBF). The four limits are the strict IRBF result limits.
  */
 export function decodeSurfaceArchive(archive: Uint8Array, max_total_bytes: bigint, max_metadata_bytes: number, max_cells: bigint, max_triangle_values: bigint): SurfaceArchive;
+
+/**
+ * Decode several downloaded archives in one call, in order: the threaded
+ * Node build (D205) decodes them on the pool, the default build one after
+ * the other. Same limits and handles as `decodeSurfaceArchive`, one per
+ * archive; an archive that fails gets route `"error"` and its `error`, so
+ * the host can name the job.
+ */
+export function decodeSurfaceArchives(archives: Uint8Array[], max_total_bytes: bigint, max_metadata_bytes: number, max_cells: bigint, max_triangle_values: bigint): SurfaceArchive[];
 
 export function decodeSurfaceIdentity(response_json: string): string;
 
@@ -575,6 +688,13 @@ export function dedupVegetationFeatures(tile_results_json: string): string;
  * The automatic ground-material order, weakest first.
  */
 export function defaultPrecedence(): any[];
+
+/**
+ * The transport for `analysisType` when the caller names none (D196):
+ * `"binary"`, or `"json"` for an analysis with no binary route. See
+ * `ir_geo::transport_choice`.
+ */
+export function defaultTransport(analysis_type: string): string;
 
 /**
  * Drop each mesh of a packed geometry group so its own lowest point is z = 0.
@@ -604,13 +724,11 @@ export function dropToGrade(coordinates: Uint8Array, offsets: Uint32Array): obje
 export function encodeCategoricalGrid(grid_json: string, cat_map_json: string): string;
 
 /**
- * Encode an owned canonical geometry frame.
- *
- * Lengths are checked before typed arrays are copied into WASM. Returned byte
- * arrays own JavaScript storage. The artifact digest covers the raw frame; an
- * archive transport must digest the exact archive bytes separately.
+ * The surface schema 2 IRBF frame of one surface result archive (ZIP or
+ * GZIP, one entry, JSON or strict IRBF), written by the kernel's surface
+ * writer with `f64` sections. For tests and for converting stored results.
  */
-export function encodeGeometryDocument(metadata_json: string, coordinates_f32_le: Uint8Array, indices_u32_le: Uint8Array, instance_f32_le: Uint8Array | null | undefined, max_total_bytes: bigint, max_metadata_bytes: number, max_sections: number, max_elements_per_section: bigint, max_metadata_depth: number, max_meshes: bigint, max_instances: bigint): any;
+export function encodeSurfaceArchive(archive: Uint8Array): Uint8Array;
 
 /**
  * sha256 (lowercase hex) of ONE ground-material layer — a material NAME plus
@@ -663,14 +781,6 @@ export function entityHashInstances(template: string, tuples: Float64Array, regi
  * rather than hashing a silently-narrowed value.
  */
 export function entityHashMesh(coordinates: Float64Array, indices: Uint32Array): string;
-
-/**
- * Return the request-wide upper bound on first-pass surfgrid cells.
- *
- * Uses the exact synthesis input parser. JavaScript receives a lossless
- * `BigInt` because wasm-bindgen maps the Rust `u64` return without narrowing.
- */
-export function estimateCellsUpperBound(geometries_json: string, mode: string, grid_size: number, offset: number, max_sensors: bigint, partial_cells?: boolean | null, min_coverage?: number | null, emit_cell_tris?: boolean | null): bigint;
 
 /**
  * `infrared_sdk.preflight.estimate_sun_context_loss` port — direct-sun-hours
@@ -843,6 +953,13 @@ export function geojsonLayersToDotbim(layers_json: string): string;
 export function geometryArtifact(body_json: string, box_trees: boolean, max_total_bytes: bigint, max_metadata_bytes: number, max_meshes: bigint, max_instances: bigint): any;
 
 /**
+ * Decode a geometry frame (schema 1 or 2) and return its content as JSON
+ * text: `{"metadata": <the schema 1 shape>, "sensors": {"points", "normals"}
+ * | null}`. For tests and diagnostics; the upload path never decodes.
+ */
+export function geometryDocumentJson(frame: Uint8Array): string;
+
+/**
  * Hash one S1 geometry group from its wire JSON.
  *
  * Uses the registry's `HashKind` and existing leaf preimages. Returns null
@@ -855,6 +972,12 @@ export function geometryGroupHash(group_name: string, group_json: string): any;
  * Return plain records so JavaScript hosts need no Rust-specific wrapper type.
  */
 export function geometryGroups(): Array<any>;
+
+/**
+ * The geometry schema this kernel writes. A host submits binary geometry
+ * only to a server whose capability document lists it.
+ */
+export function geometrySchemaVersion(): number;
 
 /**
  * Return the kernel-owned tiling preset for an analysis type as JSON.
@@ -1029,6 +1152,39 @@ export function inspectBinaryResult(buffer: Uint8Array, max_total_bytes: bigint,
 export function instancesFromPoints(features_json: string, reference_lon: number, reference_lat: number, registry_json: string, registry_version: string): string;
 
 /**
+ * An interior request on the binary route (D228): the scene as ONE IRBF
+ * geometry archive, every other top-level value as control (raw bytes, the
+ * request's order). Every part of a split request uploads this one archive
+ * and sends `daylightPartBody(control, part)` as its control. Throws when the
+ * frame cannot carry the request exactly (a deferred field such as
+ * `buildings` or `vegetation`, a mesh with one arm, a coordinate over the
+ * frame limit): the caller then sends the request as JSON.
+ *
+ * The limits are the capability document's (`maxGeometryBytes`,
+ * `maxMetadataBytes`, `maxMeshes`, `maxInstances`); a frame over one of them
+ * throws before any upload.
+ *
+ * Returns `{archive: Uint8Array, artifactDigest, contentDigest, encoding,
+ * frameByteLength, control: Uint8Array}`.
+ */
+export function interiorArtifact(request: Uint8Array, model: string, max_total_bytes: bigint, max_metadata_bytes: number, max_meshes: bigint, max_instances: bigint): any;
+
+/**
+ * Join every job of one surface area run, in the canonical job order
+ * (#579): the rows, the triangle groups, `triangles.positions` and each
+ * fallback's `job` follow the canonical order of `entryIds`, not the
+ * argument order; `jobOrder[g]` is the argument index of job `g`.
+ *
+ * `archives[i]` is job `i`'s `decodeSurfaceArchive` handle (consumed, also
+ * on an error), `entryIds[i]` its schedule entry, `anchors[2i..2i+2]` its
+ * tile SW offset, `captures[i]` its kept capture or `undefined`. Returns the
+ * columns: see `SurfaceJoin` in `ir-simprep` for every field. The triangle
+ * positions come back as `triangles.positions[i]`, one `Float32Array` per
+ * job in its tile-local frame (empty when the job has none).
+ */
+export function joinSurfaceJobs(archives: SurfaceArchive[], entry_ids: string[], anchors: Float64Array, captures_in: Array<any>): any;
+
+/**
  * Land-use classification — utilities-service
  * `app/maps/overture/landuse.py::fetch_landuse`.
  *
@@ -1045,6 +1201,20 @@ export function instancesFromPoints(features_json: string, reference_lon: number
 export function landuseClassify(fc: string): string;
 
 export function lawsonLabels(): string[];
+
+/**
+ * Measures the colour-scale range of one grid's FINITE cells (issue #390).
+ * Mirror of the Python wheel's `legend_range`.
+ *
+ * `values`: a `Float32Array` or a `Float64Array`. NaN and ±infinity cells
+ * are skipped; an empty or all-non-finite grid returns `undefined`.
+ * `mode` (default `"exact"`) is the true min/max; `"trimmed"` is the exact
+ * 2nd/98th percentile (numpy `linear`), falling back to `"exact"` when the
+ * trimmed ends collapse while the true extremes differ; `"fixed"` returns
+ * `[fixedMin, fixedMax]` WITHOUT reading `values` (both REQUIRED, finite,
+ * `min < max`). Returns `[min, max]` as a `Float64Array`.
+ */
+export function legendRange(values: any, mode?: string | null, fixed_min?: number | null, fixed_max?: number | null): Float64Array | undefined;
 
 /**
  * Identity of the prettify mask that surface synthesis produces from the
@@ -1068,12 +1238,18 @@ export function lawsonLabels(): string[];
  * mirrored constants). Throws on a malformed hash, an unknown `mode`, a
  * non-finite float param, or a `maxSensors` above 2**32-1.
  */
-export function maskHash(geo_hash: string, mode: string, grid_size: number, offset: number, max_sensors: bigint, terrain_hash?: string | null, partial_cells?: boolean | null, min_coverage?: number | null, emit_cell_tris?: boolean | null): string;
+export function maskHash(geo_hash: string, mode: string, grid_size: number, offset: number, max_sensors: bigint, terrain_hash?: string | null, partial_cells?: boolean | null, min_coverage?: number | null, emit_cell_tris?: boolean | null, mesh_cleaning?: string | null): string;
 
 /**
  * Return the automatic precedence rank for one material name.
  */
 export function materialRank(name: string): number;
+
+/**
+ * The most sensors one surface job computes, BYO or synthesized
+ * (`ir_geo::consts::MAX_SENSORS_PER_JOB`).
+ */
+export function maxSensorsPerJob(): number;
 
 /**
  * Merge per-tile material layers and clean the result, in ONE kernel call —
@@ -1313,20 +1489,48 @@ export function partitionFacadeCoreContext(geometries_json: string, core_x_m: nu
 export function partitionFacadeCoreContextF64(ids: string[], coordinates: Uint8Array, offsets: Uint32Array, core_x_m: number, core_y_m: number, nominal_x_m?: number | null, nominal_y_m?: number | null): string;
 
 /**
+ * The retry plan of an area schedule (D224): a `RetryPlanInput` JSON
+ * document in, a `RetryPlan` JSON document out. Throws on a bad input.
+ */
+export function planAreaRetry(input: string): string;
+
+/**
  * Return verified exact surface batches as JSON records.
  */
-export function planExactSurfaceBatches(geometries_json: string, mode: string, grid_size: number, offset: number, work_budget: bigint, ground_geometry_json: string | null | undefined, auto_align: boolean, partial_cells?: boolean | null, min_coverage?: number | null): string;
+export function planExactSurfaceBatches(geometries_json: string, mode: string, grid_size: number, offset: number, work_budget: bigint, ground_geometry_json: string | null | undefined, auto_align: boolean, partial_cells?: boolean | null, min_coverage?: number | null, mesh_cleaning?: string | null): string;
 
 /**
  * [`plan_exact_surface_batches`] under a caller's per-job sensor cap in
  * retained sensors. `undefined` is the default plan exactly.
  */
-export function planExactSurfaceBatchesCapped(geometries_json: string, mode: string, grid_size: number, offset: number, work_budget: bigint, ground_geometry_json: string | null | undefined, auto_align: boolean, partial_cells?: boolean | null, min_coverage?: number | null, max_sensors_per_job?: number | null): string;
+export function planExactSurfaceBatchesCapped(geometries_json: string, mode: string, grid_size: number, offset: number, work_budget: bigint, ground_geometry_json: string | null | undefined, auto_align: boolean, partial_cells?: boolean | null, min_coverage?: number | null, max_sensors_per_job?: number | null, mesh_cleaning?: string | null): string;
 
 /**
  * Return one kernel reuse plan as JSON.
  */
-export function planGeometryReuse(current_json: string, state_json: string, now: number): string;
+export function planGeometryReuse(current_json: string, state_json: string, now: number, sizes_json?: string | null): string;
+
+/**
+ * The default time a client waits for a job or an area run, seconds (D213).
+ */
+export function pollDefaultTimeoutSeconds(): number;
+
+/**
+ * The wait before the next status sweep after a sweep that failed (HTTP 429,
+ * 5xx, network), seconds. See `ir_geo::poll_schedule` (D213).
+ */
+export function pollErrorDelaySeconds(consecutive_errors: number, jitter_unit: number, retry_after_s?: number | null): number;
+
+/**
+ * The wait before the first status sweep of a wait, seconds (D213).
+ */
+export function pollFirstDelaySeconds(): number;
+
+/**
+ * The wait before the next status sweep after a sweep that answered,
+ * seconds. See `ir_geo::poll_schedule` (D213).
+ */
+export function pollIntervalSeconds(elapsed_s: number, sweep_requests: number): number;
 
 /**
  * `infrared_sdk.tiling.merger.project_polygon_to_meters` port. GeoJSON Polygon
@@ -1358,6 +1562,19 @@ export function rectUnionDecompose(clip: Float64Array, rectangles: Float64Array)
  * `ir_geo::rect_union` for the derivation.
  */
 export function rectUnionSlabToleranceDeg(rectangles: Float64Array): number;
+
+/**
+ * The fixed colour-scale range one registry `visualConfigurations` entry
+ * declares, for `legendRange(values, "fixed", min, max)`. Mirror of the
+ * Python wheel's `registry_fixed_range`.
+ *
+ * `configJson`: one already-resolved entry — the host owns the registry
+ * fetch and key resolution, the same contract as `renderGridRegistry`. A
+ * numeric `steps` list gives `[steps[0], steps[-1]]`; a string
+ * (categorical) or an absent/empty `steps` gives `undefined`. Throws on
+ * malformed JSON or a non-increasing numeric range.
+ */
+export function registryFixedRange(config_json: string): Float64Array | undefined;
 
 /**
  * Colormap a 2-D grid of f32 (row-major, NaN = no-data) to registry-coloured
@@ -1417,6 +1634,18 @@ export function scalarSiteToTileAffine(row: number, col: number, step_m: number,
 export function scalarUnproject(origin_lon: number, origin_lat: number, x: number, y: number): Float64Array;
 
 /**
+ * The total time allowed to send `byteLength` bytes of request body,
+ * seconds. See `ir_geo::send_budget`. A JavaScript byte length is a safe
+ * integer, so it is taken as `f64` and refused when it is not one.
+ */
+export function sendBudgetSeconds(byte_length: number): number;
+
+/**
+ * The longest time no body byte may move before a send stops, seconds.
+ */
+export function sendStallSeconds(): number;
+
+/**
  * Identity of the sensor LAYOUT — the set AND its order — for reusing a
  * prettify mask across analyses.
  *
@@ -1441,7 +1670,22 @@ export function scalarUnproject(origin_lon: number, origin_lat: number, x: numbe
  * Mixes in `surfgridVersion()`. Throws on a malformed hash, an unknown `mode`,
  * a non-finite float, or a `maxSensors` above 2**32-1.
  */
-export function sensorLayoutHash(entity_hashes: string[], mode: string, grid_size: number, offset: number, max_sensors: bigint, terrain_hash?: string | null, partial_cells?: boolean | null, min_coverage?: number | null): string;
+export function sensorLayoutHash(entity_hashes: string[], mode: string, grid_size: number, offset: number, max_sensors: bigint, terrain_hash?: string | null, partial_cells?: boolean | null, min_coverage?: number | null, mesh_cleaning?: string | null): string;
+
+/**
+ * Measures ONE colour-scale range pooled across several grids' finite cells
+ * (issue #390): every grid's finite cells are pooled and `mode` is applied
+ * once, so `"trimmed"` is the percentile of the POOLED data, never a union
+ * of per-grid percentiles. Mirror of the Python wheel's
+ * `shared_legend_range`; same `mode`/`fixedMin`/`fixedMax` rules as
+ * `legendRange`.
+ *
+ * `grids`: an array of `Float32Array` / `Float64Array` (they may be mixed).
+ * Each `Float32Array` is widened to f64 HERE, exactly, because the kernel's
+ * pooling entry point takes f64 only — marshalling, not a second copy of the
+ * rule. `undefined` when `grids` is empty or no cell anywhere is finite.
+ */
+export function sharedLegendRange(grids: any[], mode?: string | null, fixed_min?: number | null, fixed_max?: number | null): Float64Array | undefined;
 
 /**
  * Move non-owned buildings from `geometries` into `context-geometry`.
@@ -1460,6 +1704,13 @@ export function splitFacadeCoreContext(payload_json: string, inference_size_m: n
  * that some tile claimed each of them (D63).
  */
 export function splitFacadeCoreContextReport(payload_json: string, inference_size_m: number, core_x_m?: number | null, core_y_m?: number | null): string;
+
+/**
+ * The wait before the next same-key send of a keyed tile submit, seconds
+ * (D224). `retry_after_s` is `undefined` when the response had no
+ * `Retry-After`. See `ir_geo::area_retry::submit_resend_delay_seconds`.
+ */
+export function submitResendDelaySeconds(sends_done: number, jitter_unit: number, retry_after_s?: number | null): number;
 
 /**
  * The canonical defaults for the three optional synthesis knobs, so a TS caller
@@ -1787,9 +2038,12 @@ export interface InitOutput {
     readonly __wbg_griddocumentdecode_free: (a: number, b: number) => void;
     readonly __wbg_resultarchivedecode_free: (a: number, b: number) => void;
     readonly __wbg_site_free: (a: number, b: number) => void;
+    readonly __wbg_siteterrain_free: (a: number, b: number) => void;
     readonly __wbg_surfacearchive_free: (a: number, b: number) => void;
-    readonly __wbg_surfaceareamerger_free: (a: number, b: number) => void;
+    readonly analyticalFromGbxml: (a: number, b: number) => [number, number, number, number];
     readonly archetypeMeshes: () => [number, number, number, number];
+    readonly areaIdempotencyKey: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly areaRetryMaxAttempts: () => number;
     readonly areagridmerge_bounds: (a: number) => any;
     readonly areagridmerge_shape: (a: number) => any;
     readonly areagridmerge_values: (a: number) => any;
@@ -1798,6 +2052,7 @@ export interface InitOutput {
     readonly assignVegetationToTiles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly batchBuildings: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly bboxMeetsRows: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly binaryGeometryFields: () => any;
     readonly buildCatMap: (a: number, b: number) => [number, number, number, number];
     readonly buildingsAssignAndExtrude: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly buildingsAssignAndExtrudeBytes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
@@ -1808,6 +2063,9 @@ export interface InitOutput {
     readonly categoricalareadense_legend: (a: number) => any;
     readonly categoricalareadense_values: (a: number) => any;
     readonly checkMaxSensorsPerJob: (a: number) => [number, number];
+    readonly classifySubmitSend: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly cleanMesh: (a: any, b: any) => [number, number, number];
+    readonly cleanMeshes: (a: any, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number];
     readonly clipToPolygon: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly composeHash: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly composeTilePayloads: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
@@ -1815,24 +2073,33 @@ export interface InitOutput {
     readonly configHash: (a: number, b: number) => [number, number];
     readonly conformScene: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => [number, number, number, number];
     readonly coreVersion: () => [number, number];
-    readonly countSurfaces: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => [bigint, number, number];
+    readonly countSurfaces: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => [bigint, number, number];
+    readonly daylightFrameFromJson: (a: number, b: number) => [number, number, number, number];
+    readonly daylightJsonFromFrame: (a: number, b: number) => [number, number, number, number];
+    readonly daylightMerge: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly daylightMergeBinary: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly daylightPartBody: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly daylightParts: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly daylightSensorCounts: (a: number, b: number) => [number, number, number, number];
     readonly decodeBinaryResult: (a: any, b: bigint, c: number, d: number, e: bigint, f: number, g: bigint, h: bigint) => [number, number, number];
+    readonly decodeDaylightResult: (a: number, b: number) => [number, number, number];
     readonly decodeGridDocument: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly decodeGridResponse: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly decodeResultArchive: (a: number, b: number) => [number, number, number];
     readonly decodeSurfaceArchive: (a: number, b: number, c: bigint, d: number, e: bigint, f: bigint) => [number, number, number];
+    readonly decodeSurfaceArchives: (a: number, b: number, c: bigint, d: number, e: bigint, f: bigint) => [number, number];
     readonly decodeSurfaceIdentity: (a: number, b: number) => [number, number, number, number];
     readonly dedupMaterialFeatures: (a: number, b: number) => [number, number, number, number];
     readonly dedupTrees: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly dedupVegetationFeatures: (a: number, b: number) => [number, number, number, number];
     readonly defaultPrecedence: () => [number, number];
+    readonly defaultTransport: (a: number, b: number) => [number, number];
     readonly dropToGrade: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly encodeCategoricalGrid: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly encodeGeometryDocument: (a: number, b: number, c: any, d: any, e: number, f: bigint, g: number, h: number, i: bigint, j: number, k: bigint, l: bigint) => [number, number, number];
+    readonly encodeSurfaceArchive: (a: number, b: number) => [number, number, number, number];
     readonly entityHashGroundLayer: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly entityHashInstances: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly entityHashMesh: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly estimateCellsUpperBound: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number) => [bigint, number, number];
     readonly estimateSunContextLoss: (a: number, b: bigint, c: bigint, d: bigint, e: bigint, f: bigint, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => [number, number, number, number];
     readonly expandInstances: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly extrudeFootprintsToDotbim: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
@@ -1847,8 +2114,10 @@ export interface InitOutput {
     readonly generateTilesForPolygon: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly geojsonLayersToDotbim: (a: number, b: number) => [number, number, number, number];
     readonly geometryArtifact: (a: number, b: number, c: number, d: bigint, e: number, f: bigint, g: bigint) => [number, number, number];
+    readonly geometryDocumentJson: (a: number, b: number) => [number, number, number, number];
     readonly geometryGroupHash: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly geometryGroups: () => any;
+    readonly geometrySchemaVersion: () => number;
     readonly getTilingConfig: (a: number, b: number) => [number, number, number, number];
     readonly gridToPng: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => [number, number, number, number];
     readonly griddecode_data: (a: number) => any;
@@ -1869,10 +2138,14 @@ export interface InitOutput {
     readonly groundMaterialsLayerHash: (a: number, b: number) => [number, number, number, number];
     readonly inspectBinaryResult: (a: any, b: bigint, c: number, d: number, e: bigint, f: number, g: bigint, h: bigint) => [number, number, number];
     readonly instancesFromPoints: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly interiorArtifact: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: bigint, h: bigint) => [number, number, number];
+    readonly joinSurfaceJobs: (a: number, b: number, c: number, d: number, e: number, f: number, g: any) => [number, number, number];
     readonly landuseClassify: (a: number, b: number) => [number, number, number, number];
     readonly lawsonLabels: () => [number, number];
-    readonly maskHash: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number, number];
+    readonly legendRange: (a: any, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number];
+    readonly maskHash: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => [number, number, number, number];
     readonly materialRank: (a: number, b: number) => number;
+    readonly maxSensorsPerJob: () => number;
     readonly mergeAndCleanTileLayers: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly mergeAndCleanTileLayersBytes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly mergeAreaGridCompact: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
@@ -1902,13 +2175,19 @@ export interface InitOutput {
     readonly packedIndexCount: (a: number, b: number) => [number, number, number];
     readonly partitionFacadeCoreContext: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly partitionFacadeCoreContextF64: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
-    readonly planExactSurfaceBatches: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number, number];
-    readonly planExactSurfaceBatchesCapped: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => [number, number, number, number];
-    readonly planGeometryReuse: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+    readonly planAreaRetry: (a: number, b: number) => [number, number, number, number];
+    readonly planExactSurfaceBatches: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => [number, number, number, number];
+    readonly planExactSurfaceBatchesCapped: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => [number, number, number, number];
+    readonly planGeometryReuse: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+    readonly pollDefaultTimeoutSeconds: () => number;
+    readonly pollErrorDelaySeconds: (a: number, b: number, c: number, d: number) => number;
+    readonly pollFirstDelaySeconds: () => number;
+    readonly pollIntervalSeconds: (a: number, b: number) => number;
     readonly projectPolygonToMeters: (a: number, b: number) => [number, number, number, number];
     readonly recenterF32: (a: number, b: number) => [number, number];
     readonly rectUnionDecompose: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly rectUnionSlabToleranceDeg: (a: number, b: number) => [number, number, number];
+    readonly registryFixedRange: (a: number, b: number) => [number, number, number];
     readonly renderGridRegistry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly resultarchivedecode_data: (a: number) => any;
     readonly resultarchivedecode_document: (a: number) => any;
@@ -1926,35 +2205,34 @@ export interface InitOutput {
     readonly scalarReanchorF64: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly scalarSiteToTileAffine: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly scalarUnproject: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly sensorLayoutHash: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
+    readonly sendBudgetSeconds: (a: number) => [number, number, number];
+    readonly sendStallSeconds: () => number;
+    readonly sensorLayoutHash: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => [number, number, number, number];
+    readonly sharedLegendRange: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number];
     readonly site_allTileIds: (a: number) => [number, number, number, number];
     readonly site_artifacts: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: bigint, h: bigint) => [number, number, number];
     readonly site_bodies: (a: number, b: number, c: number) => [number, number, number];
     readonly site_checkTerrain: (a: number, b: number, c: number) => [number, number];
     readonly site_facadeBatches: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly site_facadeFrames: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: bigint, p: number, q: bigint, r: bigint) => [number, number, number];
+    readonly site_facadeScenes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: bigint, j: number, k: bigint, l: bigint) => [number, number, number];
     readonly site_identity: (a: number, b: number, c: number) => [number, number, number];
     readonly site_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number, d1: number, e1: number, f1: number, g1: number, h1: number, i1: number, j1: number, k1: number) => [number, number, number];
     readonly site_tileCount: (a: number) => number;
     readonly site_unowned: (a: number) => [number, number];
+    readonly site_withTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number, d1: number, e1: number, f1: number, g1: number, h1: number, i1: number, j1: number) => [number, number, number];
+    readonly siteterrain_groupHash: (a: number) => [number, number];
+    readonly siteterrain_new: (a: number, b: number) => [number, number, number];
     readonly splitFacadeCoreContext: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly splitFacadeCoreContextReport: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
-    readonly surfacearchive_cellAreaState: (a: number) => any;
-    readonly surfacearchive_cellTrisState: (a: number) => any;
+    readonly submitResendDelaySeconds: (a: number, b: number, c: number, d: number) => number;
+    readonly surfacearchive_error: (a: number) => [number, number];
     readonly surfacearchive_route: (a: number) => [number, number];
-    readonly surfacearchive_takeCellArea: (a: number) => [number, number, number];
-    readonly surfacearchive_takeFieldsJson: (a: number) => [number, number, number, number];
-    readonly surfacearchive_takeRootJson: (a: number) => [number, number, number, number];
-    readonly surfacearchive_valueOffsets: (a: number) => any;
-    readonly surfaceareamerger_finish: (a: number) => [number, number, number];
-    readonly surfaceareamerger_new: () => number;
-    readonly surfaceareamerger_pushArchive: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly surfgridDefaults: () => [number, number];
     readonly surfgridVersion: () => number;
-    readonly synthesizeSurfaces: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
-    readonly synthesizeSurfacesFromCapture: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
-    readonly synthesizeSurfacesFromCaptures: (a: any, b: any, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number) => [number, number];
-    readonly synthesizeSurfacesOnTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => [number, number, number];
+    readonly synthesizeSurfaces: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => [number, number, number];
+    readonly synthesizeSurfacesFromCapture: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => [number, number, number];
+    readonly synthesizeSurfacesOnTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => [number, number, number];
     readonly terrainTriangleCap: (a: number, b: number) => [number, number];
     readonly tileLocationApplies: (a: number, b: number) => number;
     readonly tileSwOffset: (a: number, b: number, c: number, d: number) => [number, number];

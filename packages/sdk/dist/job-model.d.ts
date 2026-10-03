@@ -53,6 +53,26 @@ export interface PreparedSubmission {
      * body itself. `boxTrees` is the live capability's answer for the model.
      */
     readonly artifact?: (boxTrees: boolean, limits: ArtifactLimits) => TileArtifact;
+    /**
+     * The exact JSON wire text of `body`, when the kernel wrote it (a
+     * daylight-factor part, `daylightPartBody`, D221), or the text this SDK
+     * already wrote once to plan the parts. The JSON route sends these bytes
+     * instead of writing `body` again; `body` stays for every reader that needs
+     * a value. A direct submission has none.
+     */
+    readonly json?: () => Uint8Array;
+    /**
+     * An interior binary part, already prepared (D228): the scene archive
+     * (shared with every other part of the same run) and this part's own
+     * control, both built by the kernel (`interiorArtifact`, `daylightPartBody`
+     * — `parts/interior-binary.ts`). Set only on a daylight-factor part the
+     * live capability routed to the binary transport; `submitPrepared` sends
+     * it with `resultFormat: "json"` instead of taking the outdoor route's
+     * `artifact`/`body` path. Absent on every other submission.
+     */
+    readonly interiorBinary?: PreparedBinary;
+    /** The result family an interior binary part asks for (D234); unset = `"json"`. */
+    readonly interiorResultFormat?: "irbf" | "json";
 }
 /** Attach the substitution record to a job the binary route just accepted.
  *

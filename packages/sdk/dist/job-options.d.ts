@@ -28,7 +28,7 @@ export interface DownloadResult {
 }
 export interface BinaryAcknowledgement {
     readonly inputFormat: "irbf";
-    readonly resultFormat: "irbf";
+    readonly resultFormat: "irbf" | "json";
     readonly wireVersion: 1;
     readonly artifactDigest: string;
     readonly contentDigest: string;
@@ -45,6 +45,7 @@ export interface DownloadResultsOptions {
 export interface SubmitOptions {
     readonly webhookUrl?: string;
     readonly webhookEvents?: readonly string[];
+    /** Unset: binary, or JSON for an analysis with no binary route (D196). Pass `"json"` for JSON. */
     readonly transport?: "json" | "binary";
     readonly signal?: AbortSignal;
 }

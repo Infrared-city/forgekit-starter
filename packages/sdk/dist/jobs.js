@@ -1,18 +1,21 @@
 import { jobFromResponse } from "./internal/job-response.js";
 export { jobFromResponse, parseJobStatus } from "./internal/job-response.js";
-import { Deadline, delay, requireTimeout } from "./internal/deadline.js";
+import { requireTimeout } from "./internal/deadline.js";
+import { waitForJob } from "./internal/wait-job.js";
+import { defaultTransport } from "./internal/transport-choice.js";
 import { resolveFetch } from "./internal/fetch.js";
 import { downloadPresigned } from "./internal/download.js";
-import { DOWNLOAD_RETRY_ATTEMPTS, isRetryableDownloadError, pauseBeforeRetry, } from "./internal/download-retry.js";
+import { pauseBeforeRetry, shouldRetryDownload, } from "./internal/download-retry.js";
 import { parseResultsLink } from "./internal/link.js";
 import { prepareSubmissionBody } from "./internal/submit-body.js";
 import { submitArchive } from "./internal/submission.js";
-import { jsonWireBytes } from "./internal/wire-json.js";
-import { GatewayTransport, TransportError } from "./internal/transport.js";
+import { preparedJsonBytes } from "./internal/prepared-json.js";
+import { GatewayTransport } from "./internal/transport.js";
 import { requireCore } from "./internal/core.js";
 import { tryGeometryReuse } from "./internal/geometry-reuse/controller.js";
 import { buildGeometryReuseOptions } from "./internal/geometry-reuse/options.js";
-import { capability, prepareBinary } from "./internal/binary-submission.js";
+import { prepareBinary } from "./internal/binary-submission.js";
+import { CapabilityCache } from "./internal/capability-cache.js";
 import { treeBoxCollisionLine, treeBoxLogLine, treeBoxOutOfTileLine } from "./internal/tree-boxes.js";
 import { consoleLogger } from "./logger.js";
 import { withBinaryAdmission } from "./internal/binary-admission.js";
@@ -21,16 +24,12 @@ import { BinaryRetention } from "./internal/binary-retention.js";
 import { fetchStatusBatch } from "./internal/status-batch.js";
 import { submitPreparedBinary } from "./internal/binary-submit-coordinator.js";
 import { parseResultArchive, } from "./results/router.js";
-import { JobAbortedError, JobFailedError, JobNotCompletedError, JobTimeoutError, } from "./job-errors.js";
+import { JobNotCompletedError, } from "./job-errors.js";
 import { JobStatus, requireJobId, withTreeBoxes, } from "./job-model.js";
 import { FacadeSynthesisStore } from "./area/facade-synthesis.js";
 export { JobStatus } from "./job-model.js";
 export { STATUS_BATCH_LIMIT } from "./internal/status-batch.js";
 export { JobAbortedError, JobFailedError, JobNotCompletedError, JobTimeoutError, } from "./job-errors.js";
-const DEFAULT_POLL_TIMEOUT_SECONDS = 300;
-const BACKOFF_BASE_MS = 2_000;
-const BACKOFF_FLOOR_MS = 500;
-const BACKOFF_CAP_SECONDS = 10;
 const BIG_PAYLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
 export class JobsService {
     gateway;
@@ -43,7 +42,7 @@ export class JobsService {
     bigPayloadThresholdBytes;
     geometryReuseEnabled;
     geometryReuseOptions;
-    capabilityPromise;
+    capabilities;
     /** `undefined` until the batched status route has been tried once. */
     batchedStatus;
     binaryPrepared = new BinaryRetention();
@@ -71,9 +70,11 @@ export class JobsService {
         this.pollIntervalMs = options.pollIntervalMs;
         if (this.pollIntervalMs !== undefined)
             requireTimeout(this.pollIntervalMs);
-        const backoffCapSeconds = options.backoffCapSeconds ?? BACKOFF_CAP_SECONDS;
-        requireTimeout(backoffCapSeconds * 1_000);
-        this.backoffCapMs = backoffCapSeconds * 1_000;
+        // Legacy option: it now caps the healthy poll interval only (D213).
+        const backoffCapSeconds = options.backoffCapSeconds;
+        if (backoffCapSeconds !== undefined)
+            requireTimeout(backoffCapSeconds * 1_000);
+        this.backoffCapMs = backoffCapSeconds === undefined ? undefined : backoffCapSeconds * 1_000;
         this.downloadTimeoutMs = options.downloadTimeoutMs ?? 600_000;
         requireTimeout(this.downloadTimeoutMs);
         this.requestTimeoutMs = options.timeoutMs ?? 180_000;
@@ -87,6 +88,7 @@ export class JobsService {
             throw new TypeError("bigPayloadThresholdBytes must be a non-negative safe integer");
         }
         this.gateway = new GatewayTransport(options);
+        this.capabilities = new CapabilityCache(this.gateway);
         this.geometryReuseEnabled = options.geometryReuseEnabled ?? true;
         this.geometryReuseOptions = buildGeometryReuseOptions(options, this.fetch, this.bigPayloadThresholdBytes, this.requestTimeoutMs);
         this.uploadGateway = new GatewayTransport({
@@ -103,7 +105,8 @@ export class JobsService {
         return this.submitPrepared(prepared, options.signal === undefined ? {} : { signal: options.signal });
     }
     prepareSubmission(analysisType, payload, options = {}) {
-        const transport = options.transport ?? "json";
+        // D196: binary unless the caller asks for JSON or the analysis has no binary route.
+        const transport = options.transport ?? defaultTransport(analysisType);
         if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
             throw new TypeError("unsupported option binaryResults; use transport instead");
         }
@@ -115,6 +118,26 @@ export class JobsService {
             body: prepareSubmissionBody(analysisType, payload, options) };
     }
     async submitPrepared(prepared, options = {}) {
+        if (prepared.transport === "binary" && prepared.interiorBinary !== undefined) {
+            // An interior binary part (D228, `parts/interior-binary.ts`): the
+            // scene and this part's control are already prepared, so this skips
+            // `prepareBinaryValue`/`prepareBinary` (the outdoor route's own
+            // geometry-group split) entirely and asks for the result family the
+            // run chose (JSON, or the binary daylight result, D234).
+            const binary = prepared.interiorBinary;
+            return submitPreparedBinary({ prepared, parseJob: jobFromResponse,
+                prepare: async () => binary,
+                releasePrepared: () => undefined,
+                gateway: this.gateway, uploadGateway: this.uploadGateway, auth: this.auth,
+                fetch: this.fetch, timeoutMs: this.requestTimeoutMs,
+                urlCache: this.geometryUrls, reuseEnabled: this.binaryUrlReuse,
+                resultFormat: prepared.interiorResultFormat ?? "json",
+                ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
+                ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
+                ...(options.uploads === undefined ? {} : { uploads: options.uploads }),
+            });
+        }
         if (prepared.transport === "binary") {
             // The substitution record lives on the PREPARED BINARY, because that is
             // what `prepareBinary` builds after the capability document decided
@@ -139,24 +162,16 @@ export class JobsService {
                 urlCache: this.geometryUrls, reuseEnabled: this.binaryUrlReuse,
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
                 ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
+                ...(options.uploads === undefined ? {} : { uploads: options.uploads }),
+                ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
             });
         }
         if (this.geometryReuseEnabled) {
-            const reused = await tryGeometryReuse(prepared, this.geometryReuseOptions, options.signal, options.beforeDispatch);
+            const reused = await tryGeometryReuse(prepared, this.geometryReuseOptions, options.signal, options.beforeDispatch, options.idempotencyKey);
             if (reused !== undefined)
                 return reused;
         }
-        let json;
-        try {
-            // `JSON.stringify` bytes; area groups come from the arena (`wire-json.ts`).
-            const bytes = jsonWireBytes(prepared.body, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value) : value);
-            if (bytes === undefined)
-                throw new TypeError("request has no JSON wire form");
-            json = bytes;
-        }
-        catch {
-            throw new TransportError("job request is not JSON serializable", "pre-dispatch", "validation", "POST");
-        }
+        const json = preparedJsonBytes(prepared);
         const archive = requireCore().zipPayloadJson(json);
         return submitArchive({
             endpointPath: `/async/${encodeURIComponent(prepared.analysisType)}`,
@@ -167,6 +182,7 @@ export class JobsService {
             thresholdBytes: this.bigPayloadThresholdBytes,
             timeoutMs: this.requestTimeoutMs,
             parseAccepted: jobFromResponse,
+            ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
             ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
             ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
@@ -192,12 +208,18 @@ export class JobsService {
     releasePreflight(prepared) {
         this.binaryPrepared.release(prepared);
     }
+    /**
+     * The live `/binary/v1/capabilities` document, cached for
+     * `CAPABILITY_TTL_MS` (`internal/capability-cache.ts`). A caller that only
+     * needs to know whether a model's binary route is live — the daylight-
+     * factor parts auto-routing (D228), among others — reads this instead of
+     * guessing from a submission outcome.
+     */
+    async binaryCapability(signal) {
+        return this.capabilities.get(signal);
+    }
     async prepareBinaryValue(prepared, signal) {
-        this.capabilityPromise ??= capability(this.gateway, signal).catch((error) => {
-            this.capabilityPromise = undefined;
-            throw error;
-        });
-        const binary = await prepareBinary(prepared, await this.capabilityPromise);
+        const binary = await prepareBinary(prepared, await this.capabilities.get(signal));
         // One line per substitution, on the first preparation of this body: a
         // re-encode for a retry describes the same boxes.
         if (binary.treeBoxes !== undefined && !this.loggedTreeBoxes.has(prepared)) {
@@ -237,7 +259,7 @@ export class JobsService {
         if (this.batchedStatus === false) {
             return { statuses: new Map(), unanswered: [...ids], batched: false, lacking: true };
         }
-        const sweep = await fetchStatusBatch(this.gateway, ids, options);
+        const sweep = await fetchStatusBatch(this.gateway, ids, { ...options, routeProven: this.batchedStatus === true });
         // Only a chunk that actually answered settles the question. A sweep that
         // merely failed leaves the verdict where it found it.
         if (sweep.lacking)
@@ -246,54 +268,17 @@ export class JobsService {
             this.batchedStatus = true;
         return sweep;
     }
-    async notify(deadline, callback, job, attempt, elapsed, nextDelay) {
-        if (callback === undefined)
-            return undefined;
-        try {
-            return await deadline.wait(() => Promise.resolve(callback(job, attempt, elapsed, nextDelay)));
-        }
-        catch (error) {
-            if (deadline.reason() !== undefined)
-                throw error;
-            // Preserve the legacy callback contract: observer failures do not stop polling.
-            return undefined;
-        }
-    }
+    /** Poll until the job is terminal, on the SDK's one poll engine
+     *  (`internal/wait-job.ts`, D213). */
     async waitForCompletion(jobId, options = {}) {
-        const id = requireJobId(jobId);
-        const timeoutSeconds = options.timeout ?? DEFAULT_POLL_TIMEOUT_SECONDS;
-        requireTimeout(timeoutSeconds * 1_000);
-        const deadline = new Deadline(options.signal, timeoutSeconds * 1_000);
-        const startedAt = performance.now();
-        let attempt = 0;
-        try {
-            while (true) {
-                const job = await deadline.wait(() => this.getStatusWithSignal(id, deadline.controller.signal));
-                const terminal = job.status === JobStatus.Succeeded || job.status === JobStatus.Failed;
-                const elapsed = (performance.now() - startedAt) / 1_000;
-                const delayMs = this.pollIntervalMs ?? Math.max(BACKOFF_FLOOR_MS, Math.random() * Math.min(this.backoffCapMs, BACKOFF_BASE_MS * 2 ** attempt));
-                const nextDelay = terminal ? 0 : delayMs / 1_000;
-                const keepGoing = await this.notify(deadline, options.onPoll, job, attempt, elapsed, nextDelay);
-                if (keepGoing === false)
-                    return job;
-                if (job.status === JobStatus.Succeeded)
-                    return job;
-                if (job.status === JobStatus.Failed)
-                    throw new JobFailedError(id, job.error ?? "");
-                attempt += 1;
-                await deadline.wait(() => delay(delayMs, deadline.controller.signal));
-            }
-        }
-        catch (error) {
-            const stopped = deadline.reason();
-            if (stopped !== undefined) {
-                throw stopped === "timeout" ? new JobTimeoutError(id) : new JobAbortedError(id);
-            }
-            throw error;
-        }
-        finally {
-            deadline.close();
-        }
+        return waitForJob(requireJobId(jobId), options, {
+            // One job: `GET /async/jobs/{id}`. A batch of one saves nothing, and a
+            // gateway without the batched route answers `?ids=` with the whole
+            // account listing (~70 KB, ~0.9 s).
+            status: (id, signal) => this.getStatusWithSignal(id, signal),
+            fixedIntervalS: this.pollIntervalMs === undefined ? undefined : this.pollIntervalMs / 1_000,
+            maxIntervalS: this.backoffCapMs === undefined ? undefined : this.backoffCapMs / 1_000,
+        });
     }
     async resultsUrl(jobId, signal) {
         const response = await this.gateway.requestBytesWithHeaders(`/async/jobs/${encodeURIComponent(jobId)}/results`, signal === undefined ? {} : { signal });
@@ -315,18 +300,19 @@ export class JobsService {
         if (job.status !== JobStatus.Succeeded)
             throw new JobNotCompletedError(id, job.status);
         // Every attempt mints a fresh presign: the link is cheap, idempotent, and
-        // an expired one is itself one of the failures worth retrying.
-        for (let attempt = 0;; attempt += 1) {
-            const presignedUrl = await this.resultsUrl(id, options.signal);
+        // an expired one is itself one of the failures worth retrying. The kernel
+        // decides whether to go on (D224).
+        for (let sendsDone = 1;; sendsDone += 1) {
             try {
+                const presignedUrl = await this.resultsUrl(id, options.signal);
                 const downloaded = await this.download(presignedUrl, options.signal);
                 return { ...downloaded, jobId: id, presignedUrl };
             }
             catch (error) {
-                if (attempt >= DOWNLOAD_RETRY_ATTEMPTS || !isRetryableDownloadError(error))
+                if (!shouldRetryDownload(error, sendsDone))
                     throw error;
+                await pauseBeforeRetry(sendsDone, error, options.signal);
             }
-            await pauseBeforeRetry(options.signal);
         }
     }
 }

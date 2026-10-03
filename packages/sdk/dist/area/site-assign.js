@@ -1,4 +1,5 @@
 import { kernelSite, release } from "./site-kernel.js";
+import { mapFacadeScenes } from "./site-facade-scene.js";
 /** The arena's slot order: the five wire groups a tile body can carry. */
 export const ARENA_GROUPS = [
     "geometries", "context-geometry", "ground-geometry", "vegetation", "ground-materials",
@@ -33,8 +34,7 @@ export class SiteAssignment {
     /**
      * Keep the kernel site from now on, reading it once more when a JSON run
      * built this answer without it. A facade run asks the kept site for its
-     * batches and its selected bodies (`area/site-facade.ts`), as the Python
-     * host does.
+     * batches and its selected bodies (`area/site-facade.ts`).
      */
     keepKernel() {
         if (this.inner !== undefined)
@@ -61,17 +61,19 @@ export class SiteAssignment {
      * Read the site once: the kernel prepares every layer in one crossing and
      * answers the membership and the bodies from them.
      *
-     * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts
-     * it will encode at submit time, and a FACADE run for its batches and
-     * bodies (`area/site-facade.ts`), freed with this object. A grid JSON run
-     * frees it before this returns — its bodies are JavaScript-owned copies
-     * already — so a run that never encodes holds no wasm memory, as before
-     * WS2; a later binary or facade run on the same prepared site reads the
-     * site again. A realm without
-     * `FinalizationRegistry` always takes that second path.
+     * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it
+     * will encode at submit time, and a FACADE run for its batches and bodies
+     * (`area/site-facade.ts`), freed with this object. A grid JSON run frees it
+     * before this returns — a run that never encodes holds no wasm memory. A
+     * realm without `FinalizationRegistry` always frees it here.
      */
-    static read(groups, tiles, polygon, analysisType, terrainContextMarginM, keepKernelSite = false, texts) {
-        const inputs = { groups, tiles, polygon, analysisType, terrainContextMarginM };
+    static read(groups, tiles, polygon, analysisType, terrainContextMarginM, keepKernelSite = false, texts, terrain) {
+        // The plan's own terrain handle (D200) stays with the inputs, so a later
+        // re-read of this site reads the same terrain.
+        const inputs = {
+            groups, tiles, polygon, analysisType, terrainContextMarginM,
+            ...(terrain === undefined ? {} : { terrain }),
+        };
         // `texts` is used for this read only; `inputs`, kept for a later re-read,
         // never holds it.
         const inner = kernelSite(inputs, texts);
@@ -123,10 +125,9 @@ export class SiteAssignment {
     }
     #identity;
     /**
-     * One tile's artifact (D101). The first ask under a given capability answer
-     * — whether the trees are boxed, and the four limits — encodes every tile in
-     * one crossing from the kept kernel site; the archives are kept, so the
-     * tiles of a family's repeat run share them. Never a facade batch's (D156).
+     * One tile's artifact (D101): the first ask under a capability answer
+     * encodes every tile in one crossing and keeps the archives. Never a
+     * facade batch's (D156).
      */
     tileArtifact(index, boxTrees, limits) {
         const key = [boxTrees, limits.maxGeometryBytes, limits.maxMetadataBytes,
@@ -143,10 +144,9 @@ export class SiteAssignment {
     }
     /**
      * The parts of every facade batch of tile `index`, from ONE kernel call
-     * that builds the tile once (`Site.facadeFrames`, WP3). The artifact is the
-     * SAME kernel selection the Python host uploads (D156): the batch's targets
-     * in `geometries`, the rest of the tile in `context-geometry`. Nothing is
-     * kept here — `area/site-facade.ts` hands each part out once.
+     * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
+     * in `geometries`, the rest of the tile in `context-geometry` (D156).
+     * Nothing is kept here — `area/site-facade.ts` hands each part out once.
      */
     facadeFrames(index, batches, parts) {
         const limits = parts.artifact?.limits;
@@ -169,6 +169,15 @@ export class SiteAssignment {
                 }),
             };
         });
+    }
+    /**
+     * One tile's facade scenes (#602): one shared frame for every batch of
+     * `batches`, and each batch's job as a range into it, or its own frame.
+     * `site-facade-scene.ts` shapes the kernel's raw answer.
+     */
+    facadeScenes(index, batches, boxTrees, limits) {
+        const raw = this.withKernel((inner) => inner.facadeScenes(Uint32Array.from(batches, () => index), Uint32Array.from(batches, (ids) => ids.length), batches.flatMap((ids) => [...ids]), boxTrees, BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances)));
+        return mapFacadeScenes(raw);
     }
     encode(boxTrees, limits) {
         const encoded = this.withKernel((inner) => inner.artifacts(0, this.tiles.length, boxTrees, BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances)));

@@ -1,3 +1,4 @@
+import type { KernelTerrain } from "./site-terrain.js";
 import type { Slice } from "./cooperative.js";
 import type { RunAreaOptions } from "./run-options.js";
 import type { SiteAnswer } from "./site-assign.js";
@@ -82,7 +83,7 @@ export type SiteTexts = Map<object, string>;
  */
 export declare function preparedSiteKey(inputs: SiteInputs, texts?: SiteTexts, legacy?: boolean): Promise<string | undefined>;
 /** The site stage of `planAreaSubmission`: layers, compose, checks. */
-export declare function buildPreparedSite(inputs: SiteInputs, analysisType: string, tiles: readonly IndexedTile[], slice: Slice, texts?: SiteTexts): Promise<PreparedSite>;
+export declare function buildPreparedSite(inputs: SiteInputs, analysisType: string, tiles: readonly IndexedTile[], slice: Slice, texts?: SiteTexts, terrain?: KernelTerrain): Promise<PreparedSite>;
 /** Bounded, realm-local, single-flight. */
 export declare class PreparedSiteCache {
     private readonly maxSites;

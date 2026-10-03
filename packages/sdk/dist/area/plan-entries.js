@@ -1,5 +1,7 @@
 import { facadeBatchesForTile, facadeTileBase, planFacadeRecords, } from "./site-facade.js";
 import { requireCore } from "../internal/core.js";
+import { areaTransport } from "../internal/transport-choice.js";
+import { areaIdempotencyKey } from "./retry-plan.js";
 /**
  * The per-tile stage of `planAreaSubmission`: one composed tile in, the
  * bodies that tile will submit out.
@@ -86,7 +88,7 @@ export async function buildEntries(tiles, input, slice) {
             if (input.retry !== undefined && !input.retry.has(batch.key))
                 continue;
             const prepared = service.prepareSubmission(analysisType, batch.payload, {
-                ...(options.transport === undefined ? {} : { transport: options.transport }),
+                transport: areaTransport(options, analysisType),
                 ...(options.webhookUrl === undefined ? {} : { webhookUrl: options.webhookUrl }),
                 ...(options.webhookEvents === undefined ? {} : { webhookEvents: options.webhookEvents }),
             });
@@ -94,6 +96,7 @@ export async function buildEntries(tiles, input, slice) {
                 key: batch.key,
                 row: tile.row,
                 col: tile.col,
+                idempotencyKey: areaIdempotencyKey(input.runId, batch.key, input.attemptFor(batch.key)),
                 prepared: {
                     ...prepared,
                     reuseScope: input.reuseScope(batch.key),

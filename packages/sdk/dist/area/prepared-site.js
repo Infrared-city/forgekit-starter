@@ -4,6 +4,7 @@ import { spliceJsonBytes } from "../internal/wire-json.js";
 import { dropSiteToGrade } from "../to-grade.js";
 import { composeTiles, geometryGroups, GROUP_KEYS, rejectFullyDroppedTargets } from "./plan-layers.js";
 import { acquiredBuildings } from "./reanchor.js";
+import { areaTransport } from "../internal/transport-choice.js";
 /**
  * How many sites the realm holds. Measured on the 3.5 km, 49-tile Hong Kong
  * fixture: a family's site is 45–105 MB of heap (wind, solar, thermal), so
@@ -148,7 +149,7 @@ export async function preparedSiteKey(inputs, texts, legacy = false) {
     return parts.join("\n");
 }
 /** The site stage of `planAreaSubmission`: layers, compose, checks. */
-export async function buildPreparedSite(inputs, analysisType, tiles, slice, texts) {
+export async function buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain) {
     const { payload, options, polygon } = inputs;
     // D91: the wind family's datum, applied before the compose cuts the site
     // into tiles, so no tile ever runs the pass.
@@ -158,8 +159,10 @@ export async function buildPreparedSite(inputs, analysisType, tiles, slice, text
         // A binary run encodes artifacts from the kernel site (WS2, D136); a
         // facade run plans its batches and writes its bodies from it
         // (`area/site-facade.ts`).
-        keepKernelSite: options.transport === "binary" || payload["analysis-surfaces"] != null,
+        keepKernelSite: areaTransport(options, analysisType) === "binary"
+            || payload["analysis-surfaces"] != null,
         ...(texts === undefined ? {} : { texts }),
+        ...(terrain === undefined ? {} : { terrain }),
     }, slice);
     rejectFullyDroppedTargets(groups, site);
     return { composed, answers: site };

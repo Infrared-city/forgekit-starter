@@ -9,7 +9,7 @@ import type { AreaResult, AreaSchedule } from "../area/schedule-types.js";
 import type { Polygon } from "../area/types.js";
 import type { AreaBuildings, BuildingsConfig } from "../buildings.js";
 import type { AreaGroundMaterials, GroundMaterialsService } from "../ground-materials-service.js";
-import type { SurfaceAnalysisResponse } from "../results/surface-analysis.js";
+import type { SurfaceColumns } from "../results/surface-columns.js";
 import type { AreaVegetation, VegetationService } from "../vegetation.js";
 import { type WorkerClientConfig } from "./protocol.js";
 /** A `Worker`, or any port with the same members (tests). */
@@ -54,7 +54,7 @@ export type WorkerBuildingsOptions = BuildingsConfig;
 export interface WorkerClient {
     runArea(input: RunAreaInput, polygon: Polygon, options?: WorkerRunAreaOptions): Promise<AreaSchedule>;
     mergeAreaJobs(schedule: AreaSchedule, options?: WorkerMergeOptions): Promise<AreaResult>;
-    mergeSurfaceAreaJobs(schedule: AreaSchedule, options?: Pick<WorkerMergeOptions, "maxWorkers" | "signal">): Promise<SurfaceAnalysisResponse>;
+    mergeSurfaceAreaJobs(schedule: AreaSchedule, options?: Pick<WorkerMergeOptions, "maxWorkers" | "signal">): Promise<SurfaceColumns>;
     readonly vegetation: {
         getArea(polygon: Polygon, options?: WorkerVegetationOptions): Promise<AreaVegetation>;
     };

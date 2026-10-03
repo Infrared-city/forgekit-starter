@@ -2,7 +2,7 @@
 // Analysis: direct-sun-hours with `analysisSurfaces: 'all'`. The sensors
 // sit on the building walls and roofs, not on the ground. Billing is per building batch
 // (use previewAreaBatches, not previewArea, to price it).
-import type { SurfaceAnalysisResponse } from '@infrared-city/infrared-sdk-ts'
+import type { SurfaceColumns } from '@infrared-city/infrared-sdk-ts'
 import { useMemo, useState } from 'react'
 import { FacadeScene } from '../components/FacadeScene'
 import { Legend } from '../components/Legend'
@@ -10,6 +10,7 @@ import { MapView } from '../components/MapView'
 import { PlacePicker } from '../components/PlacePicker'
 import { type LatLon, squareAround } from '../lib/geo'
 import { errorText, getClient } from '../lib/infrared'
+import { isSurfaceColumns } from '../lib/surfaces'
 
 const SCALE = { min: 0, max: 11, unit: 'sun hours on 21 June, 8-18 h' }
 
@@ -18,7 +19,7 @@ export function FacadeView() {
   const polygon = useMemo(() => squareAround(center, 512), [center])
   const [status, setStatus] = useState('Pick a place, check the cost, then run.')
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<SurfaceAnalysisResponse | null>(null)
+  const [result, setResult] = useState<SurfaceColumns | null>(null)
 
   const input = useMemo(
     () => ({
@@ -65,9 +66,9 @@ export function FacadeView() {
         vegetation,
         onProgress: (s) => setStatus(`Running: ${s.completedCount} of ${s.totalCount} job(s) done`),
       })
-      if (!('surfaces' in r)) throw new Error('Expected a facade (surface) result')
+      if (!isSurfaceColumns(r)) throw new Error('Expected a facade (surface) result')
       setResult(r)
-      setStatus(`Done: ${Object.keys(r.surfaces).length} surfaces, ${r.sensorCount} sensors.`)
+      setStatus(`Done: ${r.surfaceCount} surfaces, ${r.sensorCount} sensors.`)
     })
 
   return (

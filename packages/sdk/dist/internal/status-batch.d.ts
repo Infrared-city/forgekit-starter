@@ -33,6 +33,13 @@ export interface StatusSweep {
      * says nothing about whether the route exists, and must not condemn it.
      */
     readonly lacking: boolean;
+    /** Ids of chunks deferred to the next sweep (D213): the server answered
+     * 429 or a 5xx, or the route is proven and the request failed at the
+     * network level. They are NOT in `unanswered` (no per-job GET in the same
+     * sweep), and the poll engine backs off. */
+    readonly failedIds?: readonly string[];
+    /** The longest `Retry-After` those failures carried, seconds. */
+    readonly retryAfterS?: number;
 }
 /**
  * Ask for many job statuses at once.
@@ -44,4 +51,5 @@ export interface StatusSweep {
 export declare function fetchStatusBatch(gateway: GatewayTransport, jobIds: readonly string[], options?: {
     readonly signal?: AbortSignal;
     readonly maxWorkers?: number;
+    readonly routeProven?: boolean;
 }): Promise<StatusSweep>;

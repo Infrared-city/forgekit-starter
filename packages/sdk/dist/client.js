@@ -3,8 +3,9 @@ import { rejectRemovedOption } from "./internal/service.js";
 import { trimTrailingSlashes } from "./internal/url-trim.js";
 import { JobsService, } from "./jobs.js";
 import { prepareAnalysisPayload } from "./area/payload.js";
-import { checkAreaState as pollAreaState, lastPerJobRequests } from "./area/poll.js";
-import { areaPollDelayS, openJobs, POLL_BATCHED_FAST_MAX_JOBS } from "./area/poll-schedule.js";
+import { checkAreaState as pollAreaState } from "./area/poll.js";
+import { runAreaAndWaitRounds } from "./area/run-and-wait-retry.js";
+import { mergePartsValue, previewParts as previewPartsImpl, runAndWaitParts, runParts as runPartsImpl, } from "./parts/run.js";
 import { runArea as submitArea } from "./area/submission.js";
 import { previewAreaBatches as previewAreaBatchesImpl } from "./area/preview.js";
 import { mergeAreaJobs as mergeGridAreaJobs, mergeSurfaceAreaJobs as mergeSurfaceJobs, } from "./area/merge.js";
@@ -26,22 +27,6 @@ export class AreaTimeoutError extends Error {
 }
 const DEFAULT_BASE_URL = "https://api.infrared.city/v2";
 const DEFAULT_AREA_TIMEOUT_S = 3_600;
-function abortableSleep(milliseconds, signal) {
-    if (signal?.aborted)
-        return Promise.reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-    return new Promise((resolve, reject) => {
-        const finish = () => {
-            signal?.removeEventListener("abort", abort);
-            resolve();
-        };
-        const timer = setTimeout(finish, milliseconds);
-        const abort = () => {
-            clearTimeout(timer);
-            reject(signal?.reason ?? new DOMException("aborted", "AbortError"));
-        };
-        signal?.addEventListener("abort", abort, { once: true });
-    });
-}
 function envValue(env, name) {
     if (env?.[name] !== undefined)
         return env[name];
@@ -147,16 +132,35 @@ export class InfraredClient {
         const payload = prepareAnalysisPayload(input);
         return this.analyses.execute(payload, options);
     }
-    async runAndWait(input, options = {}) {
-        const job = await this.run(input, options);
-        const completed = await this.jobs.waitForCompletion(job.jobId, options);
-        const download = await this.jobs.downloadResults(completed.jobId, {
-            job: completed,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-        });
-        return decompressResultValue(this.jobs, download.content);
+    /**
+     * Submit, wait and return the decoded result. A `daylight-factor` request
+     * whose floors the kernel packs into more than one part is sent as parts,
+     * in parallel, and joined into the result the single request gives, byte
+     * for byte (D221); `maxParts: 1` sends one job. Any other request, and a
+     * request of one part, is one job, sent as `run` sends it. A
+     * `daylight-factor` result is a `DaylightFactorResult` by default, or the
+     * JSON value with `resultFormat: "json"` (D234).
+     */
+    runAndWait(input, options = {}) {
+        return runAndWaitParts(this.jobs, this.logger, input, options);
     }
-    runArea(input, polygon, options = {}) {
+    /** Submit a request as its kernel parts (D221); returns the durable schedule. */
+    runParts(input, options = {}) {
+        return runPartsImpl(this.jobs, this.logger, input, options);
+    }
+    /** Poll every open part once. */
+    checkPartsState(schedule, options = {}) {
+        return pollAreaState(this.jobs, schedule, options);
+    }
+    /** Download and join a finished parts run; throws `AnalysisPartsError` naming a failed part. */
+    mergeParts(schedule, options = {}) {
+        return mergePartsValue(this.jobs, this.logger, schedule, options);
+    }
+    /** The parts, sensors and tokens a `runAndWait` of `input` would bill; sends nothing. */
+    previewParts(input, options = {}) {
+        return previewPartsImpl(this.jobs, this.logger, input, options);
+    }
+    async runArea(input, polygon, options = {}) {
         return submitArea(this.jobs, input, polygon, options);
     }
     checkAreaState(schedule, options = {}) {
@@ -174,34 +178,15 @@ export class InfraredClient {
         if (typeof areaTimeout !== "number" || !Number.isFinite(areaTimeout) || areaTimeout <= 0) {
             throw new TypeError("areaTimeout must be a positive finite number");
         }
-        const schedule = await this.runArea(input, polygon, options);
-        const started = performance.now();
-        const deadline = started + areaTimeout * 1_000;
-        let attempt = 0;
-        while (true) {
-            const state = await this.checkAreaState(schedule, {
-                ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-                ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
-            });
-            if (state.isComplete)
-                break;
-            const remainingS = (deadline - performance.now()) / 1_000;
-            if (remainingS <= 0) {
-                throw new AreaTimeoutError(`Area analysis timed out after ${areaTimeout}s: ` +
-                    `${state.completedCount}/${state.totalCount} completed, ${state.failedCount} failed, ` +
-                    `${state.runningCount} running`, state);
-            }
-            // Which schedule applies is decided by what the LAST sweep cost, not
-            // by configuration: the batched route is discovered at runtime and a
-            // gateway that lacks it never reports supporting it.
-            const elapsedS = (performance.now() - started) / 1_000;
-            const delayS = Math.min(remainingS, areaPollDelayS(attempt, this.jobs.batchedStatusSupported, elapsedS, 
-            // A sweep that also asked per job is not a one-request sweep.
-            openJobs(state) + (lastPerJobRequests(schedule) > 0 ? POLL_BATCHED_FAST_MAX_JOBS : 0)));
-            await abortableSleep(delayS * 1_000, options.signal);
-            attempt += 1;
-        }
+        const schedule0 = await this.runArea(input, polygon, options);
+        // D224: waits for completion, then up to `retries` more rounds (default
+        // 1) when something is left to resend; see `area/run-and-wait-retry.ts`.
+        const schedule = await runAreaAndWaitRounds(this.jobs, (i, p, o) => this.runArea(i, p, o), (s, o) => this.checkAreaState(s, o), input, polygon, {
+            ...options, areaTimeout,
+            onTimeout: (last) => new AreaTimeoutError(`Area analysis timed out after ${areaTimeout}s: ` +
+                `${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed, ` +
+                `${last.runningCount} running`, last),
+        }, schedule0);
         if (schedule.surfaceFields === true) {
             return this.mergeSurfaceAreaJobs(schedule, {
                 ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),

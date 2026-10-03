@@ -2,18 +2,20 @@
  * The strict surface union of an area run. Split out of `merge.ts` for the
  * 400-line cap.
  *
- * Each download is decoded by the kernel right away (`merge-surface-decode.ts`,
- * WP4). The pushes then run in schedule order: the kernel keeps its merge
- * order, and a duplicate is reported for the same job as before.
+ * Each download is decoded by the kernel as it arrives
+ * (`merge-surface-decode.ts`), so the decode overlaps the network. Then ONE
+ * kernel call joins the run (`joinSurfaceJobs`, D197): the triangle checks
+ * and the synthesis from the captures this client kept, the union in
+ * schedule order, and the columns this function returns (D198). This host
+ * builds no object per surface and no array per cell.
  */
 import { consoleLogger } from "../logger.js";
-import { requireCore } from "../internal/core.js";
-import { mergeViewFromColumns, surfaceAnalysisFromMergeView, } from "../results/surface-analysis.js";
+import { coreThreads, requireCore } from "../internal/core.js";
+import { emptySurfaceColumns, surfaceColumnsFromJoin, } from "../results/surface-columns.js";
 import { checkAreaState, revivePolledOut } from "./poll.js";
 import { parallel, throwable, workerCount } from "./merge-common.js";
-import { decodeSurfaceJob, synthesisView } from "./merge-surface-decode.js";
-import { synthesizeSurfaceTriangles, withCellTrisFallback, } from "./facade-synthesis.js";
-/** Poll once, then strictly download and union all surface jobs. */
+import { checkSurfaceBatch, decodeSurfaceChunk, decodeSurfaceHandle, } from "./merge-surface-decode.js";
+/** Poll once, then strictly download and join all surface jobs. */
 export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) {
     if (schedule.surfaceFields !== true)
         throw new Error("Surface merge requires a surface schedule");
@@ -42,9 +44,8 @@ export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) 
     if (missing.length > 0) {
         throw new Error(`Cannot merge surface results with missing submissions: ${JSON.stringify(missing.sort())}`);
     }
-    if (schedule.jobs.size === 0) {
-        return { surfaces: {}, aggregates: {}, minLegend: 0, maxLegend: 0, sensorCount: 0 };
-    }
+    if (schedule.jobs.size === 0)
+        return emptySurfaceColumns();
     const incomplete = [...schedule.jobs.values()].filter((job) => job.status !== "completed" || !job.jobId);
     if (incomplete.length > 0) {
         throw new Error(`Cannot merge surface results: jobs not succeeded: ${JSON.stringify(incomplete.map((job) => job.jobId ?? job.tileId))}`);
@@ -52,6 +53,14 @@ export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) 
     const scheduled = [...schedule.jobs.entries()];
     const decoded = Array(scheduled.length);
     const errors = Array(scheduled.length);
+    // The serial core decodes each download as it arrives, overlapping the
+    // network. The threaded core (D205) decodes them in calls of
+    // `2 x threads` on its pool, also as they arrive: at most one call's worth
+    // of downloaded bytes waits in this process.
+    const batch = coreThreads() > 1;
+    const contents = Array(batch ? scheduled.length : 0);
+    const waiting = [];
+    const decodeWaiting = () => decodeSurfaceChunk(waiting.splice(0), contents, decoded);
     try {
         await parallel(scheduled.map((entry, index) => ({ entry, index })), workerCount(options.maxWorkers), async ({ entry: [entryId, job], index }) => {
             try {
@@ -59,7 +68,14 @@ export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) 
                     ...(job.lastJobSnapshot === undefined ? {} : { job: job.lastJobSnapshot }),
                     ...(options.signal === undefined ? {} : { signal: options.signal }),
                 });
-                const value = decodeSurfaceJob(result.content);
+                if (batch) {
+                    contents[index] = result.content;
+                    waiting.push(index);
+                    if (waiting.length >= 2 * coreThreads())
+                        decodeWaiting();
+                    return;
+                }
+                const value = decodeSurfaceHandle(result.content);
                 if (value === undefined) {
                     throw new Error(`surface entry ${entryId} returned a non-surface result`);
                 }
@@ -78,86 +94,82 @@ export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) 
                 cause: errors[failedAt],
             });
         }
-        return unionDecoded(jobsService, schedule, scheduled, decoded, options);
+        if (batch) {
+            decodeWaiting();
+            checkSurfaceBatch(scheduled.map(([entryId]) => entryId), decoded);
+        }
+        return join(jobsService, schedule, scheduled, decoded, options.logger ?? consoleLogger);
     }
     finally {
-        // A decode that no push consumed (a failed download elsewhere, an abort,
-        // a failed push) is freed here; its WebAssembly memory would otherwise
-        // wait for a finalizer.
+        // A handle no join consumed (a failed download elsewhere, an abort, a
+        // missing tile position) is freed here; its WebAssembly memory would
+        // otherwise wait for a finalizer. The join takes the others.
         for (const value of decoded)
-            value?.archive.free();
+            value?.free();
     }
 }
-/** Push every decoded job in schedule order, then build the public result. */
-function unionDecoded(jobsService, schedule, scheduled, decoded, options) {
+/** One kernel call for the whole run; the fallbacks are logged here. */
+function join(jobsService, schedule, scheduled, decoded, logger) {
+    const started = performance.now();
     const positions = new Map(schedule.tilePositions.map((position) => [position.tileId, position]));
     const core = requireCore();
-    const merger = new core.SurfaceAreaMerger();
-    const synthesized = new Map();
-    // The kernel gets each surface's values and origin from the decode; the
-    // other fields stay here, as host values, for the public result.
-    const hostFields = new Map();
     const store = jobsService.facadeSynthesis;
-    const fallbacks = new Set();
-    let consumed = false;
     try {
-        const anchors = scheduled.map(([entryId]) => {
+        const anchors = new Float64Array(scheduled.length * 2);
+        scheduled.forEach(([entryId], index) => {
             const position = positions.get(entryId);
             if (position === undefined)
                 throw new Error(`surface entry ${entryId} has no tile position`);
             const [swX, swY] = core.tileSwOffset(position.row, position.col, schedule.analysisType);
-            return [swX, swY];
+            anchors[index * 2] = swX;
+            anchors[index * 2 + 1] = swY;
         });
-        // The triangles are synthesized from the geometry this client submitted
-        // and attached to the FINISHED view, never pushed through the merger:
-        // the merge would copy the coordinates into wasm32 memory, which is
-        // 1.8 GB of mesh for the F3 scene against a 4 GB ceiling. One kernel call
-        // answers every job (`facade-synthesis.ts`).
-        if (store !== undefined) {
-            const jobs = scheduled.flatMap(([, job], index) => job.jobId === undefined ? [] : [{
-                    jobId: job.jobId, response: synthesisView(decoded[index]), anchor: anchors[index],
-                }]);
-            const views = synthesizeSurfaceTriangles(store, jobs, options.logger ?? consoleLogger, fallbacks);
-            for (const [key, view] of views)
-                synthesized.set(key, view);
-        }
-        scheduled.forEach(([entryId], index) => {
-            const value = decoded[index];
-            value.keys.forEach((key, at) => hostFields.set(key, value.fields[at]));
-            const [swX, swY] = anchors[index];
-            // `pushArchive` consumes the handle. `JSON.stringify` of the parsed
-            // root is the text this merge read before, so the aggregates and the
-            // legends do not change by one bit.
-            decoded[index] = undefined;
-            merger.pushArchive(entryId, JSON.stringify(value.root), value.archive, swX, swY);
-        });
-        consumed = true; // `finish` consumes the merger, also when it throws.
-        // No binding keeps the columns: each entry owns a copy of its part, and
-        // the whole-area buffers can go before the public result is built.
-        const view = mergeViewFromColumns(merger.finish());
-        if (synthesized.size === 0)
-            return withCellTrisFallback(surfaceAnalysisFromMergeView(view, hostFields), fallbacks);
-        return withCellTrisFallback(surfaceAnalysisFromMergeView({
-            metadataJson: view.metadataJson,
-            entries: view.entries.map((entry) => {
-                const views = synthesized.get(entry.key);
-                return views === undefined ? entry : { ...entry, ...views };
-            }),
-        }, hostFields), fallbacks);
+        // A capture is kept only when this client asked for triangles; the
+        // merge consumes it. Nothing captured means nothing to draw, and says
+        // nothing.
+        const captures = scheduled.map(([, job]) => job.jobId === undefined ? undefined : store?.take(job.jobId)?.capture);
+        const handles = decoded.map((handle) => handle);
+        // `joinSurfaceJobs` owns the handles from here, also when it throws.
+        decoded.fill(undefined);
+        const joined = core.joinSurfaceJobs(handles, scheduled.map(([entryId]) => entryId), anchors, captures);
+        report(joined, scheduled, captures, logger, started);
+        return surfaceColumnsFromJoin(joined);
     }
     finally {
-        if (!consumed)
-            merger.free();
-        // Every job here is terminal and downloaded — the guards above returned
-        // otherwise — so this schedule is done whether the merge finished or
-        // threw partway. The synthesis consumes each capture as it reaches it;
-        // this releases the tail it never reached, which would otherwise be held
-        // for the life of the client.
+        // Every job here is terminal and downloaded, so this schedule is done
+        // whether the join finished or threw partway: release the captures it
+        // did not take, which would otherwise be held for the life of the client.
         if (store !== undefined) {
             for (const entry of schedule.jobs.values()) {
                 if (entry.jobId !== undefined)
                     store.forget(entry.jobId);
             }
         }
+    }
+}
+/**
+ * One `warn` per job whose requested triangles did not attach (an alert on
+ * `warn` must see degraded output), one `info` per job that got them. A run
+ * that never asked says nothing.
+ */
+function report(joined, scheduled, captures, logger, started) {
+    const elapsedMs = Math.round(performance.now() - started);
+    // Job indices of the join are in its canonical order (#579); `scheduled`
+    // and `captures` are in argument order.
+    const host = (job) => joined.jobOrder[job];
+    const fell = new Set();
+    for (const { job, reason, detail } of joined.fallbacks) {
+        fell.add(job);
+        logger.warn({ event: "facade_synthesis", outcome: "fell_back", reason, jobId: scheduled[host(job)]?.[1].jobId,
+            elapsedMs, ...(detail === undefined ? {} : { detail }) });
+    }
+    const table = joined.triangles;
+    if (table === undefined)
+        return;
+    for (let job = 0; job < captures.length; job += 1) {
+        if (captures[host(job)] === undefined || fell.has(job) || table.groupEngaged[job] !== 1)
+            continue;
+        logger.info({ event: "facade_synthesis", outcome: "engaged", jobId: scheduled[host(job)]?.[1].jobId,
+            surfaces: table.groupSurfaces[job + 1] - table.groupSurfaces[job], elapsedMs });
     }
 }

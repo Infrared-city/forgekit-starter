@@ -133,8 +133,12 @@ trees as GeoJSON points with height, crown and genus, ground materials as
 GeoJSON layers, and the hill as a terrain mesh (`groundGeometry` with
 `terrainAlignment: 'auto-align'`). `apps/examples/scripts/precompute-demo.ts`
 ran every analysis on Infrared staging (SDK 0.12.13-next.18, 400
-AItokens for a full run) and stored the results. To run it again (needs Node 22.18
-or newer, and spends AItokens):
+AItokens for a full run) and stored the results. The stored results have not
+been re-run on SDK 0.14.0-next.0. To run it again (needs Node 22.18
+or newer, and spends AItokens). The script turns on the SDK's threaded core
+(`initializeCore({ threads: 4 })`), which makes the facade merge about twice as
+fast on large runs. Do the same in your own Node scripts. The browser app
+cannot use it. See "Speed" in `AGENTS.md`:
 
 ```bash
 npm run demo:precompute --workspace apps/examples -- --preview   # free cost check
@@ -237,11 +241,14 @@ More details: [docs/cloudflare.md](./docs/cloudflare.md).
 ### Update the SDK
 
 `packages/sdk` holds the **built** output of `@infrared-city/infrared-sdk-ts`
-(no source, no source maps). Until the SDK is on public npm, it comes from
-GitHub Packages:
+(no source, no source maps). The current copy is **0.14.0-next.0**, a
+prerelease from the GitHub Packages `next` channel. Since 0.13.0 the facade
+(surface) result is columns, not one object per surface: see "SDK reference"
+in `AGENTS.md`. Until the SDK is on public npm, it comes from GitHub
+Packages:
 
 ```bash
-NPM_TOKEN=<GitHub token with read:packages> npm run update-sdk -- 0.12.13-next.19
+NPM_TOKEN=<GitHub token with read:packages> npm run update-sdk -- 0.14.0-next.0
 npm install
 npm run typecheck && npm run build
 ```

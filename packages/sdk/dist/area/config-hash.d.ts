@@ -60,5 +60,14 @@ export declare const CONFIG_HASH_FOLD_CONTRACT_VERSION = 5;
  * the identity.
  */
 export declare function foldGeometryGroup(name: string, value: unknown): unknown;
-/** {@link FOLDED_HASH_GROUPS}, folded, in a shallow copy of `fields`. */
-export declare function foldHashFields(fields: Readonly<Record<string, unknown>>): Record<string, unknown>;
+/**
+ * {@link FOLDED_HASH_GROUPS}, folded, in a shallow copy of `fields`.
+ *
+ * `terrain` is the kernel terrain read once for `ground-geometry`
+ * (`site-terrain.ts`, D200): its group hash is the value
+ * {@link foldGeometryGroup} would compute from the same document, without
+ * writing and parsing the whole terrain again on every run.
+ */
+export declare function foldHashFields(fields: Readonly<Record<string, unknown>>, terrain?: {
+    readonly groupHash: string | undefined;
+}): Record<string, unknown>;

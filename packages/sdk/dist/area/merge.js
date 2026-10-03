@@ -150,10 +150,15 @@ export async function mergeAreaJobs(jobsService, schedule, options = {}) {
         if (shape.length !== 2)
             throw new Error("area merge returned an invalid grid shape");
         const bounds = merged.bounds;
+        const values = merged.values;
+        // #390: the range is measured over the finished grid, once, by the kernel.
+        // A categorical grid holds class codes, so it has no numeric range.
+        const range = dense.legend === undefined ? core.legendRange(values) : undefined;
         return {
-            mergedGrid: merged.values,
+            mergedGrid: values,
             gridShape: [shape[0], shape[1]],
             ...(dense.legend === undefined ? {} : { legend: dense.legend }),
+            ...(range === undefined ? {} : { minLegend: range[0], maxLegend: range[1] }),
             failedJobs, skippedJobs, failedTiles,
             executionTime: (performance.now() - started) / 1_000,
             ...(bounds === undefined ? {} : {

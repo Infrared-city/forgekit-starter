@@ -1,20 +1,31 @@
 import { bodyArtifact } from "./binary-artifact.js";
 import { SubmissionUncertainError } from "./submission.js";
 import { checkFacadeArtifact, isSurfaceBody } from "./facade-artifact-guard.js";
+import { dispatchKeyed } from "./idempotent-dispatch.js";
 import { TransportError } from "./transport.js";
 import { uploadPresignedZip } from "./upload.js";
 import { requireCore } from "./core.js";
 import { decisionBoxesTrees, treeBoxDecision } from "./tree-boxes.js";
 // Control travels in the API request, not in the uploaded geometry file.
 const MAX_CONTROL_METADATA_BYTES = 4_194_304;
-const GEOMETRY_GROUPS = ["geometries", "context-geometry", "ground-geometry",
-    "vegetation", "vegetation-instances", "ground-materials"];
+/**
+ * The body fields the geometry document carries (kernel-owned, D206): every
+ * geometry group plus the BYO `sensor-points` / `sensor-normals`. Every other
+ * body field is control, which stays small and fixed in size.
+ */
+function geometryFields() {
+    return Array.from(requireCore().binaryGeometryFields());
+}
 export async function capability(gateway, signal) {
     const raw = await gateway.requestJson("/binary/v1/capabilities", signal === undefined ? {} : { signal });
     const value = object(raw, "binary capability");
     if (value.inputFormat !== "irbf" || value.resultFormat !== "irbf" || value.wireVersion !== 1) {
         throw new TypeError("gateway has an incompatible binary wire format");
     }
+    // The geometry document schemas this server reads (D206); a server that
+    // lists none is older and reads schema 1 only. Checked in `prepareBinary`.
+    const geometrySchemas = Array.isArray(value.geometrySchemas)
+        ? value.geometrySchemas : [1];
     const limits = object(value.limits, "binary limits");
     const parsedLimits = {
         maxGeometryBytes: positive(limits.maxGeometryBytes, 67_108_864, "maxGeometryBytes"),
@@ -34,9 +45,22 @@ export async function capability(gateway, signal) {
             throw new TypeError(`binary model ${name} is invalid`);
         }
     }
-    return { inputFormat: "irbf", resultFormat: "irbf", wireVersion: 1, models, limits: parsedLimits };
+    // #602: a positive safe integer means the server reads `targets`; anything
+    // else (absent, zero, negative, not an integer) means an older server.
+    const facadeTargets = Number.isSafeInteger(value.facadeTargets) && value.facadeTargets > 0
+        ? value.facadeTargets : undefined;
+    return { inputFormat: "irbf", resultFormat: "irbf", wireVersion: 1, geometrySchemas, models,
+        limits: parsedLimits, ...(facadeTargets === undefined ? {} : { facadeTargets }) };
 }
 export async function prepareBinary(prepared, supported) {
+    // Geometry schema 2 (D206): this SDK writes the schema its kernel writes,
+    // and only to a server that reads it; refuse before any upload or charge.
+    const schema = requireCore().geometrySchemaVersion();
+    const schemas = supported.geometrySchemas ?? [1];
+    if (!schemas.includes(schema)) {
+        throw new TypeError(`this endpoint reads binary geometry schema(s) ${JSON.stringify(schemas)}; `
+            + `this SDK writes schema ${schema}. The server needs the geometry schema ${schema} update.`);
+    }
     const model = supported.models[prepared.analysisType];
     if (model === undefined || !Array.isArray(model.geometryGroups)
         || !Array.isArray(model.resultFamilies) || model.resultFamilies.length === 0) {
@@ -57,16 +81,17 @@ export async function prepareBinary(prepared, supported) {
     const body = { ...prepared.body };
     if (boxes)
         delete body.vegetation;
-    const present = GEOMETRY_GROUPS.filter((name) => {
+    const fields = geometryFields();
+    const present = fields.filter((name) => {
         const value = body[name];
-        return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value);
+        return value !== undefined && value !== null && typeof value === "object";
     });
     for (const name of present)
         if (!model.geometryGroups.includes(name)) {
             throw new TypeError(`model ${prepared.analysisType} does not support binary geometry group ${name}`);
         }
     const control = { ...body };
-    for (const name of GEOMETRY_GROUPS)
+    for (const name of fields)
         delete control[name];
     delete control["binary-results"];
     const controlJson = JSON.stringify(control);
@@ -77,7 +102,9 @@ export async function prepareBinary(prepared, supported) {
     // fails here, unbilled, and pays for no artifact.
     const tile = prepared.artifact === undefined
         ? bodyArtifact(prepared.body, boxes, supported.limits)
-        : prepared.artifact(boxes, supported.limits);
+        // #602: only the facade artifact getter reads `facadeTargets` (scene
+        // mode); `bodyArtifact` never sees it.
+        : prepared.artifact(boxes, { ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
     // D156: an area facade batch must upload exactly its planned targets, or
     // the server synthesizes (and bills) sensors the plan never counted.
     if (prepared.artifact !== undefined && isSurfaceBody(prepared.body)) {
@@ -102,29 +129,47 @@ export async function uploadGeometry(uploadGateway, fetch, prepared, timeoutMs, 
         ...(signal === undefined ? {} : { signal }) });
     return getUrl;
 }
-export function binarySubmission(binary, geometryUrl) {
+export function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
     return { geometry: { url: geometryUrl, encoding: binary.artifact.encoding,
             artifactDigest: binary.artifact.artifactDigest,
             contentDigest: binary.artifact.geometryContentDigest,
-            byteLength: binary.artifact.archive.byteLength }, control: binary.control, limits: binary.limits };
+            byteLength: binary.artifact.archive.byteLength }, control: binary.control, limits: binary.limits,
+        resultFormat,
+        ...(binary.artifact.targets === undefined ? {} : { targets: binary.artifact.targets }) };
 }
-export async function submitBinary(gateway, prepared, binary, parseJob, signal, beforeDispatch) {
-    const envelope = JSON.stringify({ inputFormat: "irbf", resultFormat: "irbf",
-        wireVersion: 1, geometry: binary.geometry, control: binary.control });
+export async function submitBinary(gateway, prepared, binary, parseJob, signal, beforeDispatch, idempotencyKey) {
+    const envelope = JSON.stringify({ inputFormat: "irbf", resultFormat: binary.resultFormat,
+        wireVersion: 1, geometry: binary.geometry, control: binary.control,
+        ...(binary.targets === undefined ? {} : { targets: binary.targets }) });
     const body = canonicalJsonBytes(envelope, Math.min(binary.limits.maxMetadataBytes, MAX_CONTROL_METADATA_BYTES) + 65_536, "binary submission envelope");
+    const endpointPath = `/binary/v1/async/${encodeURIComponent(prepared.analysisType)}`;
+    const headers = { "Content-Type": "application/json",
+        ...(idempotencyKey === undefined ? {} : { "Idempotency-Key": idempotencyKey }) };
     let response;
+    // One keyed POST, resent with the SAME key up to the kernel's resend
+    // budget (D224); see `internal/idempotent-dispatch.ts`'s `dispatchKeyed`,
+    // the ONE resend loop both transports call.
     try {
-        response = await gateway.requestBytesWithHeaders(`/binary/v1/async/${encodeURIComponent(prepared.analysisType)}`, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body,
-            acceptHttpErrors: true, ...(signal === undefined ? {} : { signal }),
+        response = await dispatchKeyed({
+            gateway, endpointPath, body, headers,
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
             ...(beforeDispatch === undefined ? {} : { beforeDispatch }),
+            ...(signal === undefined ? {} : { signal }),
         });
     }
     catch (error) {
+        if (error instanceof SubmissionUncertainError)
+            throw error;
         if (error instanceof TransportError && error.phase !== "pre-dispatch") {
             throw new SubmissionUncertainError([]);
         }
         throw error;
+    }
+    const rejected = response.status < 200 || response.status >= 300;
+    // A KEYED call returns a non-2xx only when the kernel said `definite_fail`:
+    // the submit failed, and the kernel already decided (no uncertain here).
+    if (rejected && idempotencyKey !== undefined) {
+        throw new TransportError(`binary submission received HTTP ${response.status}`, "response", "http", "POST", response.status);
     }
     let raw;
     try {
@@ -133,7 +178,7 @@ export async function submitBinary(gateway, prepared, binary, parseJob, signal, 
     catch {
         throw new SubmissionUncertainError([]);
     }
-    if (response.status < 200 || response.status >= 300) {
+    if (rejected) {
         if (!preacceptRejection(response.status, raw)) {
             throw new SubmissionUncertainError(jobIds(raw));
         }
@@ -149,7 +194,7 @@ export async function submitBinary(gateway, prepared, binary, parseJob, signal, 
         throw new SubmissionUncertainError(jobIds(raw));
     }
     try {
-        validateAck(record.binary, binary.geometry);
+        validateAck(record.binary, binary.geometry, binary.resultFormat);
     }
     catch {
         throw new SubmissionUncertainError([job.jobId]);
@@ -165,9 +210,9 @@ function preacceptRejection(status, raw) {
         && value.status === status && value.code === "JOB_BINARY_REJECTED"
         && [value.type, value.title, value.detail].every((item) => typeof item === "string");
 }
-function validateAck(raw, geometry) {
+function validateAck(raw, geometry, resultFormat) {
     const value = object(raw, "binary acknowledgement");
-    if (value.inputFormat !== "irbf" || value.resultFormat !== "irbf" || value.wireVersion !== 1
+    if (value.inputFormat !== "irbf" || value.resultFormat !== resultFormat || value.wireVersion !== 1
         || value.artifactDigest !== geometry.artifactDigest || value.contentDigest !== geometry.contentDigest) {
         throw new TypeError("binary acknowledgement does not match the submitted artifact");
     }

@@ -14,10 +14,14 @@ function binaryAcknowledgement(value) {
         throw new TypeError("invalid binary acknowledgement");
     }
     const raw = value;
-    if (raw.inputFormat !== "irbf" || raw.resultFormat !== "irbf" || raw.wireVersion !== 1) {
+    // `json`: an interior part on the binary route writes the JSON result
+    // (D228). The submit path checks the value against the one it asked for.
+    const resultFormat = raw.resultFormat;
+    if (raw.inputFormat !== "irbf" || (resultFormat !== "irbf" && resultFormat !== "json")
+        || raw.wireVersion !== 1) {
         throw new TypeError("invalid binary acknowledgement");
     }
-    return { inputFormat: "irbf", resultFormat: "irbf", wireVersion: 1,
+    return { inputFormat: "irbf", resultFormat, wireVersion: 1,
         artifactDigest: requiredString(raw.artifactDigest),
         contentDigest: requiredString(raw.contentDigest) };
 }

@@ -10,6 +10,7 @@
 // It is never written anywhere. INFRARED_BASE_URL selects another API (maintainers).
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { availableParallelism } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
@@ -17,6 +18,7 @@ import { InfraredClient, initializeCore, VERSION } from '@infrared-city/infrared
 import { ANALYSES, buildRequest, type DemoAnalysis } from '../src/demo/analyses.ts'
 import { buildDemoScene, DEMO_POLYGON, VARIANTS, type Variant } from '../src/demo/scene.ts'
 import { DEMO_CENTER } from '../src/demo/scene-layout.ts'
+import { isSurfaceColumns, type PlainSurface, surfacesFromColumns } from '../src/lib/surfaces.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const OUT = resolve(here, '../public/demo-results')
@@ -70,19 +72,9 @@ function encodeGrid(grid: ArrayLike<number>, legend?: readonly string[]) {
   return { bytes: new Uint8Array(out.buffer), encoding: 'u16' as const, offset: lo, step }
 }
 
-type Surface = {
-  origin: number[]
-  uAxis: number[]
-  vAxis: number[]
-  gridSize: number
-  nu: number
-  nv: number
-  values: Array<number | null>
-}
-
-function encodeFacades(result: { surfaces: Record<string, Surface>; sensorCount?: number }) {
+function encodeFacades(plain: Record<string, PlainSurface>) {
   const surfaces: Record<string, unknown> = {}
-  for (const [key, s] of Object.entries(result.surfaces)) {
+  for (const [key, s] of Object.entries(plain)) {
     surfaces[key] = {
       origin: s.origin.map((v) => Math.round(v * 1000) / 1000),
       uAxis: s.uAxis,
@@ -90,9 +82,7 @@ function encodeFacades(result: { surfaces: Record<string, Surface>; sensorCount?
       gridSize: s.gridSize,
       nu: s.nu,
       nv: s.nv,
-      values: Array.from(s.values, (v) =>
-        v === null || Number.isNaN(v) ? null : Math.round(v * 100) / 100,
-      ),
+      values: s.values.map((v) => (v === null ? null : Math.round(v * 100) / 100)),
     }
   }
   return new TextEncoder().encode(JSON.stringify({ surfaces }))
@@ -163,7 +153,9 @@ function refreshManifest() {
 async function main() {
   if (flag('refresh-manifest')) return refreshManifest()
   const { apiKey, baseUrl } = readKey()
-  await initializeCore()
+  // Threaded core (Node 22+, SDK 0.13+): speeds up the facade (surface) merge.
+  // 4 threads is the best measured setting; more is slower.
+  await initializeCore({ threads: Math.min(4, availableParallelism()) })
   const client = new InfraredClient({ apiKey, ...(baseUrl ? { baseUrl } : {}) })
   mkdirSync(OUT, { recursive: true })
   const only = value('only')?.split(',')
@@ -223,12 +215,13 @@ async function main() {
         seconds: Math.round((Date.now() - started) / 1000),
         sceneHash: sceneHash(a, variant),
       }
-      if ('surfaces' in result) {
-        writeFileSync(resolve(OUT, file), gzipSync(encodeFacades(result as never), { level: 9 }))
+      if (isSurfaceColumns(result)) {
+        const plain = surfacesFromColumns(result)
+        writeFileSync(resolve(OUT, file), gzipSync(encodeFacades(plain), { level: 9 }))
         save({
           ...base,
           kind: 'facades',
-          surfaceCount: Object.keys(result.surfaces).length,
+          surfaceCount: result.surfaceCount,
           sensorCount: result.sensorCount,
         })
       } else {

@@ -22,6 +22,10 @@ export interface EntryInputs {
     readonly retry: ReadonlySet<string> | undefined;
     /** `area-v1:<key>:<tiling constants>` — the key is the SECOND field. */
     readonly reuseScope: (key: string) => string;
+    /** The area retry identity (D224): every submitted entry's
+     * `Idempotency-Key` is `areaIdempotencyKey(runId, key, attemptFor(key))`. */
+    readonly runId: string;
+    readonly attemptFor: (key: string) => number;
 }
 export interface EntryResult {
     readonly entries: SubmissionEntry[];

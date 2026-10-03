@@ -8,6 +8,9 @@ export declare class GeometryReuseCache {
     private readonly partitions;
     private readonly firstUses;
     private readonly scopeLocks;
+    private readonly uploads;
+    /** Upload entries whose PUT has finished: the only ones the bound evicts. */
+    private readonly settledUploads;
     constructor(now?: () => number);
     getCapability(partitionKey: string): GeometryReuseProbeOutcome | undefined;
     setCapability(partitionKey: string, outcome: GeometryReuseProbeOutcome): void;
@@ -44,6 +47,22 @@ export declare class GeometryReuseCache {
      */
     observe(partitionKey: string, scopeKey: string, current: Readonly<Record<string, string>>): void;
     invalidate(partitionKey: string, scopeKey: string, key: string, url: string): void;
+    /**
+     * The URL of the document `key` names, PUT at most once per partition
+     * (D201). The key is the document's CONTENT, not a job's scope, so every
+     * job that sends the same document — the grid job and the facade job of
+     * one tile, the next design edit — shares one upload: the first caller
+     * PUTs, callers that arrive meanwhile await it, and later callers get its
+     * URL until the URL expires. `fresh` is true only for the caller whose
+     * `put` ran. A failed PUT is its caller's: it is not kept. A waiter stops
+     * waiting when its own `signal` aborts.
+     */
+    sharedUpload(partitionKey: string, key: string, put: () => Promise<string>, signal?: AbortSignal): Promise<{
+        readonly url: string;
+        readonly fresh: boolean;
+    }>;
+    /** Forget `key`'s upload when its URL is `url` (a dead reference). */
+    dropUpload(partitionKey: string, key: string, url: string): Promise<void>;
     withScope<T>(partitionKey: string, scopeKey: string, task: () => Promise<T>, signal?: AbortSignal): Promise<T>;
     counts(): {
         readonly partitions: number;

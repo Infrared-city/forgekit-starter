@@ -2,6 +2,7 @@ import { requireCore } from "../internal/core.js";
 import { getTilingConfig } from "./tiling.js";
 import { kernelPolygonOrigin } from "./tile-frames.js";
 import { pack } from "./site-pack.js";
+import { liveTerrain } from "./site-terrain.js";
 /**
  * A group document's JSON text. `texts` holds the text the site key already
  * wrote for the same object in this plan (`prepared-site.ts`), so the
@@ -20,6 +21,13 @@ export function kernelSite(inputs, texts) {
     const context = pack(asMap(groups["context-geometry"]), true);
     const config = getTilingConfig(inputs.analysisType);
     const origin = kernelPolygonOrigin(polygon);
+    // The terrain read once for this group (D200): the site takes the handle in
+    // place of the text, so a building edit reads no terrain.
+    // A handle the bound freed since the plan took it reads the text instead.
+    const terrain = liveTerrain(inputs.terrain);
+    if (terrain !== undefined) {
+        return requireCore().Site.withTerrain(buildings.ids, buildings.bytes, buildings.offsets, context.ids, context.bytes, context.offsets, Uint32Array.from(tiles, (tile) => tile.row), Uint32Array.from(tiles, (tile) => tile.col), tiles.map((tile) => tile.tileId), config.inferenceSizeM, config.contextSizeM, config.stepM, origin.lon, origin.lat, groups.geometries === undefined ? undefined : buildings.document, groups["context-geometry"] === undefined ? undefined : context.document, document(groups.vegetation, texts), document(groups["ground-materials"], texts), JSON.stringify(polygon), inputs.terrainContextMarginM, terrain);
+    }
     return new (requireCore().Site)(buildings.ids, buildings.bytes, buildings.offsets, context.ids, context.bytes, context.offsets, Uint32Array.from(tiles, (tile) => tile.row), Uint32Array.from(tiles, (tile) => tile.col), tiles.map((tile) => tile.tileId), config.inferenceSizeM, config.contextSizeM, config.stepM, origin.lon, origin.lat, groups.geometries === undefined ? undefined : buildings.document, groups["context-geometry"] === undefined ? undefined : context.document, document(groups["ground-geometry"], texts), document(groups.vegetation, texts), document(groups["ground-materials"], texts), JSON.stringify(polygon), inputs.terrainContextMarginM);
 }
 /**

@@ -8,9 +8,16 @@ export declare class TransportError extends Error {
     readonly reason: TransportReason;
     readonly method: GatewayMethod;
     readonly status?: number | undefined;
+    /** The response's `Retry-After`, in delta-seconds, when it had one. */
+    readonly retryAfterS?: number | undefined;
     readonly name = "TransportError";
-    constructor(message: string, phase: TransportPhase, reason: TransportReason, method: GatewayMethod, status?: number | undefined);
+    constructor(message: string, phase: TransportPhase, reason: TransportReason, method: GatewayMethod, status?: number | undefined, 
+    /** The response's `Retry-After`, in delta-seconds, when it had one. */
+    retryAfterS?: number | undefined);
 }
+/** A `Retry-After` header in delta-seconds; an HTTP-date is not honoured
+ * (the gateway sends delta-seconds), the same rule as the Python host. */
+export declare function retryAfterSeconds(headers: Headers | undefined): number | undefined;
 export interface GatewayTransportOptions {
     readonly baseUrl: string | URL;
     readonly auth: AuthResolver;
@@ -52,6 +59,7 @@ export declare class GatewayTransport {
     private readonly base;
     private readonly auth;
     private readonly fetch;
+    private readonly sender;
     private readonly timeoutMs;
     constructor(options: GatewayTransportOptions);
     get baseUrl(): string;

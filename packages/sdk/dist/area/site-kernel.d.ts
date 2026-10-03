@@ -1,3 +1,4 @@
+import { type KernelTerrain } from "./site-terrain.js";
 import type { KernelSite } from "./site-assign.js";
 import type { AreaGeometryGroups, IndexedTile, Polygon } from "./types.js";
 /**
@@ -19,6 +20,8 @@ export interface SiteInputs {
     readonly polygon: Polygon;
     readonly analysisType: string | undefined;
     readonly terrainContextMarginM: number | undefined;
+    /** The terrain read once for `groups["ground-geometry"]` (D200). */
+    readonly terrain?: KernelTerrain;
 }
 /** The site read into the kernel ONCE: the packed groups, their documents, the layers. */
 export declare function kernelSite(inputs: SiteInputs, texts?: ReadonlyMap<object, string>): KernelSite;

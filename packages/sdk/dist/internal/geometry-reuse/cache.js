@@ -1,8 +1,11 @@
+import { expiryFromUrl } from "./expiry.js";
 const MAX_PARTITIONS = 64;
 const MAX_SCOPES = 256;
 const MAX_DOCUMENTS = 256;
 const MAX_IN_FLIGHT_FIRST_USES = 64;
 const MAX_SCOPE_LOCKS = 64;
+/** Uploaded documents remembered per realm by content key: a URL each. */
+const MAX_SHARED_UPLOADS = 64;
 const UNSUPPORTED_TTL_MS = 24 * 60 * 60 * 1_000;
 export class GeometryReuseCapacityError extends Error {
     name = "GeometryReuseCapacityError";
@@ -29,6 +32,9 @@ export class GeometryReuseCache {
     partitions = new Map();
     firstUses = new Map();
     scopeLocks = new Map();
+    uploads = new Map();
+    /** Upload entries whose PUT has finished: the only ones the bound evicts. */
+    settledUploads = new Set();
     constructor(now = Date.now) {
         this.now = now;
     }
@@ -147,6 +153,74 @@ export class GeometryReuseCache {
             ...scope.state,
             documents: scope.state.documents.filter((item) => item.key !== key),
         };
+    }
+    /**
+     * The URL of the document `key` names, PUT at most once per partition
+     * (D201). The key is the document's CONTENT, not a job's scope, so every
+     * job that sends the same document — the grid job and the facade job of
+     * one tile, the next design edit — shares one upload: the first caller
+     * PUTs, callers that arrive meanwhile await it, and later callers get its
+     * URL until the URL expires. `fresh` is true only for the caller whose
+     * `put` ran. A failed PUT is its caller's: it is not kept. A waiter stops
+     * waiting when its own `signal` aborts.
+     */
+    async sharedUpload(partitionKey, key, put, signal) {
+        const id = `${partitionKey}\n${key}`;
+        for (;;) {
+            const pending = this.uploads.get(id);
+            if (pending === undefined) {
+                const created = put().then((url) => ({ url, expiresAt: expiryFromUrl(url) }));
+                this.uploads.set(id, created);
+                this.settledUploads.delete(id);
+                try {
+                    const { url } = await created;
+                    if (this.uploads.get(id) === created)
+                        this.settledUploads.add(id);
+                    // Oldest SETTLED entries only: evicting one still in flight would
+                    // let the next job start a second PUT of the same document.
+                    for (const old of [...this.settledUploads]) {
+                        if (this.uploads.size <= MAX_SHARED_UPLOADS)
+                            break;
+                        this.uploads.delete(old);
+                        this.settledUploads.delete(old);
+                    }
+                    return { url, fresh: true };
+                }
+                catch (error) {
+                    if (this.uploads.get(id) === created)
+                        this.uploads.delete(id);
+                    throw error;
+                }
+            }
+            let value;
+            try {
+                value = await waitFor(pending, signal);
+            }
+            catch (error) {
+                // This caller's own stop ends its wait; the owner's failure is the
+                // owner's, and this caller uploads for itself.
+                if (signal?.aborted)
+                    throw error;
+            }
+            if (value !== undefined && this.now() < value.expiresAt)
+                return { url: value.url, fresh: false };
+            if (this.uploads.get(id) === pending) {
+                this.uploads.delete(id);
+                this.settledUploads.delete(id);
+            }
+        }
+    }
+    /** Forget `key`'s upload when its URL is `url` (a dead reference). */
+    async dropUpload(partitionKey, key, url) {
+        const id = `${partitionKey}\n${key}`;
+        const pending = this.uploads.get(id);
+        if (pending === undefined)
+            return;
+        const value = await pending.catch(ignore);
+        if (value?.url === url && this.uploads.get(id) === pending) {
+            this.uploads.delete(id);
+            this.settledUploads.delete(id);
+        }
     }
     async withScope(partitionKey, scopeKey, task, signal) {
         const key = `${partitionKey}\n${scopeKey}`;

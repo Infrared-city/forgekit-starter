@@ -1,23 +1,16 @@
-import { SubmissionUncertainError } from "../internal/submission.js";
-import { SubmissionStoppedError } from "../internal/submission-stopped.js";
-import { TransportError } from "../internal/transport.js";
-import { GeometryReferenceSubmissionError } from "../internal/geometry-reuse/errors.js";
-import { JobStatus } from "../jobs.js";
 import { planAreaSubmission } from "./planning.js";
+import { concurrency, submitEntries } from "./submit-pool.js";
 import { computeAreaState, freezeAreaSchedule } from "./schedule.js";
 import { checkPaidRetrySiteIdentity } from "./site-identity-guard.js";
 import { SCHEDULE_CONTRACT_VERSION } from "./weather-guard.js";
-function concurrency(value) {
-    const count = value ?? 8;
-    if (!Number.isSafeInteger(count) || count < 1)
-        throw new TypeError("maxWorkers must be a positive integer");
-    return count;
-}
-function effectiveOptions(options) {
+import { areaTransport } from "../internal/transport-choice.js";
+function effectiveOptions(options, analysisType) {
     if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
         throw new TypeError("unsupported option binaryResults; use transport instead");
     }
-    const transport = options.transport ?? options.retryFrom?.transport ?? "json";
+    // D196: unset = binary (or JSON for an analysis with no binary route); a
+    // retry keeps the saved transport.
+    const transport = areaTransport(options, analysisType);
     if (options.transport !== undefined && options.retryFrom?.transport !== undefined
         && options.transport !== options.retryFrom.transport) {
         throw new Error("retryFrom transport mismatch");
@@ -40,47 +33,24 @@ function effectiveOptions(options) {
             ? {} : { webhookEvents: [...options.retryFrom.webhookEvents] }),
     };
 }
-function tileStatus(job) {
-    if (job.status === JobStatus.Succeeded)
-        return "completed";
-    if (job.status === JobStatus.Failed)
-        return "failed";
-    if (job.status === JobStatus.Running)
-        return "running";
-    return "pending";
-}
-/**
- * A POST whose outcome is unknown. An abort BEFORE the paid POST was sent
- * (#347, for example during the geometry upload) is not that: the tile goes
- * to `failedSubmissions` and `retryFrom` resubmits it. An abort AFTER the paid
- * POST was sent is: the server may have accepted and billed the job, so the
- * tile is uncertain and never resubmitted automatically (#197).
- */
-function unknownAcceptance(error, posted) {
-    return error instanceof SubmissionUncertainError ||
-        (error instanceof TransportError && error.phase === "unknown-acceptance" &&
-            (error.reason !== "aborted" || posted));
-}
-function copyPriorJobs(schedule) {
-    const jobs = new Map();
-    if (!schedule)
-        return jobs;
-    for (const [key, job] of schedule.jobs)
-        jobs.set(key, { ...job });
-    return jobs;
-}
 function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options) {
     const siteIdentity = options.retryFrom === undefined
         ? plan.siteIdentity : options.retryFrom.siteIdentity;
     const sensorCap = options.maxSensorsPerJob ?? options.retryFrom?.maxSensorsPerJob;
+    // D224: the run id and attempts travel with the schedule. A fresh run
+    // stamps no attempts map at all -- a missing key means attempt 1, the same
+    // thing an explicit `1` would say. A retry stores the kernel plan's WHOLE
+    // attempt map AS IS (it is already the whole map, not a delta): never
+    // merged with the old one.
+    const attempts = plan.retryContext?.attempts;
     return {
         jobs, polygon: plan.polygon, configHash: plan.configHash,
         ...(siteIdentity === undefined ? {} : { siteIdentity }),
         tilePositions: plan.tilePositions, gridShape: plan.gridShape,
         analysisType: plan.analysisType, failedSubmissions, uncertainSubmissions,
         invalidReferenceSubmissions,
-        transport: options.transport ?? "json",
-        ...(options.transport === "binary" ? { wireVersion: 1 } : {}),
+        transport: areaTransport(options, plan.analysisType),
+        ...(areaTransport(options, plan.analysisType) === "binary" ? { wireVersion: 1 } : {}),
         submissionAbortStatus, surfaceFields: plan.surfaceFields,
         terrainContextMarginM: plan.terrainContextMarginM,
         // A retry that omits the cap replays a plan made under the saved one.
@@ -96,6 +66,8 @@ function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, i
         ...(plan.batchSensorCounts === undefined ? {} : { batchSensorCounts: plan.batchSensorCounts }),
         ...(options.webhookUrl === undefined ? {} : { webhookUrl: options.webhookUrl }),
         ...(options.webhookEvents === undefined ? {} : { webhookEvents: [...options.webhookEvents] }),
+        runId: plan.runId,
+        ...(attempts === undefined ? {} : { attempts }),
     };
 }
 export class AreaGeometryReferenceError extends Error {
@@ -122,23 +94,6 @@ export class AreaGeometryProbeError extends Error {
         this.areaSchedule = areaSchedule;
         this.acceptedProbeJobIds = acceptedProbeJobIds;
     }
-}
-/** Report one recorded job id. Read-only: an observer error never reaches the run. */
-function reportAccepted(options, jobId, tileKey) {
-    if (jobId === undefined || options.onAccepted === undefined)
-        return;
-    try {
-        options.onAccepted(jobId, tileKey);
-    }
-    catch {
-        // The job id is in the schedule; an observer failure must not change it.
-    }
-}
-function failed(entry, error) {
-    return {
-        tileId: entry.key, row: entry.row, col: entry.col, status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-    };
 }
 /**
  * One facade job's capture for the local `cell-tris` synthesis
@@ -187,20 +142,8 @@ export async function submitAreaPlan(service, plan, options = {}) {
         throw new AreaGeometryProbeError(options.retryFrom, options.retryFrom.geometryProbeJobIds ?? []);
     }
     checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries.length > 0);
-    const jobs = copyPriorJobs(options.retryFrom);
-    const failedSubmissions = [];
-    const uncertainSubmissions = [...(options.retryFrom?.uncertainSubmissions ?? [])];
-    const invalidReferenceSubmissions = [
-        ...(options.retryFrom?.invalidReferenceSubmissions ?? []),
-    ];
-    let submissionAbortStatus = null;
-    let invalidReferenceAbort = false;
-    const beforeDispatch = () => {
-        if (invalidReferenceAbort)
-            throw new SubmissionStoppedError();
-    };
-    let cursor = 0;
-    const workers = Math.min(concurrency(options.maxWorkers), Math.max(1, entries.length));
+    const workers = concurrency(options.maxWorkers);
+    let outcome;
     // No paid POST starts until every selected tile passes binary validation.
     // What the preflight encodes it KEEPS, under the client's byte budget, and
     // the worker that submits that tile sends those bytes instead of encoding the
@@ -208,87 +151,34 @@ export async function submitAreaPlan(service, plan, options = {}) {
     // the `finally` frees every tile that never got that far — a preflight that
     // threw on a later tile, an abort, a 402, an invalid geometry reference.
     try {
-        if ((options.transport ?? "json") === "binary") {
+        if (areaTransport(options, plan.analysisType) === "binary") {
             for (const entry of entries) {
                 await service.preflightPrepared(entry.prepared, options.signal === undefined ? {} : { signal: options.signal });
             }
         }
-        await Promise.all(Array.from({ length: workers }, async () => {
-            while (cursor < entries.length) {
-                const entry = entries[cursor++];
-                if (!entry)
-                    continue;
-                if (invalidReferenceAbort) {
-                    jobs.set(entry.key, {
-                        tileId: entry.key, row: entry.row, col: entry.col, status: "skipped",
-                        error: "submission stopped after an invalid geometry reference",
-                    });
-                    continue;
-                }
-                if (submissionAbortStatus !== null || options.signal?.aborted) {
-                    failedSubmissions.push(entry.key);
-                    jobs.set(entry.key, failed(entry, options.signal?.reason ?? "submission stopped"));
-                    continue;
-                }
-                let posted = false;
-                try {
-                    const capture = facadeCaptureFor(service, plan, entry);
-                    const job = await service.submitPrepared(entry.prepared, {
-                        beforeDispatch: () => { beforeDispatch(); posted = true; },
-                        ...(options.signal === undefined ? {} : { signal: options.signal }),
-                    });
-                    rememberFacadeInputs(service, capture, job.jobId);
-                    jobs.set(entry.key, {
-                        tileId: entry.key, row: entry.row, col: entry.col, jobId: job.jobId,
-                        status: tileStatus(job), lastJobSnapshot: job,
-                        ...(job.binary === undefined ? {} : { binary: job.binary }),
-                        ...(job.treeBoxes === undefined ? {} : { treeBoxes: job.treeBoxes }),
-                        ...(job.error === undefined ? {} : { error: job.error }),
-                    });
-                    reportAccepted(options, job.jobId, entry.key);
-                }
-                catch (error) {
-                    if (error instanceof SubmissionStoppedError) {
-                        jobs.set(entry.key, { tileId: entry.key, row: entry.row, col: entry.col,
-                            status: "skipped", error: error.message });
-                    }
-                    else if (error instanceof GeometryReferenceSubmissionError) {
-                        invalidReferenceAbort = true;
-                        invalidReferenceSubmissions.push(entry.key);
-                        const accepted = error.acceptedJobIds[0];
-                        jobs.set(entry.key, {
-                            tileId: entry.key, row: entry.row, col: entry.col,
-                            ...(accepted === undefined ? {} : { jobId: accepted }),
-                            status: "failed", invalidReference: true, error: error.message,
-                        });
-                        reportAccepted(options, accepted, entry.key);
-                    }
-                    else if (unknownAcceptance(error, posted)) {
-                        uncertainSubmissions.push(entry.key);
-                        const accepted = error instanceof SubmissionUncertainError ? error.acceptedJobIds[0] : undefined;
-                        jobs.set(entry.key, {
-                            tileId: entry.key, row: entry.row, col: entry.col,
-                            ...(accepted === undefined ? {} : { jobId: accepted }),
-                            status: accepted === undefined ? "skipped" : "pending",
-                            error: "submission outcome is unknown; do not resubmit automatically",
-                        });
-                        reportAccepted(options, accepted, entry.key);
-                    }
-                    else {
-                        if (error instanceof TransportError && error.status === 402)
-                            submissionAbortStatus = 402;
-                        failedSubmissions.push(entry.key);
-                        jobs.set(entry.key, failed(entry, error));
-                    }
-                }
-            }
-        }));
+        outcome = await submitEntries(service, entries, {
+            maxWorkers: workers,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+            ...(options.onAccepted === undefined ? {} : { onAccepted: options.onAccepted }),
+            ...(options.retryFrom === undefined ? {} : {
+                priorJobs: options.retryFrom.jobs,
+                // D224: the kernel plan's held-uncertain list, not the raw saved
+                // one -- a key the pre-plan sweep resolved to `completed` is gone
+                // (nothing to carry), and one resolved to `failed` is a fresh
+                // `computeFailed` entry in `plan.resubmit`, not a carried record.
+                priorUncertain: plan.retryContext?.carryUncertain ?? options.retryFrom.uncertainSubmissions ?? [],
+                priorInvalidReference: options.retryFrom.invalidReferenceSubmissions ?? [],
+            }),
+            beforeSubmit: (entry) => facadeCaptureFor(service, plan, entry),
+            afterAccepted: (capture, jobId) => rememberFacadeInputs(service, capture, jobId),
+        });
     }
     finally {
         // Idempotent: the submit already released every tile it uploaded.
         for (const entry of entries)
             service.releasePreflight?.(entry.prepared);
     }
+    const { jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus } = outcome;
     const schedule = freezeAreaSchedule(scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options));
     try {
         options.onProgress?.(computeAreaState(schedule));
@@ -310,7 +200,7 @@ export async function submitAreaPlan(service, plan, options = {}) {
     return schedule;
 }
 export async function runArea(service, input, polygon, options = {}) {
-    const effective = effectiveOptions(options);
+    const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
     concurrency(effective.maxWorkers);
     const plan = await planAreaSubmission(service, input, polygon, effective);
     return submitAreaPlan(service, plan, effective);

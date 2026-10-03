@@ -30,7 +30,7 @@ function expectedAck(value, groups) {
     return job;
 }
 /** Bind one partition's transports, refusing a mid-run credential swap. */
-export function bound(options, partitionKey, signal, beforeDispatch) {
+export function bound(options, partitionKey, signal, beforeDispatch, idempotencyKey) {
     const auth = async () => {
         const headers = await options.auth();
         if (await credentialPartition(options.baseUrl, headers) !== partitionKey) {
@@ -48,6 +48,7 @@ export function bound(options, partitionKey, signal, beforeDispatch) {
         timeoutMs: options.timeoutMs,
         ...(signal === undefined ? {} : { signal }),
         ...(beforeDispatch === undefined ? {} : { beforeDispatch }),
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
     };
 }
 /** POST one body, verifying the acknowledgement when groups were referenced. */
@@ -70,6 +71,7 @@ export async function submitBody(analysisType, body, transport, groups = []) {
             ? jobFromResponse
             : (value) => expectedAck(value, groups),
         ...(transport.signal === undefined ? {} : { signal: transport.signal }),
+        ...(transport.idempotencyKey === undefined ? {} : { idempotencyKey: transport.idempotencyKey }),
     });
 }
 /** Upload one geometry document and return its presigned GET URL. */

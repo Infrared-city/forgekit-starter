@@ -16,9 +16,12 @@ export interface BoundTransport {
     readonly thresholdBytes: number;
     readonly timeoutMs: number;
     readonly signal?: AbortSignal;
+    /** The area retry `Idempotency-Key` for this submit (D224); unset for a
+     * direct, non-area submit. */
+    readonly idempotencyKey?: string;
 }
 /** Bind one partition's transports, refusing a mid-run credential swap. */
-export declare function bound(options: GeometryReuseOptions, partitionKey: string, signal?: AbortSignal, beforeDispatch?: () => void): BoundTransport;
+export declare function bound(options: GeometryReuseOptions, partitionKey: string, signal?: AbortSignal, beforeDispatch?: () => void, idempotencyKey?: string): BoundTransport;
 /** POST one body, verifying the acknowledgement when groups were referenced. */
 export declare function submitBody(analysisType: string, body: Readonly<Record<string, unknown>>, transport: BoundTransport, groups?: readonly string[]): Promise<Job>;
 /** Upload one geometry document and return its presigned GET URL. */

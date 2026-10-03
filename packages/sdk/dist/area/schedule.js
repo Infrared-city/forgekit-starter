@@ -1,3 +1,4 @@
+import { freezeRetryFields, parseRetryFields, retryFieldsToJSON } from "./schedule-retry-fields.js";
 const STATUSES = new Set([
     "pending", "running", "completed", "failed", "skipped",
 ]);
@@ -37,6 +38,7 @@ export function freezeAreaSchedule(schedule) {
         tilePositions,
         gridShape: Object.freeze([...schedule.gridShape]),
         failedSubmissions: Object.freeze([...schedule.failedSubmissions]),
+        ...freezeRetryFields(schedule),
         ...(schedule.uncertainSubmissions === undefined ? {} : {
             uncertainSubmissions: Object.freeze([...schedule.uncertainSubmissions]),
         }),
@@ -96,6 +98,7 @@ export function areaScheduleToJSON(schedule) {
         ...(schedule.batchSensorCounts === undefined ? {} : { batchSensorCounts: { ...schedule.batchSensorCounts } }),
         ...(schedule.webhookUrl === undefined ? {} : { webhookUrl: schedule.webhookUrl }),
         ...(schedule.webhookEvents === undefined ? {} : { webhookEvents: [...schedule.webhookEvents] }),
+        ...retryFieldsToJSON(schedule),
     };
 }
 function invalid(message) {
@@ -277,6 +280,7 @@ export function areaScheduleFromJSON(value) {
     if (raw.webhookUrl !== undefined && (typeof raw.webhookUrl !== "string" || raw.webhookUrl.length === 0)) {
         invalid("webhookUrl must be a non-empty string");
     }
+    const retryFields = parseRetryFields(raw, invalid);
     const schedule = {
         jobs, polygon: polygon,
         configHash: string(raw.configHash, "configHash"), tilePositions,
@@ -300,6 +304,7 @@ export function areaScheduleFromJSON(value) {
         ...(membership === undefined ? {} : { batchMembership: membership, batchSensorCounts: counts }),
         ...(raw.webhookUrl === undefined ? {} : { webhookUrl: raw.webhookUrl }),
         ...(Array.isArray(raw.webhookEvents) ? { webhookEvents: raw.webhookEvents.map((item) => string(item, "webhook event")) } : {}),
+        ...retryFields,
     };
     if (schedule.transport === "binary" && schedule.wireVersion !== 1) {
         invalid("binary transport requires wireVersion 1");

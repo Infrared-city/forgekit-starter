@@ -41,7 +41,7 @@ export declare function bboxIntersects(a: Bbox, b: Bbox): boolean;
  * so the Python and TypeScript hosts set one. Chromium drops an explicit
  * value, but WebKit can send it; the host CORS policy must allow User-Agent.
  */
-export declare const DATA_USER_AGENT = "infrared-sdk-ts/0.12.13-next.19";
+export declare const DATA_USER_AGENT = "infrared-sdk-ts/0.14.0-next.0";
 /**
  * Largest JSON document read from a public host.
  *

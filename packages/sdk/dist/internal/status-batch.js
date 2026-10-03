@@ -29,6 +29,7 @@
  */
 import { jobFromResponse } from "./job-response.js";
 import { TransportError } from "./transport.js";
+import { isTransientStatusError } from "./poll-engine.js";
 /**
  * Ids per request. It is the cap the endpoint documents and enforces, so it
  * is not ours to raise: `MaxBatchJobIDs` in
@@ -107,6 +108,8 @@ export async function fetchStatusBatch(gateway, jobIds, options = {}) {
     // chunk failed transiently must leave the verdict where it found it.
     let answered = 0;
     let lacking = false;
+    const failedIds = [];
+    let retryAfterS;
     if (jobIds.length === 0)
         return { statuses, unanswered, batched: false, lacking: false };
     const chunks = chunk(jobIds);
@@ -124,6 +127,18 @@ export async function fetchStatusBatch(gateway, jobIds, options = {}) {
             catch (error) {
                 if (options.signal?.aborted === true)
                     throw error;
+                // Deferred to the next sweep (the engine backs off) when the SERVER
+                // said 429/5xx, or the route is proven. A network-level failure on a
+                // route not yet proven falls through to the per-job GET as always:
+                // in a browser a proxy or CORS refusal of `?ids=` looks exactly like
+                // a network error, and must not strand the run (D213).
+                if (isTransientStatusError(error) &&
+                    (error.reason === "http" || options.routeProven === true)) {
+                    failedIds.push(...ids);
+                    if (error.retryAfterS !== undefined)
+                        retryAfterS = Math.max(retryAfterS ?? 0, error.retryAfterS);
+                    continue;
+                }
                 unanswered.push(...ids);
                 continue;
             }
@@ -150,5 +165,9 @@ export async function fetchStatusBatch(gateway, jobIds, options = {}) {
             }
         }
     }));
-    return { statuses, unanswered, batched: answered > 0, lacking };
+    return {
+        statuses, unanswered, batched: answered > 0, lacking,
+        ...(failedIds.length === 0 ? {} : { failedIds }),
+        ...(retryAfterS === undefined ? {} : { retryAfterS }),
+    };
 }

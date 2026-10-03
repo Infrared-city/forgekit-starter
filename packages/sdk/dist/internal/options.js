@@ -1,6 +1,9 @@
 import { CoreInitializationError } from "./errors.js";
 export function resolveCoreSource(options) {
     const supplied = [options.url, options.bytes, options.module].filter((value) => value !== undefined);
+    if (options.threads !== undefined && options.threads !== 1) {
+        throw new CoreInitializationError("initializeCore({ threads }) above 1 is supported on Node only (D205)");
+    }
     if (supplied.length > 1) {
         throw new CoreInitializationError("initializeCore accepts exactly one core source");
     }
