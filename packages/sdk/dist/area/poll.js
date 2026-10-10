@@ -70,23 +70,26 @@ async function pollOne(service, job, record, signal) {
     }
 }
 /**
- * Give the poll circuit breaker's victims one more chance.
+ * Give the jobs that polling gave up on one more chance, and return how many were revived.
  *
- * `pollOne` retires a job to `"skipped"` after FAILURE_LIMIT consecutive
- * `getStatus` failures, and `checkAreaState` then never polls it again for the
- * life of the schedule. That is right INSIDE one run: a tile the gateway keeps
- * refusing must not hold the poll loop open forever.
+ * Polling retires a job to `"skipped"` after repeated status failures, so a tile the gateway
+ * keeps refusing cannot hold a run open forever. Such a job exists and is billed, and it has
+ * often finished. This puts every skipped job that has a `jobId` back to `"pending"` so the
+ * next check polls it again. A tile skipped by an aborted submission has no `jobId` and stays
+ * as it is.
  *
- * It is wrong when the caller comes back and explicitly asks for their results
- * again. The job exists, it is billed, and it very often SUCCEEDED while we
- * were being throttled — a live smoke test found 23 of 23 retired tiles had
- * already succeeded server-side, fetchable by `jobId` in under 50 ms
- * (`sdk-bench/reports/SMOKE-TS-A-2026-09-20`). Leaving them retired made
- * D110's "call mergeAreaJobs again" a promise the SDK could not keep.
- *
- * Only the breaker's victims are revived: a `"skipped"` job WITH a `jobId`.
- * A tile skipped by an aborted submission has no `jobId` and stays as it is.
+ * @param schedule - The schedule whose jobs are revived.
+ * @returns The number of jobs put back to pending.
+ * @category Run an analysis
  */
+// Maintainer note (not published): `pollOne` retires a job to `"skipped"` after FAILURE_LIMIT
+// consecutive `getStatus` failures, and `checkAreaState` then never polls it again for the life
+// of the schedule. That is right INSIDE one run, but wrong when the caller comes back and
+// explicitly asks for their results again. A live smoke test found 23 of 23 retired tiles had
+// already succeeded server-side, fetchable by `jobId` in under 50 ms
+// (`sdk-bench/reports/SMOKE-TS-A-2026-09-20`). Leaving them retired made D110's "call
+// mergeAreaJobs again" a promise the SDK could not keep. Only the breaker's victims are
+// revived: a `"skipped"` job WITH a `jobId`.
 export function revivePolledOut(schedule) {
     let revived = 0;
     for (const job of schedule.jobs.values()) {
@@ -146,14 +149,38 @@ async function pollBatched(service, pending, options, record) {
     }
     return sweep.unanswered.map((id) => byId.get(id)).filter((job) => job !== undefined);
 }
-/** What the last check of each schedule met: its per-job requests and its
- *  transient failures. The poll engine reads it (D213). */
+// What the last check of each schedule met: its per-job requests and its transient failures.
+// The poll engine reads it (D213).
 const lastSweeps = new WeakMap();
+/**
+ * What the most recent `checkAreaState` of a schedule encountered, or zeroes when it has not
+ * been checked yet.
+ *
+ * @param schedule - The schedule that was checked.
+ * @returns The per-job request count, transient failure count and longest `Retry-After`.
+ * @category Run an analysis
+ */
 export function lastSweepRecord(schedule) {
     return lastSweeps.get(schedule) ?? { perJob: 0, failures: 0, retryAfterS: undefined };
 }
-/** Poll every open job of a schedule once. Reads only `jobs`: an area
- * schedule and a daylight-factor parts schedule (D221) poll the same way. */
+/**
+ * Poll every open job of a schedule once and return the resulting progress.
+ *
+ * Status is read in batches of up to 50 jobs where the service supports it, and per job
+ * otherwise. Each job record is updated in place. A job whose status request keeps failing is
+ * marked `"skipped"` after repeated failures; a rate limit or temporary server error is never
+ * counted against a job.
+ *
+ * @param service - Reads job status, for example `client.jobs`.
+ * @param schedule - The schedule to poll. Only its `jobs` are read.
+ * @param options - Concurrency, cancellation and a progress callback.
+ * @returns The counts of completed, failed, skipped, pending and running jobs.
+ * @throws {TypeError} when `options.maxWorkers` is not a positive whole number.
+ * @throws {Error} when `options.signal` is aborted; the abort reason is thrown.
+ * @category Run an analysis
+ */
+// Maintainer note (not published): reads only `jobs`, so an area schedule and a
+// daylight-factor parts schedule (D221) poll the same way.
 export async function checkAreaState(service, schedule, options = {}) {
     const pending = [...schedule.jobs.values()].filter((job) => Boolean(job.jobId) && job.status !== "completed" && job.status !== "failed" && job.status !== "skipped");
     // Synchronously short-circuited, not awaited, when there is no batched
@@ -175,6 +202,11 @@ export async function checkAreaState(service, schedule, options = {}) {
                 await pollOne(service, job, record, options.signal);
         }
     }));
+    // A failed job is never merged (a retry makes a new job), so its capture is dead weight.
+    for (const job of pending) {
+        if (job.status === "failed" && job.jobId)
+            service.captures?.forget(job.jobId);
+    }
     const state = computeAreaState(schedule);
     try {
         options.onProgress?.(state);

@@ -1,12 +1,23 @@
-/**
- * The worker half of the SDK worker helper. Call `serveSdkWorker()` once in a
- * module worker file; `createWorkerClient` on the page drives it.
- */
+// Maintainer note (not published): The worker half of the SDK worker helper. Call
+// `serveSdkWorker()` once in a module worker file; `createWorkerClient` on the page drives it.
 import { InfraredClient } from "../client.js";
 import { initializeCore } from "../internal/initialize.js";
 import { areaScheduleFromJSON, areaScheduleToJSON } from "../area/schedule.js";
 import { serializeError, transferables, } from "./protocol.js";
-/** Make this worker serve one `createWorkerClient` on the page. */
+/**
+ * Makes this worker serve the `createWorkerClient` on the page. Call it once, in the module
+ * worker file.
+ *
+ * @example
+ * ```ts
+ * // sdk.worker.ts
+ * import { serveSdkWorker } from "@infrared-city/infrared-sdk/worker";
+ * serveSdkWorker();
+ * ```
+ *
+ * @param options - A custom `fetch` for the SDK client, and the scope to listen on.
+ * @category Worker
+ */
 export function serveSdkWorker(options = {}) {
     const scope = options.scope ?? globalThis;
     let client;
@@ -24,6 +35,7 @@ export function serveSdkWorker(options = {}) {
         const created = new InfraredClient({
             ...message.config,
             ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+            ...(options.geometryUrlStore === undefined ? {} : { geometryUrlStore: options.geometryUrlStore }),
             ...(message.getToken ? { getToken: requestToken } : {}),
         });
         scope.postMessage({ type: "ready" });

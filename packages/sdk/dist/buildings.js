@@ -1,4 +1,5 @@
 import { DEFAULT_HEIGHT_M } from "./internal/footprints.js";
+import { ensureCore } from "./internal/core.js";
 import { rejectRemovedOption } from "./internal/service.js";
 import { consoleLogger } from "./logger.js";
 import { generateTilesForPolygon } from "./area/tiling.js";
@@ -6,19 +7,27 @@ import { reanchorEntries } from "./area/reanchor.js";
 import { kernelPolygonOrigin } from "./area/tile-frames.js";
 import { acquireBuildingsArea, httpRangeTransport, pointToBbox, readMarginM, resolveReadAnalysisType, siteRectangle, } from "./geodata/index.js";
 /**
- * Buildings read straight from the public data hosts and extruded locally.
+ * Reads building footprints for an area from the public data hosts and extrudes
+ * them locally into dotbim meshes.
  *
- * The gateway route `POST /buildings` is gone. That Lambda read the same R2
- * city overlays and the same Overture data this class now reads itself, so
- * it added one server round trip per tile and returned no `buildingIds` for
- * any non-Mapbox source. The class therefore takes only the transport
- * settings of `ServiceOptions` (`fetch`, `timeoutMs`) and sends no API key
- * anywhere; `buildingIds` is always an empty array.
+ * The service takes only the transport settings of `ServiceOptions` (`fetch`,
+ * `timeoutMs`, `logger`) and sends no API key anywhere. `buildingIds` is always
+ * an empty array, because the public sources carry no building ids.
+ *
+ * @category Buildings
  */
+// Maintainer note (not published): the gateway route `POST /buildings` is gone.
+// That Lambda read the same R2 city overlays and the same Overture data this
+// class now reads itself, so it added one server round trip per tile and
+// returned no `buildingIds` for any non-Mapbox source.
 export class BuildingsService {
     request;
     /** The client's logger: an overlay degrade is reported through it. */
     logger;
+    /**
+     * @param options - Transport settings: `fetch`, `timeoutMs` and `logger` are
+     *   used for the public reads; `baseUrl` and `auth` are accepted but not used.
+     */
     constructor(options) {
         // The client's fetch and timeout reach the public hosts too.
         this.request = {
@@ -29,24 +38,36 @@ export class BuildingsService {
         };
         this.logger = options.logger ?? consoleLogger;
     }
+    /**
+     * Reads and extrudes the buildings of a polygon area.
+     *
+     * The footprints are read once for the whole site and extruded in one frame,
+     * returned as `origin`. The read margin follows `options.analysisType`.
+     *
+     * @param polygon - The area to read: a GeoJSON `Polygon` with one closed ring of
+     *   `[longitude, latitude]` positions.
+     * @param options - Optional read settings; see `BuildingsConfig`.
+     * @returns The meshes keyed by building id, with the read's frame, margin and
+     *   any warnings.
+     * @throws {InvalidOptionError} when `options` carries a removed option
+     *   (`acquisition`, `compress`, `optimizations` or `outputFormat`).
+     */
     async getBuildingsInArea(polygon, options = {}) {
         rejectRemovedOption(options, "acquisition", "footprints are read from the public data hosts only; remove the option");
         for (const name of ["compress", "optimizations", "outputFormat"]) {
             rejectRemovedOption(options, name, "it shaped the deleted POST /buildings request; the extrusion is local and " +
                 "always returns dotbim meshes");
         }
+        await ensureCore("buildings.getBuildingsInArea");
         return this.directArea(polygon, options, performance.now());
     }
-    /**
-     * Footprints read straight from the public hosts and extruded ONCE.
-     *
-     * The area is read for one site rectangle (in ~2x2 km chunks when it is
-     * large), normalised once and extruded once in the site frame, and the
-     * bodies are then moved into the POLYGON's frame — the canonical D1 origin
-     * the payload path and the tile grid both use. Up to 0.12 this read,
-     * normalised and extruded per tile and offset the results into the grid,
-     * which mixed two frames (D48).
-     */
+    // Maintainer note (not published): footprints read straight from the public
+    // hosts and extruded ONCE. The area is read for one site rectangle (in ~2x2 km
+    // chunks when it is large), normalised once and extruded once in the site
+    // frame, and the bodies are then moved into the POLYGON's frame, the canonical
+    // D1 origin the payload path and the tile grid both use. Up to 0.12 this read,
+    // normalised and extruded per tile and offset the results into the grid, which
+    // mixed two frames (D48).
     async directArea(polygon, options, started) {
         // The READ shape follows the analysis (D54): the kernel preset decides
         // the tile grid the rectangles are centred on AND their half extent.

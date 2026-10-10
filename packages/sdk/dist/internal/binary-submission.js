@@ -5,7 +5,7 @@ import { dispatchKeyed } from "./idempotent-dispatch.js";
 import { TransportError } from "./transport.js";
 import { uploadPresignedZip } from "./upload.js";
 import { requireCore } from "./core.js";
-import { decisionBoxesTrees, treeBoxDecision } from "./tree-boxes.js";
+import { delay } from "./deadline.js";
 // Control travels in the API request, not in the uploaded geometry file.
 const MAX_CONTROL_METADATA_BYTES = 4_194_304;
 /**
@@ -52,7 +52,12 @@ export async function capability(gateway, signal) {
     return { inputFormat: "irbf", resultFormat: "irbf", wireVersion: 1, geometrySchemas, models,
         limits: parsedLimits, ...(facadeTargets === undefined ? {} : { facadeTargets }) };
 }
-export async function prepareBinary(prepared, supported) {
+/**
+ * The checks of a binary route that hold for every job of a run: the geometry
+ * schema and the model's binary route. An area run makes them once, before
+ * its first paid POST (#816, D277); each job makes them again here.
+ */
+export function checkBinaryRoute(analysisType, supported) {
     // Geometry schema 2 (D206): this SDK writes the schema its kernel writes,
     // and only to a server that reads it; refuse before any upload or charge.
     const schema = requireCore().geometrySchemaVersion();
@@ -61,26 +66,18 @@ export async function prepareBinary(prepared, supported) {
         throw new TypeError(`this endpoint reads binary geometry schema(s) ${JSON.stringify(schemas)}; `
             + `this SDK writes schema ${schema}. The server needs the geometry schema ${schema} update.`);
     }
-    const model = supported.models[prepared.analysisType];
+    const model = supported.models[analysisType];
     if (model === undefined || !Array.isArray(model.geometryGroups)
         || !Array.isArray(model.resultFamilies) || model.resultFamilies.length === 0) {
-        throw new TypeError(`model ${prepared.analysisType} does not support binary transport`);
+        throw new TypeError(`model ${analysisType} does not support binary transport`);
     }
-    // The trees AFTER the capability document is in hand: on a model whose
-    // advertised `geometryGroups` carries no `vegetation` each tree becomes a
-    // box in `geometries` (D70) — in the kernel, whether the body is an area
-    // tile (its artifact comes from the prepared site, D101) or a direct body
-    // (`geometryArtifact`). The day the backend adds `vegetation` for wind the
-    // trees travel as trees, which is why this cannot move above the fetch.
-    const decision = treeBoxDecision(prepared.analysisType, model.geometryGroups);
-    const trees = prepared.body.vegetation;
-    const boxes = decisionBoxesTrees(decision) && trees !== undefined && trees !== null;
-    if (boxes && (typeof trees !== "object" || Array.isArray(trees))) {
-        throw new TypeError(`binary ${prepared.analysisType}: vegetation must be an object keyed by tree id to be boxed into the geometry layer`);
-    }
+    return model;
+}
+export async function prepareBinary(prepared, supported) {
+    const model = checkBinaryRoute(prepared.analysisType, supported);
+    // Trees travel as the `vegetation` group on every outdoor binary route,
+    // wind and PWC included (D249): the wind worker boxes them server-side.
     const body = { ...prepared.body };
-    if (boxes)
-        delete body.vegetation;
     const fields = geometryFields();
     const present = fields.filter((name) => {
         const value = body[name];
@@ -101,33 +98,58 @@ export async function prepareBinary(prepared, supported) {
     // The control is bounded BEFORE anything is encoded: an oversized control
     // fails here, unbilled, and pays for no artifact.
     const tile = prepared.artifact === undefined
-        ? bodyArtifact(prepared.body, boxes, supported.limits)
+        ? bodyArtifact(prepared.body, supported.limits)
         // #602: only the facade artifact getter reads `facadeTargets` (scene
         // mode); `bodyArtifact` never sees it.
-        : prepared.artifact(boxes, { ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
+        : prepared.artifact({ ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
     // D156: an area facade batch must upload exactly its planned targets, or
     // the server synthesizes (and bills) sensors the plan never counted.
     if (prepared.artifact !== undefined && isSurfaceBody(prepared.body)) {
         checkFacadeArtifact(prepared.analysisType, prepared.body, tile);
     }
     const artifact = tile;
-    const treeBoxes = tile.treeBoxes === undefined
-        ? undefined
-        : { ...tile.treeBoxes, model: prepared.analysisType, decidedBy: decision };
-    return { artifact, control, limits: supported.limits,
-        ...(treeBoxes === undefined ? {} : { treeBoxes }) };
+    return { artifact, control, limits: supported.limits };
 }
 export async function uploadGeometry(uploadGateway, fetch, prepared, timeoutMs, signal) {
-    const response = await uploadGateway.requestJson("/uploads/presign", {
+    const response = await resending(() => uploadGateway.requestJson("/uploads/presign", {
         method: "POST", body: { content_length: prepared.artifact.archive.byteLength },
         ...(signal === undefined ? {} : { signal }),
-    });
+    }), signal);
     const value = object(response, "presign response");
     const uploadUrl = https(value["upload-url"], "upload-url");
     const getUrl = https(value["get-url"], "get-url");
-    await uploadPresignedZip(uploadUrl, prepared.artifact.archive, { fetch, timeoutMs,
-        ...(signal === undefined ? {} : { signal }) });
+    await resending(() => uploadPresignedZip(uploadUrl, prepared.artifact.archive, { fetch, timeoutMs,
+        ...(signal === undefined ? {} : { signal }) }), signal);
     return getUrl;
+}
+/** The presign and S3 PUT answer that is sent again after a short wait. */
+const RATE_LIMITED = 429;
+/** Attempts for one presign or one PUT, the first one included. */
+const UPLOAD_ATTEMPTS = 5;
+/**
+ * Send again on a rate-limit (429) answer, with jittered backoff (at most
+ * 4 s), as the Python host does (#816, D276/D277). Both calls are safe to
+ * send again: a presign makes a new signed URL, and a PUT of the same bytes
+ * to the same URL writes the same object. No paid request is sent here. A
+ * 5xx still fails the upload at once (#602 simplify); the job retry covers it.
+ */
+async function resending(send, signal) {
+    for (let attempt = 1;; attempt += 1) {
+        try {
+            return await send();
+        }
+        catch (error) {
+            if (attempt >= UPLOAD_ATTEMPTS || !(error instanceof TransportError) || error.reason !== "http"
+                || error.status !== RATE_LIMITED)
+                throw error;
+            try {
+                await delay(Math.min(4_000, 250 * 2 ** (attempt - 1)) * (0.5 + Math.random()), signal ?? new AbortController().signal);
+            }
+            catch {
+                throw new TransportError("upload was aborted while waiting to send again", "pre-dispatch", "aborted", error.method);
+            }
+        }
+    }
 }
 export function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
     return { geometry: { url: geometryUrl, encoding: binary.artifact.encoding,

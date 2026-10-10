@@ -39,16 +39,26 @@ function registeredNames() {
     return new Set(records.map((record) => record.name).filter((name) => typeof name === "string"));
 }
 /**
- * Assign supported wire geometry groups to non-empty tiles.
+ * Assigns supported geometry groups to the non-empty tiles of a grid.
  *
- * The shared kernel owns projection, assignment, ownership, the terrain
- * policy, the exact re-anchor into each tile's frame (D48) and, since D98, the
- * canonical bytes of every group and their kernel hashes. Compact
- * `vegetation-instances` has no shared tiling policy yet and is rejected.
+ * Each tile's payload comes back finished: every group is already in the tile's own local
+ * frame, with the terrain policy applied, so it can be sent as it is. Compact
+ * `vegetation-instances` has no tiling policy yet and is rejected.
  *
- * The answer is FINISHED: every group is in the tile's own frame, so there is
- * no second step between this and the wire.
+ * @param groups - The geometry groups to cut into tiles.
+ * @param tiles - The tiles to compose, with their grid positions.
+ * @param polygon - The area polygon the tiles cover.
+ * @param options - The analysis type, and `terrainContext` (required with `ground-geometry`).
+ * @returns The payload of each tile, keyed by tile id.
+ * @throws {TypeError} when a group is unknown or has no tiling policy, a mesh uses packed binary
+ *   coordinates, `ground-geometry` is given without `terrainContext`, or a tile row or column is
+ *   not an integer from 0 through 4,294,967,295.
+ * @category Tiling
  */
+// Maintainer note (not published): the shared kernel owns projection, assignment, ownership, the
+// terrain policy, the exact re-anchor into each tile's frame (D48) and, since D98, the canonical
+// bytes of every group and their kernel hashes. The answer is FINISHED: there is no second step
+// between this and the wire.
 export function composeTilePayloads(groups, tiles, polygon, options = {}) {
     const run = beginCompose(groups, tiles, polygon, options);
     for (let index = 0; index < tiles.length; index += 1)
@@ -57,26 +67,36 @@ export function composeTilePayloads(groups, tiles, polygon, options = {}) {
 }
 const decoder = new TextDecoder();
 /**
- * {@link composeTilePayloads}, one tile at a time, with the site pass kept.
+ * Like `composeTilePayloads`, but one tile at a time, keeping the site pass.
  *
- * `planAreaSubmission` drives THIS one: it yields the thread between tiles
- * (D78) and the facade split reads the kernel's `core`, `shrink_band` and
- * `demoted` off `site` instead of asking the kernel a second time per tile
- * (D63, D90). A tile costs one `JSON.parse` per group of the kernel's own
- * bytes, and each parsed group is remembered with those bytes and its kernel
- * hash, so the reuse path never canonicalises or re-hashes it and digests an
- * identity only when asked.
+ * Call `tile(index)` on the returned run for each tile, yielding between tiles if needed.
+ * Each tile costs one JSON parse per group.
+ *
+ * @param groups - The geometry groups to cut into tiles.
+ * @param tiles - The tiles to compose, with their grid positions.
+ * @param polygon - The area polygon the tiles cover.
+ * @param options - The analysis type, and `terrainContext` (required with `ground-geometry`).
+ * @param keepKernelSite - Keeps the site pass on the run for later steps that read it.
+ * @param texts - The JSON text of group documents already serialised, to avoid writing them again.
+ * @param rememberWire - Remembers each group's serialised text for later reuse; only for group
+ *   objects the SDK owns.
+ * @param terrain - The terrain read once for `groups["ground-geometry"]`.
+ * @returns The compose run.
+ * @throws {TypeError} as `composeTilePayloads`.
+ * @category Tiling
  */
-export function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = false, texts, 
-/**
- * Remember each group's arena bytes as its wire text (`internal/wire-json.ts`).
- * ONLY the plan path sets this: its group objects are SDK-owned (the
- * prepared site, D96). `composeTilePayloads` hands its payloads to the
- * caller, who may change them before a submit, so it never remembers.
- */
-rememberWire = false, 
-/** The terrain read once for `groups["ground-geometry"]` (D200). */
-terrain) {
+// Maintainer note (not published): `planAreaSubmission` drives THIS one: it yields the thread
+// between tiles (D78) and the facade split reads the kernel's `core`, `shrink_band` and `demoted`
+// off `site` instead of asking the kernel a second time per tile (D63, D90). A tile costs one
+// `JSON.parse` per group of the kernel's own bytes, and each parsed group is remembered with
+// those bytes and its kernel hash, so the reuse path never canonicalises or re-hashes it and
+// digests an identity only when asked.
+//
+// `rememberWire`: remember each group's arena bytes as its wire text (`internal/wire-json.ts`).
+// ONLY the plan path sets this: its group objects are SDK-owned (the prepared site, D96).
+// `composeTilePayloads` hands its payloads to the caller, who may change them before a submit, so
+// it never remembers. `terrain`: the terrain read once for `groups["ground-geometry"]` (D200).
+export function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = false, texts, rememberWire = false, terrain) {
     const tileInput = tiles.map((tile) => ({
         row: checkedIndex(tile.row, "tile row"),
         col: checkedIndex(tile.col, "tile col"),

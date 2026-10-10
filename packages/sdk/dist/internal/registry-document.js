@@ -1,53 +1,54 @@
-/**
- * The public colour registry document: fetch, allow-list, cache.
- *
- * Split out of `images.ts` so the rendering module stays inside the 400-line
- * rule. The network rules live in ONE place here: HTTPS on an allow-listed
- * host, no credentials, redirects refused, and a declared body cap.
- */
+// Maintainer note (not published): the public colour registry document: fetch,
+// allow-list, cache. Split out of `images.ts` so the rendering module stays inside the
+// 400-line rule. The network rules live in ONE place here: HTTPS on an allow-listed
+// host, no credentials, redirects refused, and a declared body cap.
 import { cancelBody, readCappedBody } from "./capped-body.js";
 import { Deadline } from "./deadline.js";
 import { resolveFetch } from "./fetch.js";
-/** The public R2 mirror of the models registry. HTTPS, no credentials. */
-export const REGISTRY_URL = "https://registry.infrared.city/models/latest.json";
 /**
- * Hosts this module will fetch colour configuration from.
+ * The address of the public registry document that colour configurations are read from.
+ * It is served over HTTPS and needs no credentials.
  *
- * A prefix check on `https://` is not a host check: `https://evil.example/`
- * passes it. The `url` override exists for tests and for a pinned document, not
- * for pointing the renderer at somebody else's server, so it goes through the
- * same gate.
+ * @category Results and legend
  */
+// Maintainer note (not published): this is the public R2 mirror of the models registry.
+export const REGISTRY_URL = "https://registry.infrared.city/models/latest.json";
+// Maintainer note (not published): hosts this module will fetch colour configuration
+// from. A prefix check on `https://` is not a host check: `https://evil.example/`
+// passes it. The `url` override exists for tests and for a pinned document, not for
+// pointing the renderer at somebody else's server, so it goes through the same gate.
 const ALLOWED_HOSTS = ["registry.infrared.city"];
 // Registry documents change with a release, not per request: re-read after
 // fifteen minutes (Python twin `layers/_registry.py` uses the same value).
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
-/**
- * Total time for one registry read, body included.
- *
- * The module had no timeout at all: a mirror that answered and then stalled
- * held a render open with no end. One deadline covers the answer and the body,
- * as the geodata reader does.
- */
+// Maintainer note (not published): total time for one registry read, body included.
+// The module had no timeout at all: a mirror that answered and then stalled held a
+// render open with no end. One deadline covers the answer and the body, as the geodata
+// reader does.
 const DEFAULT_TIMEOUT_MS = 30_000;
 /**
- * Largest registry document this module will read.
+ * The largest registry document, in bytes, that the SDK will read (8 MiB). A larger
+ * answer is refused with a `RegistryFetchError`.
  *
- * The live document is under 1 MB. The cap keeps a wrong or hostile answer
- * from buffering an unbounded body in a browser tab.
+ * @category Results and legend
  */
+// Maintainer note (not published): the live document is under 1 MB. The cap keeps a
+// wrong or hostile answer from buffering an unbounded body in a browser tab.
 export const MAX_REGISTRY_BYTES = 8 * 1024 * 1024;
-/** The colour registry could not be fetched or was not usable. */
+/**
+ * Thrown when the colour registry could not be fetched or its answer was not usable:
+ * a URL that is not HTTPS on the registry host, a redirect, an HTTP error, a timeout or
+ * abort, a body that is too large or not JSON, or a document without colour configurations.
+ *
+ * @category Errors
+ */
 export class RegistryFetchError extends Error {
     name = "RegistryFetchError";
 }
-/**
- * Freeze a plain JSON tree in place.
- *
- * The cache hands the SAME object to every caller, so one caller mutating a
- * config would silently change every later render in the process. Freezing is
- * cheaper than copying per call and turns that into a visible failure.
- */
+// Maintainer note (not published): freeze a plain JSON tree in place. The cache hands
+// the SAME object to every caller, so one caller mutating a config would silently
+// change every later render in the process. Freezing is cheaper than copying per call
+// and turns that into a visible failure.
 function deepFreeze(value) {
     if (typeof value !== "object" || value === null || Object.isFrozen(value))
         return value;
@@ -56,11 +57,16 @@ function deepFreeze(value) {
     return Object.freeze(value);
 }
 let cache;
-/** Drop the cached registry document. For tests and for a known new release. */
+/**
+ * Drop the cached registry document, so the next read fetches it again. Useful in tests,
+ * or when you know a new registry release is out.
+ *
+ * @category Results and legend
+ */
 export function clearRegistryCache() {
     cache = undefined;
 }
-/** Reject anything that is not HTTPS on an allow-listed host. */
+// Maintainer note (not published): reject anything that is not HTTPS on an allow-listed host.
 function assertAllowedRegistryUrl(url) {
     let parsed;
     try {
@@ -82,27 +88,20 @@ function userAgent() {
     // must allow it in CORS as well as accepting Node and Worker requests.
     return "infrared-sdk-ts (+https://infrared.city) registry-colors";
 }
-/**
- * Refuse a redirect before the body is read.
- *
- * A 3xx from an allow-listed host would carry the request to any host at all,
- * which is what the allow-list exists to prevent; `redirect: "error"` stops
- * the real transport, and this check stops a caller's own `fetch` that answers
- * the redirect instead of refusing it.
- */
+// Maintainer note (not published): refuse a redirect before the body is read. A 3xx
+// from an allow-listed host would carry the request to any host at all, which is what
+// the allow-list exists to prevent; `redirect: "error"` stops the real transport, and
+// this check stops a caller's own `fetch` that answers the redirect instead of refusing it.
 function assertNotRedirect(response) {
     if (response.status >= 300 && response.status < 400) {
         cancelBody(response);
         throw new RegistryFetchError(`colour registry redirect refused (HTTP ${response.status})`);
     }
 }
-/**
- * Read the document under {@link MAX_REGISTRY_BYTES}, then parse it.
- *
- * `response.json()` reads the whole body first and asks about its size after,
- * which is no limit at all. The capped reader stops at the cap while the body
- * arrives, so a wrong or hostile answer cannot fill a browser tab.
- */
+// Maintainer note (not published): read the document under `MAX_REGISTRY_BYTES`, then
+// parse it. `response.json()` reads the whole body first and asks about its size after,
+// which is no limit at all. The capped reader stops at the cap while the body arrives,
+// so a wrong or hostile answer cannot fill a browser tab.
 async function readDocument(response) {
     const bytes = await readCappedBody(response, {
         cap: MAX_REGISTRY_BYTES,
@@ -115,7 +114,7 @@ async function readDocument(response) {
         throw new RegistryFetchError(`colour registry document is not JSON: ${String(error)}`, { cause: error });
     }
 }
-/** Name the reason the read ended: the deadline knows it, the error does not. */
+// Maintainer note (not published): name the reason the read ended: the deadline knows it, the error does not.
 function stopDetail(error, deadline, timeoutMs) {
     const stopped = deadline.reason();
     if (stopped === "timeout") {
@@ -126,12 +125,19 @@ function stopDetail(error, deadline, timeoutMs) {
     return `could not fetch the colour registry: ${String(error)}`;
 }
 /**
- * Fetch `visualConfigurations` from the public registry mirror.
+ * Fetch the colour configurations from the public registry.
  *
- * Cached in-module for `ttlMs`. A non-default `url` bypasses the cache
- * entirely, so a staging pin never poisons the shared entry. No credentials are
- * sent: the registry is a public object and this is a bare `fetch`, not the
- * SDK's authenticated transport.
+ * The answer is cached for `ttlMs` (15 minutes by default), and the returned object is
+ * frozen. A custom `url` bypasses the cache, so a pinned document never replaces the
+ * shared entry. No credentials are sent: the registry is public, and the request is a
+ * plain `fetch`, not the SDK's authenticated connection. Redirects are refused.
+ *
+ * @param options - Optional URL, cache lifetime, `fetch` implementation, abort signal and
+ *   timeout (30 seconds by default, covering the answer and its body).
+ * @returns The colour configurations and the registry version.
+ * @throws {RegistryFetchError} If the URL is not HTTPS on the registry host, the read
+ *   fails, times out or is aborted, or the document is not usable.
+ * @category Results and legend
  */
 export async function fetchVisualConfigurations(options = {}) {
     const url = options.url ?? REGISTRY_URL;

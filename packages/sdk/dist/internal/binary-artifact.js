@@ -1,10 +1,6 @@
 import { requireCore } from "./core.js";
-/**
- * One body's artifact: its geometry groups as given, encoded by the kernel —
- * and, with `boxTrees`, its trees boxed into `geometries` by the kernel (D70)
- * in the frame of the body's own `longitude`/`latitude`.
- */
-export function bodyArtifact(body, boxTrees, limits) {
+/** One body's artifact: its geometry groups as given, encoded by the kernel. */
+export function bodyArtifact(body, limits) {
     // A caller may pass `facadeTargets` in `limits` (it rides along with the
     // other four for the facade artifact getter); this loop checks it as a
     // non-negative uint32 too, same as the four it actually uses below, and
@@ -15,11 +11,9 @@ export function bodyArtifact(body, boxTrees, limits) {
         }
     }
     const core = requireCore();
-    const encoded = core.geometryArtifact(JSON.stringify(body), boxTrees, BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances));
-    const counts = JSON.parse(encoded.treeBoxes);
+    const encoded = core.geometryArtifact(JSON.stringify(body), BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances));
     return {
         archive: encoded.archive, artifactDigest: encoded.artifactDigest,
         geometryContentDigest: encoded.contentDigest, encoding: encoded.encoding,
-        ...(counts === null ? {} : { treeBoxes: counts }),
     };
 }

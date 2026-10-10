@@ -1,17 +1,32 @@
 import { WIND_ANALYSIS_TYPES } from "./analysis-types.js";
 import { requireCore } from "./internal/core.js";
 import { groupHasContent, KernelGroup } from "./internal/kernel-group.js";
-const SURFACE_TYPES = new Set([
-    "sky-view-factors", "solar-radiation", "direct-sun-hours", "daylight-availability",
-]);
-const TERRAIN_TYPES = new Set([
-    ...SURFACE_TYPES, "thermal-comfort-index", "thermal-comfort-statistics",
-]);
+import { enforcePhysicsPolicy } from "./area/thermal-controls.js";
+import { fieldEnum, fieldMinimum, modelsWithField } from "./area/field-registry.js";
+// Which models take a field, and the closed value sets and bounds below, are
+// the kernel field registry's (`area/field-registry.ts`); this file keeps no
+// model list of its own. A model that does not list a field refuses it.
 const INTERIOR_TYPES = new Set(["daylight-factor", "energy-balance", "spatial-daylight-autonomy"]);
+const ALIGNMENT_WIND_TYPES = ["wind-speed", "pedestrian-wind-comfort"];
+const THERMAL_REFERENCE = "thermal-comfort-index";
+// Every model that takes the surface options carries the same rows for them.
+const SURFACE_REFERENCE = "direct-sun-hours";
 // Python's TcsModelBaseRequest.subtype is required (analyses/types.py:1013);
 // TS has no per-model type to hang that on (D109). Scoped to this one field —
 // not general input hardening.
-const TCS_SUBTYPES = new Set(["thermal-comfort", "heat-stress", "cold-stress"]);
+const TCS_MODEL = "thermal-comfort-statistics";
+/** `a, b, or c` / `"a" or "b"` as the error texts write a closed set. */
+function listOr(values, quote) {
+    const shown = values.map((value) => (quote ? JSON.stringify(value) : value));
+    if (shown.length <= 2)
+        return shown.join(" or ");
+    return `${shown.slice(0, -1).join(", ")}, or ${shown[shown.length - 1]}`;
+}
+function required(value, what) {
+    if (value === undefined)
+        throw new Error(`the kernel field registry has no ${what}`);
+    return value;
+}
 const SURFACE_FIELDS = [
     "analysis-surfaces", "sensor-points", "sensor-normals", "context-geometry",
     "surface-grid-size", "surface-offset", "emit-cell-tris", "mesh-cleaning",
@@ -26,9 +41,6 @@ const TERRAIN_FIELDS = ["ground-geometry"];
 // option answers a question about the CALLER's own scene — where its solids
 // sit relative to grade — which those two models do have (D91).
 const ALIGNMENT_FIELDS = ["terrain-alignment"];
-const ALIGNMENT_TYPES = new Set([
-    ...TERRAIN_TYPES, "wind-speed", "pedestrian-wind-comfort",
-]);
 // Server-side fast mode for a long time window (lambda-models #489). Valid
 // ONLY on the two solar area models and the two thermal models — `sky-view-
 // factors` and `solar-radiation` never read it, matching Python's
@@ -36,14 +48,9 @@ const ALIGNMENT_TYPES = new Set([
 // ignores this key until #489 ships; refusing it on the WRONG models now
 // still catches a caller's typo or a misplaced flag before the job bills.
 const FAST_FIELDS = ["fast"];
-const FAST_TYPES = new Set([
-    "direct-sun-hours", "daylight-availability",
-    "thermal-comfort-index", "thermal-comfort-statistics",
-]);
-const TERRAIN_ALIGNMENT_MODES = new Set(["as-is", "auto-align", "assume-aligned"]);
 // The WIND family spells the same option with its own values (D91): there is no
 // terrain to align to, only the caller's own solids to drop to grade.
-const GRADE_ALIGNMENT_MODES = new Set(["to-ground", "as-is"]);
+const GRADE_ALIGNMENT_MODES = ["to-ground", "as-is"];
 function present(input, names) {
     return names.filter((name) => input[name] !== undefined && input[name] !== null);
 }
@@ -66,9 +73,11 @@ function validateSensors(input) {
     const pointsValue = input["sensor-points"];
     const normalsValue = input["sensor-normals"];
     const emitCellTris = input["emit-cell-tris"];
-    if (surfaces != null && (typeof surfaces !== "string" ||
-        !["facades", "roofs", "all"].includes(surfaces))) {
-        throw new TypeError("analysis-surfaces must be facades, roofs, or all");
+    if (surfaces != null) {
+        const surfaceModes = required(fieldEnum(SURFACE_REFERENCE, "analysis-surfaces"), "analysis-surfaces values");
+        if (typeof surfaces !== "string" || !surfaceModes.includes(surfaces)) {
+            throw new TypeError(`analysis-surfaces must be ${listOr(surfaceModes, false)}`);
+        }
     }
     if (surfaces != null && pointsValue != null) {
         throw new TypeError("analysis-surfaces and sensor-points are mutually exclusive");
@@ -96,12 +105,18 @@ function validateSensors(input) {
         }
     }
     const gridSize = input["surface-grid-size"];
-    if (gridSize != null && (typeof gridSize !== "number" || !Number.isFinite(gridSize) || gridSize < 0.25)) {
-        throw new TypeError("surface-grid-size must be a finite number >= 0.25 m");
+    if (gridSize != null) {
+        const minGrid = required(fieldMinimum(SURFACE_REFERENCE, "surface-grid-size"), "surface-grid-size bound");
+        if (typeof gridSize !== "number" || !Number.isFinite(gridSize) || gridSize < minGrid) {
+            throw new TypeError(`surface-grid-size must be a finite number >= ${minGrid} m`);
+        }
     }
     const offset = input["surface-offset"];
-    if (offset != null && (typeof offset !== "number" || !Number.isFinite(offset) || offset < 0)) {
-        throw new TypeError("surface-offset must be a finite number >= 0");
+    if (offset != null) {
+        const minOffset = required(fieldMinimum(SURFACE_REFERENCE, "surface-offset"), "surface-offset bound");
+        if (typeof offset !== "number" || !Number.isFinite(offset) || offset < minOffset) {
+            throw new TypeError(`surface-offset must be a finite number >= ${minOffset}`);
+        }
     }
     if (emitCellTris != null && typeof emitCellTris !== "boolean") {
         throw new TypeError("emit-cell-tris must be a Boolean");
@@ -112,8 +127,11 @@ function validateSensors(input) {
     // #555: whether the kernel cleans each building first ("auto", the
     // default) or uses the meshes as drawn ("off").
     const cleaning = input["mesh-cleaning"];
-    if (cleaning != null && cleaning !== "auto" && cleaning !== "off") {
-        throw new TypeError('mesh-cleaning must be "auto" or "off"');
+    if (cleaning != null) {
+        const cleaningModes = required(fieldEnum(SURFACE_REFERENCE, "mesh-cleaning"), "mesh-cleaning values");
+        if (!cleaningModes.includes(cleaning)) {
+            throw new TypeError(`mesh-cleaning must be ${listOr(cleaningModes, true)}`);
+        }
     }
     if (cleaning != null && surfaces == null) {
         throw new TypeError("mesh-cleaning only applies to analysis-surfaces requests");
@@ -240,7 +258,9 @@ export function validatePreparedAnalysisRequest(input, options = {}) {
         const grade = WIND_ANALYSIS_TYPES.has(type);
         const chosen = input["terrain-alignment"];
         if (typeof chosen !== "string" ||
-            !(grade ? GRADE_ALIGNMENT_MODES : TERRAIN_ALIGNMENT_MODES).has(chosen)) {
+            !(grade
+                ? GRADE_ALIGNMENT_MODES
+                : required(fieldEnum(THERMAL_REFERENCE, "terrain-alignment"), "terrain-alignment values")).includes(chosen)) {
             throw new TypeError(grade
                 ? "terrain-alignment must be to-ground or as-is on the wind models"
                 : "terrain-alignment must be as-is, auto-align, or assume-aligned");
@@ -253,30 +273,34 @@ export function validatePreparedAnalysisRequest(input, options = {}) {
     // return would silently let it through on exactly the types it was
     // never meant to reach.
     const fast = present(input, FAST_FIELDS);
-    if (fast.length > 0 && !FAST_TYPES.has(type)) {
+    if (fast.length > 0 && !modelsWithField("fast").has(type)) {
         throw new TypeError(`${fast.join(", ")} not valid on '${type}'`);
     }
     if (input.fast != null && typeof input.fast !== "boolean") {
         throw new TypeError("fast must be a Boolean");
     }
+    if (typeof type === "string")
+        enforcePhysicsPolicy(input, type);
     if (typeof type !== "string" || INTERIOR_TYPES.has(type))
         return;
     if (type === "thermal-comfort-statistics") {
         const subtype = input.subtype;
-        if (typeof subtype !== "string" || !TCS_SUBTYPES.has(subtype)) {
-            throw new TypeError(`subtype (one of ${[...TCS_SUBTYPES].join(", ")}) is required on 'thermal-comfort-statistics'`);
+        const subtypes = required(fieldEnum(TCS_MODEL, "subtype"), "subtype values");
+        if (typeof subtype !== "string" || !subtypes.includes(subtype)) {
+            throw new TypeError(`subtype (one of ${subtypes.join(", ")}) is required on 'thermal-comfort-statistics'`);
         }
     }
     const surface = present(input, SURFACE_FIELDS);
-    if (surface.length > 0 && !SURFACE_TYPES.has(type)) {
+    if (surface.length > 0 && !modelsWithField("analysis-surfaces").has(type)) {
         throw new TypeError(`${surface.join(", ")} not valid on '${type}'`);
     }
     const terrain = present(input, TERRAIN_FIELDS);
-    if (terrain.length > 0 && !TERRAIN_TYPES.has(type)) {
+    if (terrain.length > 0 && !modelsWithField("ground-geometry").has(type)) {
         throw new TypeError(`${terrain.join(", ")} not valid on '${type}'`);
     }
     const alignment = present(input, ALIGNMENT_FIELDS);
-    if (alignment.length > 0 && !ALIGNMENT_TYPES.has(type)) {
+    if (alignment.length > 0 &&
+        !modelsWithField("terrain-alignment").has(type) && !ALIGNMENT_WIND_TYPES.includes(type)) {
         throw new TypeError(`${alignment.join(", ")} not valid on '${type}'`);
     }
     validateSensors(input);

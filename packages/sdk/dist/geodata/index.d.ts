@@ -47,3 +47,5 @@ export type { AcquireBuildingsAreaOptions, BuildingsAreaResult, } from "./buildi
 export { bboxAreaKm2, decompose, farEndErrorM, namePieces, SITE_CHUNK_EDGE_M, SITE_CHUNK_THRESHOLD_KM2, SITE_CHUNKS_IN_FLIGHT, SITE_EXTENT_WARNING_KM, siteChunks, siteRectangle, } from "./site-chunks.js";
 export type { SiteChunk } from "./site-chunks.js";
 export { bboxAreaM2, MAX_SLAB_TOLERANCE_DEG, SLAB_TOLERANCE_FACTOR, slabToleranceDeg, unionAreaM2, } from "./rect-union-metrics.js";
+export type { PlannedBudget } from "./overture-budget.js";
+export type { ColumnStatistics, ParquetMetadata } from "./overture-parquet.js";

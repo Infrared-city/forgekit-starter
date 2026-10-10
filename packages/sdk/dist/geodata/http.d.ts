@@ -2,114 +2,140 @@ import type { Logger } from "../logger.js";
 import { RangeRetry } from "./retry.js";
 import type { FetchLike } from "../internal/transport.js";
 export { MAX_HTTP_200_BYTES, MAX_RANGE_BYTES } from "./range-answer.js";
-/** A west/south/east/north bounding box in WGS84 degrees. */
+/**
+ * A west/south/east/north bounding box in WGS84 degrees.
+ *
+ * @category Geodata
+ */
 export interface Bbox {
+    /** Western edge, longitude in degrees. */
     readonly west: number;
+    /** Southern edge, latitude in degrees. */
     readonly south: number;
+    /** Eastern edge, longitude in degrees. */
     readonly east: number;
+    /** Northern edge, latitude in degrees. */
     readonly north: number;
 }
 /**
- * Metres per degree of latitude in the FLAT SDK convention — the ONE home of
- * this number on this host.
+ * Metres per degree of latitude (111 320 m) used by flat bounding-box derivations
+ * such as {@link pointToBbox}.
  *
- * It is the kernel's `ir_geo::consts::METERS_PER_DEG_LAT`
- * (`public/rust/crates/ir-geo/src/consts.rs`), the `111 320 m/deg`
- * approximation and NOT `EARTH_RADIUS_M * DEG2RAD` (about 111 194.9 m); the
- * ~0.11 % gap IS the D1 deviation, and it is kept for parity with the SDK tile,
- * vegetation and ground-material frames. The binding exposes no constants, so
- * this is a copy with its source named rather than a second decision. It lives
- * beside `Bbox` and `pointToBbox` because every user of it is a bbox
- * derivation; the Python twin is
- * `infrared_sdk._internal.geodata.bbox.METERS_PER_DEG_LAT`.
+ * A fixed approximation, about 0.11 % above the mean-radius value (about
+ * 111 195 m); do not use it for projection.
  *
- * Never use it in `LocalFrame` code, which projects through the kernel.
+ * @category Geodata
  */
 export declare const METERS_PER_DEG_LAT = 111320;
 /**
- * Centre point plus radius to a bbox.
+ * Convert a centre point and a radius into a bounding box.
  *
- * Verbatim `app.gis.trees.point_to_bbox`: {@link METERS_PER_DEG_LAT} for
- * latitude, the same constant scaled by `cos(latitude)` for longitude, with the
- * cosine clamped so a polar AOI cannot divide by zero.
+ * The box extends `distanceM` metres from the centre in each direction, using
+ * `METERS_PER_DEG_LAT` for latitude and that value scaled by `cos(latitude)`
+ * for longitude (the cosine is clamped, so a pole does not divide by zero).
+ *
+ * @param latitude - Centre latitude in degrees.
+ * @param longitude - Centre longitude in degrees.
+ * @param distanceM - Half-width of the box in metres.
+ * @returns The bounding box in degrees.
+ * @category Geodata
  */
 export declare function pointToBbox(latitude: number, longitude: number, distanceM: number): Bbox;
-/** True when the two boxes overlap, edges included. */
+/**
+ * Report whether two bounding boxes overlap; boxes that only touch along an edge
+ * count as overlapping.
+ *
+ * @param a - The first box.
+ * @param b - The second box.
+ * @category Geodata
+ */
 export declare function bboxIntersects(a: Bbox, b: Bbox): boolean;
 /**
- * The public data host can reject an unset or default User-Agent with 403,
- * so the Python and TypeScript hosts set one. Chromium drops an explicit
- * value, but WebKit can send it; the host CORS policy must allow User-Agent.
- */
-export declare const DATA_USER_AGENT = "infrared-sdk-ts/0.14.0-next.0";
-/**
- * Largest JSON document read from a public host.
+ * The `User-Agent` value sent on public data requests (`infrared-sdk-ts/<version>`).
  *
- * The manifests are index objects: the largest real one is about 2 MB. A
- * multi-gigabyte body where a manifest was expected is a failure, not
- * something to buffer. The Python host holds the twin of this cap at
- * `_internal/geodata/http.py::MAX_JSON_BYTES`.
+ * The public data host can reject an unset or default `User-Agent` with HTTP 403,
+ * so the SDK sets one. The host's CORS policy must allow the `User-Agent` header.
+ *
+ * @category Geodata
+ */
+export declare const DATA_USER_AGENT = "infrared-sdk-ts/1.0.1";
+/**
+ * Largest JSON document, in bytes (32 MiB), read from a public host; a larger
+ * body is refused.
+ *
+ * @category Geodata
  */
 export declare const MAX_JSON_BYTES: number;
 /**
- * How long one public read may take, the body included, when the caller
- * names no `timeoutMs`.
+ * How long one public read may take, body included, when no `timeoutMs` is
+ * given: 180 000 ms (three minutes).
  *
- * A read with no deadline at all is not a fast read, it is a read that can
- * hang for ever: a server that answers and then stalls used to hold a
- * default-constructed client open with no end. This is the same three
- * minutes the gateway transport gives an authenticated call
- * (`internal/transport.ts`), so the SDK has ONE answer to "how long can a
- * request hang". A caller that knows better passes its own `timeoutMs`.
+ * @category Geodata
  */
 export declare const DEFAULT_PUBLIC_TIMEOUT_MS = 180000;
+/**
+ * Options shared by every public data request.
+ *
+ * @category Geodata
+ */
 export interface PublicRequestOptions {
+    /** Custom `fetch` implementation; defaults to the runtime's global `fetch`. */
     readonly fetch?: FetchLike;
+    /** Abort signal; aborting it ends the read with a `GeodataFetchError`. */
     readonly signal?: AbortSignal;
-    /** Total time for the answer AND its body. Defaults to {@link DEFAULT_PUBLIC_TIMEOUT_MS}. */
+    /** Total time for the answer and its body. Defaults to {@link DEFAULT_PUBLIC_TIMEOUT_MS}. */
     readonly timeoutMs?: number;
     /**
-     * Where a transport retry reports itself. Defaults to the console, which
-     * is what the Python twin does with `logging.warning`. Pass `silentLogger`
-     * to keep a retry out of the output.
+     * Where a transport retry reports itself. Defaults to the console. Pass
+     * `silentLogger` to keep a retry out of the output.
      */
     readonly logger?: Logger;
     /**
      * How long one attempt of a retried read may receive no data before it is
-     * aborted and asked again. Defaults to {@link STALL_TIMEOUT_MS}.
+     * aborted and asked again. Defaults to `STALL_TIMEOUT_MS`.
      */
     readonly stallTimeoutMs?: number;
 }
 /**
- * One request under ONE deadline that covers the headers AND the body.
+ * Send one GET request to an allowed public host and hand the response to a
+ * callback, under a single deadline that covers the headers and the body.
  *
- * The timer used to be cleared as soon as the headers arrived, so a server
- * that answered and then stalled held the read open for as long as it liked.
- * {@link Deadline} carries one abort controller for the whole call — the
- * fetch, the body read, and the caller's own signal — and `close()` clears
- * the timer and removes the listener the caller's signal got, so a finished
- * read leaves nothing behind.
+ * The request carries no credentials and refuses redirects. The deadline is
+ * `options.timeoutMs`, or {@link DEFAULT_PUBLIC_TIMEOUT_MS}. With a `retry`
+ * state, retryable failures (connection errors, stalls, 5xx, 429) are repeated
+ * within the same deadline; without it the request runs once.
  *
- * Every read has a deadline: `timeoutMs` when the caller names one, and
- * {@link DEFAULT_PUBLIC_TIMEOUT_MS} when it does not.
- *
- * A `retry` state makes the request repeatable: the loop asks again only
- * while {@link RangeRetry.next} names a wait, and that wait is spent inside
- * the same deadline. Without one — a whole-object read — the loop runs
- * exactly once. The static-weather reader, the one whole-object caller, has
- * a retry of its own.
+ * @param url - The URL to fetch; it must be on the allow-list.
+ * @param headers - Extra request headers.
+ * @param options - Request options.
+ * @param use - Callback that reads the response and returns the result.
+ * @param retry - Optional retry state for repeatable reads.
+ * @returns Whatever `use` returns.
+ * @throws {HostNotAllowedError} when the URL is not allowed.
+ * @throws {GeodataFetchError} when the request fails, is redirected, times out or is aborted.
+ * @category Geodata
  */
 export declare function withRequest<T>(url: string, headers: Record<string, string>, options: PublicRequestOptions, use: (response: Response) => Promise<T>, retry?: RangeRetry): Promise<T>;
 /**
- * GET a public JSON document as text, so a kernel call can take it as-is.
+ * GET a public JSON document and return it as unparsed text.
  *
- * The read is retried like a range read: a failed connection, 5xx or 429 is
- * asked again (see `retry.ts`). A ground read fetches five Overture pointer
- * documents on every call, and one connection reset on one of them failed
- * the whole site read with `SiteReadError`.
+ * A failed connection, a 5xx or a 429 answer is retried. The body is capped at
+ * {@link MAX_JSON_BYTES} and must be valid UTF-8.
+ *
+ * @param url - The URL to fetch; it must be on the allow-list.
+ * @param options - Request options.
+ * @returns The response body as text.
+ * @throws {HostNotAllowedError} when the URL is not allowed.
+ * @throws {GeodataFetchError} when the request fails, the status is not 2xx, the
+ *   size cap is exceeded or the body is not UTF-8.
+ * @category Geodata
  */
 export declare function fetchPublicText(url: string, options?: PublicRequestOptions): Promise<string>;
-/** One whole-object read: the bytes, and the entity tag the host sent. */
+/**
+ * One whole-object read: the bytes and the entity tag.
+ *
+ * @category Geodata
+ */
 export interface PublicBytes {
     readonly bytes: Uint8Array;
     /** Entity tag of the object, when the host sends one. */
@@ -117,25 +143,40 @@ export interface PublicBytes {
     /** True when the answer arrived under a content coding (usually gzip). */
     readonly encoded: boolean;
 }
+/**
+ * Options for {@link fetchPublicBytes}.
+ *
+ * @category Geodata
+ */
 export interface PublicBytesOptions extends PublicRequestOptions {
     /** Largest body accepted, in bytes. Defaults to {@link MAX_JSON_BYTES}. */
     readonly cap?: number;
 }
 /**
- * GET a whole public object as BYTES, under a streamed cap.
+ * GET a whole public object as undecoded bytes, under a size cap.
  *
- * The JSON readers above decode to text; a caller that must look at the
- * raw bytes first — the static weather reader sniffs a gzip magic number
- * when a host serves gzip without `Content-Encoding` — needs them
- * undecoded. Everything else is the same read: allow-listed host, no
- * credentials, `redirect: "error"`, one deadline over the headers AND the
- * body, and a cap kept by the streamed total rather than by a header.
+ * Use this instead of {@link fetchPublicText} when the raw bytes matter. The
+ * read sends no credentials, refuses redirects and runs under one deadline over
+ * the headers and the body. The cap is enforced on the bytes actually received.
  *
- * `Accept-Encoding` is NOT pinned to `identity` here, unlike a `Range`
- * read: a whole-object read WANTS the host's content coding, and the
- * capped reader skips the declared-length comparison for an encoded body
- * because no header describes its decoded length.
+ * @param url - The URL to fetch; it must be on the allow-list.
+ * @param options - Request options plus `cap`, the largest body accepted in
+ *   bytes (defaults to {@link MAX_JSON_BYTES}).
+ * @returns The bytes, the entity tag if sent, and whether the answer was encoded.
+ * @throws {HostNotAllowedError} when the URL is not allowed.
+ * @throws {GeodataFetchError} when the request fails, is not 2xx or exceeds the cap.
+ * @category Geodata
  */
 export declare function fetchPublicBytes(url: string, options?: PublicBytesOptions): Promise<PublicBytes>;
-/** GET and parse a public JSON document. */
+/**
+ * GET a public JSON document and parse it.
+ *
+ * @typeParam T - Expected shape of the document; it is not validated.
+ * @param url - The URL to fetch; it must be on the allow-list.
+ * @param options - Request options.
+ * @returns The parsed document.
+ * @throws {HostNotAllowedError} when the URL is not allowed.
+ * @throws {GeodataFetchError} when the request fails or the body is not JSON.
+ * @category Geodata
+ */
 export declare function fetchPublicJson<T>(url: string, options?: PublicRequestOptions): Promise<T>;

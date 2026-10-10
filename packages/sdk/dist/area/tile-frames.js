@@ -15,6 +15,6 @@ export function kernelPolygonOrigin(polygon) {
         pairs[index * 2] = point[0];
         pairs[index * 2 + 1] = point[1];
     }
-    const origin = requireCore().scalarPolygonOriginF64(new Uint8Array(pairs.buffer));
+    const origin = requireCore("kernelPolygonOrigin").scalarPolygonOriginF64(new Uint8Array(pairs.buffer));
     return { lon: origin[0], lat: origin[1] };
 }

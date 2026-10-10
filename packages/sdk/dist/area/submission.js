@@ -4,6 +4,7 @@ import { computeAreaState, freezeAreaSchedule } from "./schedule.js";
 import { checkPaidRetrySiteIdentity } from "./site-identity-guard.js";
 import { SCHEDULE_CONTRACT_VERSION } from "./weather-guard.js";
 import { areaTransport } from "../internal/transport-choice.js";
+import { checkBinaryRoute } from "../internal/binary-submission.js";
 function effectiveOptions(options, analysisType) {
     if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
         throw new TypeError("unsupported option binaryResults; use transport instead");
@@ -70,6 +71,15 @@ function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, i
         ...(attempts === undefined ? {} : { attempts }),
     };
 }
+/**
+ * Thrown when the API accepted a job whose geometry reference turned out to be invalid. The
+ * accepted jobs cannot produce a trusted result, so the run stops.
+ *
+ * `areaSchedule` is the schedule recorded so far and `acceptedJobIds` lists the jobs the API
+ * accepted with the invalid reference, so you can find them for billing or support.
+ *
+ * @category Errors
+ */
 export class AreaGeometryReferenceError extends Error {
     areaSchedule;
     acceptedJobIds;
@@ -81,10 +91,15 @@ export class AreaGeometryReferenceError extends Error {
     }
 }
 /**
- * A LEGACY schedule recorded an uncertain capability probe, and resuming it
- * would repeat work whose billing state is unknown. No SDK submits a probe job
- * any more (D71), so nothing written from here on can raise this.
+ * Thrown when resuming a saved schedule from an older SDK version that recorded a capability
+ * probe with an unknown outcome. Resuming would repeat work whose billing state is unknown.
+ * This SDK no longer submits probe jobs, so schedules it writes never raise this.
+ *
+ * `areaSchedule` is the saved schedule and `acceptedProbeJobIds` the probe job ids it recorded.
+ *
+ * @category Errors
  */
+// Maintainer note (not published): no SDK submits a probe job any more (D71).
 export class AreaGeometryProbeError extends Error {
     areaSchedule;
     acceptedProbeJobIds;
@@ -96,14 +111,25 @@ export class AreaGeometryProbeError extends Error {
     }
 }
 /**
- * One facade job's capture for the local `cell-tris` synthesis
- * (`facade-synthesis.ts`, ADR 0008), or `undefined` when the run does not
- * synthesize locally. Written BEFORE the job's paid POST: a refusal or an
- * out-of-memory here fails the job while no request was sent, so a retry is
- * safe. After an accepted POST no host step may turn the job into a failed one.
+ * Captures what is needed to draw one facade job's cell triangles locally after the merge, or
+ * returns `undefined` when the run does not synthesize them locally.
+ *
+ * The capture is taken before the job's paid request is sent, so a failure here fails the job
+ * while nothing was sent and a retry is safe.
+ *
+ * @param service - The jobs service of the run.
+ * @param plan - The submission plan.
+ * @param entry - The submission entry (one job) to capture.
+ * @returns The capture bytes, or `undefined`.
+ * @category Run an analysis
  */
+// Maintainer note (not published): the local `cell-tris` synthesis is `facade-synthesis.ts`, ADR
+// 0008. Written BEFORE the job's paid POST: a refusal or an out-of-memory here fails the job
+// while no request was sent, so a retry is safe. After an accepted POST no host step may turn the
+// job into a failed one. The capture is the kernel's (`Site.facadeFrames`, the Python host's
+// `facade_frames`): the batch's targets and the tile's terrain from the prepared site.
 export function facadeCaptureFor(service, plan, entry) {
-    if (service.facadeSynthesis === undefined || plan.localCellTris !== true)
+    if (service.captures === undefined || !plan.surfaceFields)
         return undefined;
     // A facade job's capture is the kernel's: the batch's targets and the tile's
     // terrain from the prepared site (`Site.facadeFrames`, the Python host's
@@ -117,18 +143,40 @@ export function facadeCaptureFor(service, plan, entry) {
     return entry.capture(typeof alignment === "string" ? alignment : null);
 }
 /**
- * Retain one accepted facade job's capture ({@link facadeCaptureFor}) so the
- * merge can synthesize its `cell-tris` locally. Per CLIENT, on the jobs
- * service: never module-global, and never in the `AreaSchedule`, which is
- * serialised, resumed and handed between processes.
+ * Keeps the capture of one accepted facade job (see `facadeCaptureFor`) so the merge can draw its
+ * cell triangles locally. The capture is held per client, on the jobs service; it is never part
+ * of the schedule, which is saved and handed between processes.
+ *
+ * @param service - The jobs service of the run.
+ * @param capture - The capture, or `undefined` for nothing to keep.
+ * @param jobId - The id of the accepted job, or `undefined` for nothing to keep.
+ * @category Run an analysis
  */
-export function rememberFacadeInputs(service, capture, jobId) {
-    const store = service.facadeSynthesis;
+// Maintainer note (not published): per CLIENT, on the jobs service: never module-global, and
+// never in the `AreaSchedule`, which is serialised, resumed and handed between processes.
+export function rememberFacadeInputs(service, capture, jobId, cellTris = false) {
+    const store = service.captures;
     if (store === undefined || jobId === undefined || capture === undefined)
         return;
-    store.remember(jobId, { capture });
+    store.remember(jobId, capture, cellTris);
 }
-/** Submit an already validated plan once per entry. Unknown POSTs are not retried. */
+/**
+ * Submits an already validated plan, one job per entry, and returns the schedule of the run.
+ *
+ * A request whose outcome is unknown is not retried; it is recorded in the schedule as uncertain
+ * so you can decide. Failed submissions are recorded too. Pass `options.retryFrom` to continue a
+ * saved schedule.
+ *
+ * @param service - The jobs service that sends the jobs, for example `client.jobs`.
+ * @param plan - The submission plan from `planAreaSubmission`.
+ * @param options - The run options: `maxWorkers`, `signal`, `onAccepted`, `onProgress`, `retryFrom`.
+ * @returns The frozen schedule of the run.
+ * @throws {AreaGeometryReferenceError} when the API accepted a job with an invalid geometry
+ *   reference, or `retryFrom` records one.
+ * @throws {AreaGeometryProbeError} when `retryFrom` is a legacy schedule with an uncertain
+ *   capability probe.
+ * @category Run an analysis
+ */
 export async function submitAreaPlan(service, plan, options = {}) {
     const entries = plan.entries;
     if ((options.retryFrom?.invalidReferenceSubmissions?.length ?? 0) > 0) {
@@ -144,17 +192,15 @@ export async function submitAreaPlan(service, plan, options = {}) {
     checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries.length > 0);
     const workers = concurrency(options.maxWorkers);
     let outcome;
-    // No paid POST starts until every selected tile passes binary validation.
-    // What the preflight encodes it KEEPS, under the client's byte budget, and
-    // the worker that submits that tile sends those bytes instead of encoding the
-    // same body again. The submit frees each artifact as its upload consumes it;
-    // the `finally` frees every tile that never got that far — a preflight that
-    // threw on a later tile, an abort, a 402, an invalid geometry reference.
+    // The whole-run checks come before the first paid POST: the capability GET,
+    // the geometry schema and the model's binary route. Then each worker encodes
+    // its tile, uploads it and posts it at once (#816, D277); a tile that fails
+    // to encode is a failed tile, and the other tiles continue. The `finally`
+    // frees what a caller pre-checked itself and did not submit.
     try {
-        if (areaTransport(options, plan.analysisType) === "binary") {
-            for (const entry of entries) {
-                await service.preflightPrepared(entry.prepared, options.signal === undefined ? {} : { signal: options.signal });
-            }
+        if (areaTransport(options, plan.analysisType) === "binary" && entries.length > 0
+            && service.binaryCapability !== undefined) {
+            checkBinaryRoute(plan.analysisType, await service.binaryCapability(options.signal));
         }
         outcome = await submitEntries(service, entries, {
             maxWorkers: workers,
@@ -170,7 +216,8 @@ export async function submitAreaPlan(service, plan, options = {}) {
                 priorInvalidReference: options.retryFrom.invalidReferenceSubmissions ?? [],
             }),
             beforeSubmit: (entry) => facadeCaptureFor(service, plan, entry),
-            afterAccepted: (capture, jobId) => rememberFacadeInputs(service, capture, jobId),
+            afterAccepted: (capture, jobId) => rememberFacadeInputs(service, capture, jobId, plan.localCellTris === true),
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
         });
     }
     finally {
@@ -192,13 +239,33 @@ export async function submitAreaPlan(service, plan, options = {}) {
         // the client.
         for (const job of jobs.values()) {
             if (job.jobId !== undefined)
-                service.facadeSynthesis?.forget(job.jobId);
+                service.captures?.forget(job.jobId);
         }
         const ids = [...jobs.values()].flatMap((job) => job.invalidReference === true && job.jobId !== undefined ? [job.jobId] : []);
         throw new AreaGeometryReferenceError(schedule, ids);
     }
     return schedule;
 }
+/**
+ * Plans an area run for a polygon and submits it: tiles the polygon, builds each tile's request
+ * and sends one job per tile (or per batch of facade sensors).
+ *
+ * Returns as soon as the jobs are submitted; poll the jobs with `checkAreaState` and merge the
+ * results with `mergeAreaJobs`, or use `InfraredClient.runAreaAndWait` to do all three. Every
+ * tile is a billed job, so size the run first with `previewAreaBatches`.
+ *
+ * @param service - The jobs service that sends the jobs, for example `client.jobs`.
+ * @param input - The analysis request: `analysisType` plus the analysis's own parameters.
+ * @param polygon - The GeoJSON `Polygon` to analyse.
+ * @param options - The run options (see `RunAreaOptions`).
+ * @returns The frozen schedule of the run, to poll, merge or save.
+ * @throws {TypeError} when the unsupported `binaryResults` option is passed, or
+ *   `terrainContextMarginM` is not a finite non-negative number.
+ * @throws {Error} when `retryFrom` was saved with a different transport or terrain margin.
+ * @throws {AreaGeometryReferenceError} when the API accepted a job with an invalid geometry
+ *   reference.
+ * @category Run an analysis
+ */
 export async function runArea(service, input, polygon, options = {}) {
     const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
     concurrency(effective.maxWorkers);

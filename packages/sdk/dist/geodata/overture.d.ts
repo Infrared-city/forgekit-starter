@@ -18,45 +18,65 @@ import { type Logger } from "../logger.js";
 export { COLUMNS_BY_COLLECTION, LAND_COVER_MIN_MAX_ZOOM, planRowGroups, } from "./overture-rows.js";
 export type { FeatureBox, ReadOvertureOptions } from "./overture-rows.js";
 /**
- * True when the parquet reader and its codecs are installed in this realm.
+ * Report whether the optional parquet reader packages are installed.
  *
- * A probe answers a boolean, so the REASON is lost — and the reason is the
- * install command. Pass a logger to keep it: the `GeodataDependencyError`
- * message goes out at debug level before `false` is returned, so a caller who
- * branches on this still has one line naming what to install (D55).
+ * A boolean cannot say what is missing, so when the reader is absent the
+ * message naming what to install is written to the logger at debug level before
+ * `false` is returned.
+ *
+ * @param logger - Where the reason is written; defaults to `silentLogger`.
+ * @returns `true` when the parquet reader and its codecs can be loaded.
+ * @category Geodata
  */
 export declare function overtureReaderAvailable(logger?: Logger): Promise<boolean>;
 /**
- * Throw `GeodataDependencyError` NOW when the parquet reader is absent.
+ * Check up front that the optional parquet reader packages are installed.
  *
- * The read machinery loads the decoder deep inside itself, at the first row
- * group, so an entry point that plans before it reads reported the plan's own
- * failure instead: `acquireGroundMaterialsArea` said "no read chunk meets any
- * tile rectangle" and `acquireBuildingsArea` said "the source registry is
- * unreachable", neither naming `hyparquet` and neither of the typed class
- * (WAVE2 F3). Every `/geodata` entry point that will certainly read Overture
- * calls this FIRST, so a missing peer dependency is reported as a missing peer
- * dependency.
+ * Call it before planning an Overture read so that a missing package is
+ * reported as such, with the install command, rather than as a later failure.
+ * Repeated calls are cheap.
  *
- * It is the same memoised load `overtureReaderAvailable` probes, so calling it
- * costs one dynamic `import()` per realm and nothing on the reads after it.
- * The two differ only in what they answer with: a boolean loses the install
- * command, and here the install command IS the answer.
+ * @throws {GeodataDependencyError} when the parquet reader or its codecs are not
+ *   installed; the message names what to install.
+ * @category Geodata
  */
 export declare function requireOvertureReader(): Promise<void>;
-/** Features plus the release they came from, for the result metadata. */
+/**
+ * Features read from an Overture collection, plus the release they came from.
+ *
+ * @category Geodata
+ */
 export interface OvertureRead {
+    /** The GeoJSON features inside the requested box. */
     readonly features: Array<Record<string, unknown>>;
+    /** Overture release the features came from, for reproducibility. */
     readonly release: string;
 }
-/** Read one Overture collection for an AOI as GeoJSON features. */
+/**
+ * Read one Overture collection for an area as GeoJSON features.
+ *
+ * @param collection - The Overture collection name, for example `"water"`.
+ * @param bbox - The area's bounding box in WGS84 degrees.
+ * @param options - Read options (transport, file limit, release pin, byte budget).
+ * @returns The features and the Overture release they came from.
+ * @throws {GeodataDependencyError} when the optional parquet reader packages are
+ *   not installed.
+ * @category Geodata
+ */
 export declare function readOvertureCollection(collection: string, bbox: Bbox, options?: ReadOvertureOptions): Promise<OvertureRead>;
 /**
- * The same read as JSON array text.
+ * Read one Overture collection for an area as JSON array text.
  *
- * `hyparquet` decodes to JavaScript objects, so one `JSON.stringify` per
- * feature is the boundary cost of a non-kernel decoder. Nothing is parsed
- * again: the text feeds the next kernel call directly (bulk-data rule 1).
+ * The same read as {@link readOvertureCollection}, returning the features as
+ * unparsed JSON text.
+ *
+ * @param collection - The Overture collection name, for example `"water"`.
+ * @param bbox - The area's bounding box in WGS84 degrees.
+ * @param options - Read options (transport, file limit, release pin, byte budget).
+ * @returns The features as a JSON array text and the Overture release.
+ * @throws {GeodataDependencyError} when the optional parquet reader packages are
+ *   not installed.
+ * @category Geodata
  */
 export declare function readOvertureCollectionJson(collection: string, bbox: Bbox, options?: ReadOvertureOptions): Promise<{
     json: string;

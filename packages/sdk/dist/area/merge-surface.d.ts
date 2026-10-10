@@ -12,5 +12,23 @@
 import { type SurfaceColumns } from "../results/surface-columns.js";
 import type { AreaSchedule } from "./schedule-types.js";
 import type { AreaMergeJobsService, AreaMergeOptions } from "./merge.js";
-/** Poll once, then strictly download and join all surface jobs. */
+/**
+ * Polls a surface schedule once, downloads the results of all its jobs and joins them into
+ * one set of surface columns.
+ *
+ * Every job must have completed: any failed or missing submission, or any job still pending or
+ * running, makes the merge fail instead of returning a partial result. Calling it again after
+ * a failure gives tiles that were retired by repeated status errors one more chance. A schedule
+ * with no jobs gives empty columns.
+ *
+ * @param jobsService - Reads job status and downloads results, for example `client.jobs`.
+ * @param schedule - The schedule returned by `runArea` for a surface analysis.
+ * @param options - `maxWorkers` (concurrent downloads), `signal` (cancellation) and `logger`.
+ * @returns The merged surface columns.
+ * @throws {Error} when the schedule is not a surface schedule, contains an uncertain or invalid
+ *   geometry reference, has failed or uncertain submissions, has jobs that did not succeed, or a
+ *   download or decode failed (the cause is attached).
+ * @throws when `options.signal` is aborted: the abort reason.
+ * @category Run an analysis
+ */
 export declare function mergeSurfaceAreaJobs(jobsService: AreaMergeJobsService, schedule: AreaSchedule, options?: Pick<AreaMergeOptions, "maxWorkers" | "signal" | "logger">): Promise<SurfaceColumns>;

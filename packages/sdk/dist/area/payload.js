@@ -5,6 +5,7 @@ import { weatherWindow, weatherWindowJson } from "../internal/weather-window.js"
 import { WeatherDocument } from "../weather-epw.js";
 import { BASE, FAST, LOCATION, MODEL_INPUT_NAMES, PERIOD_ALIASES, SURFACE, TERRAIN, TOP_LEVEL_ALIASES, } from "./payload-aliases.js";
 import { THERMAL_CONTROL_KEYS, THERMAL_MODELS, rejectThermalControls, validatePhysics, } from "./thermal-controls.js";
+import { pickKeys, registryAlias } from "./registry-pick.js";
 function define(target, key, value) {
     Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
 }
@@ -46,12 +47,11 @@ function timePeriod(filtersValue) {
         endDay: days?.[1] ?? numeric(end.day, "end day"),
         endHour: hours?.[1] ?? numeric(end.hour, "end hour"),
     };
-    // Refuse a MALFORMED window here, before it is submitted — a month outside
-    // 1-12, an hour outside 0-23, a day outside its own month's length. A
-    // window that wraps the year end and a single-hour window are both valid
-    // and reach the model unchanged (`internal/weather-window.ts`, D45). This
-    // package validated nothing here up to 0.9, so this is a narrowing, and it
-    // narrows only what no model could have read.
+    // Refuse a MALFORMED window here, before it is submitted — a month outside 1-12, an hour outside
+    // 0-23, a day outside its own month's length. A window that crosses the year end (a date span of
+    // one typical year, in calendar order of the year) and a single-hour window are both valid and
+    // reach the model unchanged (`internal/weather-window.ts`, D45). This package validated nothing
+    // here up to 0.9, so this is a narrowing, and it narrows only what no model could have read.
     weatherWindow(windowOf(resolved));
     return resolved;
 }
@@ -62,14 +62,14 @@ function weatherRows(value, period) {
     if (!Array.isArray(columns.month) || !Array.isArray(columns.day) || !Array.isArray(columns.hour)) {
         throw new TypeError("weatherData must be rows or an EPW column object");
     }
-    // Column-form weather is a station document's hourly arrays: the KERNEL
-    // selects the RESOLVED window (`timePeriod()` — period with the `filter`
-    // day/hour shorthand folded in, the same `time-period` the model receives)
-    // with the `filter_hours` the deleted service ran: month AND day AND hour,
-    // EPW hours 1-24 on a 0-23 basis. Up to 0.12 this package selected by month.
+    // Column-form weather is a station document's hourly arrays: the KERNEL selects the RESOLVED
+    // window (`timePeriod()` — period with the `filter` day/hour shorthand folded in, the same
+    // `time-period` the model receives) with the kernel `filter_hours`: the date span the worker
+    // counts, a daily hour range, EPW hours 1-24 on a 0-23 basis (D238). Up to 0.12 this package
+    // selected by month.
     let filtered;
     try {
-        filtered = requireCore().weatherFilterHours(JSON.stringify({ weatherData: columns }), weatherWindowJson(windowOf(period)));
+        filtered = requireCore("prepareAnalysisPayload").weatherFilterHours(JSON.stringify({ weatherData: columns }), weatherWindowJson(windowOf(period)));
     }
     catch (error) {
         if (error instanceof CoreNotReadyError)
@@ -177,17 +177,15 @@ function kernelWeather(output, document, type, period, subtype) {
     }
 }
 function modelTransform(input) {
-    // A parsed EPW document must reach the wire as the kernel's SELECTED
-    // arrays or not at all. `normalizeTopLevel` copies through any key it has
-    // no alias for and `validatePreparedAnalysisRequest` rejects no unknown
-    // key, so on any path that returns before the BYO branch below the whole
-    // document — up to 8760 rows of every column — would be serialised into
-    // the request body: an upload in all but name, which is the one thing BYO
-    // weather must never do. Worse, the identity would still be read from the
-    // input and stamped on the schedule, asserting a weather the run did not
-    // use. Each of those paths therefore REFUSES the document and names what
-    // is missing; stripping the key silently would hide the caller's mistake
-    // and still leave the identity unearned.
+    // A parsed EPW document must reach the wire as the kernel's SELECTED arrays or not at all.
+    // `normalizeTopLevel` copies through any key it has no alias for and
+    // `validatePreparedAnalysisRequest` rejects no unknown key, so on any path that returns before
+    // the BYO branch below the whole document — up to 8760 rows of every column — would be serialised
+    // into the request body: an upload in all but name, which is the one thing BYO weather must never
+    // do. Worse, the identity would still be read from the input and stamped on the schedule,
+    // asserting a weather the run did not use. Each of those paths therefore REFUSES the document and
+    // names what is missing; stripping the key silently would hide the caller's mistake and still
+    // leave the identity unearned.
     const byoWeather = input.weather instanceof WeatherDocument ? input.weather : undefined;
     if (input.analysisType === undefined && typeof input["analysis-type"] === "string") {
         if (byoWeather !== undefined) {
@@ -197,22 +195,20 @@ function modelTransform(input) {
                 "dateFilters, or select the arrays yourself with " +
                 "document.modelInputs(...).");
         }
-        // The one field this pass-through DOES narrow, and for the same reason the
-        // camelCase path does below: the server's `cell-tris` arm is 12.6x the body
-        // for a picture this SDK's kernel draws for free, so no request this SDK
-        // builds asks for it (D88).
+        // The one field this pass-through DOES narrow, and for the same reason the camelCase path does
+        // below: the server's `cell-tris` arm is 12.6x the body for a picture this SDK's kernel draws
+        // for free, so no request this SDK builds asks for it (D88).
         const raw = { ...input };
         if (raw["analysis-surfaces"] != null) {
             raw["emit-cell-tris"] = false;
-            // infrared-core #674: every surface request names the bundled kernel's
-            // roof-gate version, so the worker runs the gate THIS SDK was tested
-            // against rather than guessing from an absent field (old SDKs omit it
-            // and keep the frozen v5 layout; see UPGRADING.md). An explicit caller
-            // value is kept as is -- `prepareSubmissionBody` repeats this same
-            // "set only if absent" rule for a direct submission that never reaches
-            // this function (`internal/submit-body.ts`).
+            // infrared-core #674: every surface request names the bundled kernel's roof-gate version, so
+            // the worker runs the gate THIS SDK was tested against rather than guessing from an absent
+            // field (old SDKs omit it and keep the frozen v5 layout; see UPGRADING.md). An explicit
+            // caller value is kept as is -- `prepareSubmissionBody` repeats this same "set only if
+            // absent" rule for a direct submission that never reaches this function
+            // (`internal/submit-body.ts`).
             if (raw["surfgrid-version"] == null)
-                raw["surfgrid-version"] = requireCore().surfgridVersion();
+                raw["surfgrid-version"] = requireCore("prepareAnalysisPayload").surfgridVersion();
         }
         if (raw["mesh-cleaning"] === "auto")
             delete raw["mesh-cleaning"];
@@ -221,27 +217,25 @@ function modelTransform(input) {
     const type = input.analysisType ?? input["analysis-type"];
     if (typeof type !== "string" || type.length === 0)
         throw new TypeError("area input requires analysisType");
-    // Before any branch picks: on the two thermal models the tier spelling is
-    // checked, on every other model a control is REFUSED rather than dropped.
-    // The wire-shaped path above returned already — it is a deliberate
-    // pass-through and narrows nothing, for any field, on any model.
+    // Before any branch picks: on the two thermal models the tier spelling is checked, on every other
+    // model a control is REFUSED rather than dropped. The wire-shaped path above returned already —
+    // it is a deliberate pass-through and narrows nothing, for any field, on any model.
     if (THERMAL_MODELS.has(type))
         validatePhysics(input);
     else
         rejectThermalControls(input, type);
     let output = { ...input };
-    // PINNED false, not defaulted: the server's `cell-tris` arm is 12.6x the
-    // response body (+214 MB on the 66-job F3 scene) for a picture this SDK's
-    // own kernel draws for free. A caller asking `emitCellTris: true` is asking
-    // for the TRIANGLES, not for the server to render them, and gets them
-    // synthesized locally after the merge -- `area/facade-synthesis.ts`,
-    // ADR 0008, `docs/DEVIATIONS.md` D88. The wire-shaped `analysis-type` path
-    // above returns before this and still passes the field through untouched.
+    // PINNED false, not defaulted: the server's `cell-tris` arm is 12.6x the response body (+214 MB
+    // on the 66-job F3 scene) for a picture this SDK's own kernel draws for free. A caller asking
+    // `emitCellTris: true` is asking for the TRIANGLES, not for the server to render them, and gets
+    // them synthesized locally after the merge -- `area/facade-synthesis.ts`, ADR 0008,
+    // `docs/DEVIATIONS.md` D88. The wire-shaped `analysis-type` path above returns before this and
+    // still passes the field through untouched.
     if (output.analysisSurfaces != null) {
         output.emitCellTris = false;
         // infrared-core #674: same as the wire-shaped pass-through above.
         if (output.surfgridVersion == null)
-            output.surfgridVersion = requireCore().surfgridVersion();
+            output.surfgridVersion = requireCore("prepareAnalysisPayload").surfgridVersion();
     }
     // "auto" IS the default (#555): sent and hashed as nothing, so an explicit
     // "auto" and an omitted field are the same request.
@@ -263,25 +257,23 @@ function modelTransform(input) {
                 "input to solar-radiation, thermal-comfort-index and " +
                 "thermal-comfort-statistics");
         }
-        output = pick(output, [...BASE, ...LOCATION, "accuracy", ...SURFACE, ...TERRAIN, ...FAST]);
+        output = pick(output, pickKeys(type, [...BASE, ...LOCATION, "accuracy", ...SURFACE, ...TERRAIN, ...FAST]));
         output.timePeriod = period;
         return output;
     }
     if (byoWeather !== undefined) {
-        // A parsed EPW file. `weather` never reaches the wire: the `pick` in
-        // each branch below keeps only the model's own fields, and the SELECTED
-        // arrays are what the request carries, exactly as before. Every path
-        // that returns before this point refuses a document (above).
+        // A parsed EPW file. `weather` never reaches the wire: the `pick` in each branch below keeps
+        // only the model's own fields, and the SELECTED arrays are what the request carries, exactly as
+        // before. Every path that returns before this point refuses a document (above).
         if (output.weatherData !== undefined) {
             throw new TypeError("pass either weather (a parsed EPW document) or weatherData (catalog " +
                 "records), never both: the SDK does not choose which weather was meant");
         }
         if (output.solarModel !== undefined) {
-            // The request carries no `solar-model` field, so this selector could
-            // only validate the file against a model the request cannot ask for —
-            // a caller would believe they ran interior irradiance and get ordinary
-            // solar radiation. Refused rather than dropped: TypeScript passes an
-            // unknown key straight through, so silence here is the defect.
+            // The request carries no `solar-model` field, so this selector could only validate the file
+            // against a model the request cannot ask for — a caller would believe they ran interior
+            // irradiance and get ordinary solar radiation. Refused rather than dropped: TypeScript passes
+            // an unknown key straight through, so silence here is the defect.
             throw new TypeError("solarModel is not an area-request field: this SDK cannot submit an " +
                 "interior-irradiance run yet. To VALIDATE a file against that " +
                 "model's required set and its full-year rule, call " +
@@ -292,16 +284,15 @@ function modelTransform(input) {
         // branch, and the kernel takes it as part of the frozen request shape.
         const subtype = typeof output.subtype === "string" ? output.subtype : undefined;
         if (type === "solar-radiation") {
-            output = pick(output, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]);
+            output = pick(output, pickKeys(type, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]));
         }
         else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
-            output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]);
+            output = pick(output, pickKeys(type, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]));
         }
         else {
-            // Every other analysis reads no weather array at all — a wind rose is
-            // not weather input, and sky view factors, daylight, sun hours and
-            // daylight factor take none. Guessing a set would build a paid request
-            // out of the wrong arrays.
+            // Every other analysis reads no weather array at all — a wind rose is not weather input, and
+            // sky view factors, daylight, sun hours and daylight factor take none. Guessing a set would
+            // build a paid request out of the wrong arrays.
             throw new TypeError(`${type} takes no weather arrays; a parsed EPW document is only an ` +
                 "input to solar-radiation, thermal-comfort-index and " +
                 "thermal-comfort-statistics");
@@ -314,20 +305,20 @@ function modelTransform(input) {
         throw new TypeError(`${type} requires weatherData`);
     const rows = weatherRows(output.weatherData, period);
     if (type === "pedestrian-wind-comfort") {
-        output = pick(output, [...BASE, "criteria"]);
+        output = pick(output, pickKeys(type, [...BASE, "criteria"]));
         const wind = pairedWind(rows);
         if (wind.windSpeed.length === 0)
             throw new TypeError("pedestrian-wind-comfort needs paired wind data");
         Object.assign(output, wind);
     }
     else if (type === "solar-radiation") {
-        output = pick(output, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]);
+        output = pick(output, pickKeys(type, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]));
         output.timePeriod = period;
         output.directNormalRadiation = series(rows, "directNormalRadiation");
         output.diffuseHorizontalRadiation = series(rows, "diffuseHorizontalRadiation");
     }
     else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
-        output = pick(output, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]);
+        output = pick(output, pickKeys(type, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]));
         output.timePeriod = period;
         for (const key of [
             "horizontalInfraredRadiationIntensity", "diffuseHorizontalRadiation",
@@ -354,14 +345,25 @@ function normalizeTopLevel(input, preserveNullish) {
     for (const [key, value] of Object.entries(input)) {
         if (!preserveNullish && (value === null || value === undefined))
             continue;
-        const target = TOP_LEVEL_ALIASES.get(key) ?? key;
+        const target = TOP_LEVEL_ALIASES.get(key) ?? registryAlias(key) ?? key;
         if (Object.hasOwn(output, target))
             throw new TypeError(`conflicting aliases for ${target}`);
-        define(output, target, target === "time-period" ? wirePeriod(value) : value);
+        // A typed array (a weather column) becomes a plain array once, so the hash and the wire body
+        // see the same JSON array (JSON.stringify writes a typed array as an object).
+        const plain = ArrayBuffer.isView(value) && !(value instanceof DataView) ? Array.from(value) : value;
+        define(output, target, target === "time-period" ? wirePeriod(plain) : plain);
     }
     return output;
 }
-/** Prepare used model inputs while preserving opaque entity and metadata maps. */
+/**
+ * Turns an analysis input into the request body for one analysis, with wire field names.
+ * Entity and metadata maps pass through unchanged.
+ *
+ * @param input - The analysis input, with `analysisType` (or the wire key `analysis-type`).
+ * @returns The request body.
+ * @throws {TypeError} when the input is invalid for its analysis type.
+ * @category Run an analysis
+ */
 export function prepareAnalysisPayload(input) {
     const source = record(input, "analysis input");
     validatePreparedAnalysisRequest(normalizeTopLevel(source, true));
@@ -371,4 +373,8 @@ export function prepareAnalysisPayload(input) {
     validatePreparedAnalysisRequest(output);
     return output;
 }
+/**
+ * Alias of `prepareAnalysisPayload`.
+ * @category Run an analysis
+ */
 export const prepareAreaPayload = prepareAnalysisPayload;

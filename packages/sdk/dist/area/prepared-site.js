@@ -6,7 +6,7 @@ import { composeTiles, geometryGroups, GROUP_KEYS, rejectFullyDroppedTargets } f
 import { acquiredBuildings } from "./reanchor.js";
 import { areaTransport } from "../internal/transport-choice.js";
 /**
- * How many sites the realm holds. Measured on the 3.5 km, 49-tile Hong Kong
+ * How many sites the realm holds. Measured on the 3.5 km, 49-tile dense-city
  * fixture: a family's site is 45–105 MB of heap (wind, solar, thermal), so
  * the three families of a six-analysis run take about 240 MB and a fourth
  * site of that size stays under 350 MB
@@ -97,26 +97,27 @@ function acquisitionContent(name, value, inner) {
     return { document, meta: JSON.stringify(margin) };
 }
 /**
- * The content key of a site: the digest of every geometry source, plus the
- * tiling family.
+ * Computes the content key of a site: the digest of every geometry source, plus the tiling
+ * family.
  *
- * Each source — a payload group, or an acquired `buildings` / `vegetation` /
- * `groundMaterials` object — is hashed from its JSON text, exactly as it will
- * be read, so two runs handed the same content share a site, while a NEW
- * input map with different content does not, and neither does a map the
- * caller changed in place (the memo checks a content fingerprint). An
- * acquisition result contributes its site content only
- * ({@link acquisitionContent}), so a second fetch of the same site gives the
- * same key and the same `siteIdentity` (D187). The
- * family is the polygon, the preset's three metre scalars, the terrain
- * margin, the tile cap and the wind datum: everything `composeTiles` and the drop to grade read. `undefined` when the
- * realm has no SHA-256 (the same runtimes that get no geometry reuse), in
- * which case the site is built uncached.
+ * Each source (a payload group, or an acquired `buildings`, `vegetation` or `groundMaterials`
+ * object) is hashed from its JSON text as it will be read. Two runs given the same content share
+ * a site; a new input map with different content does not, and neither does a map changed in
+ * place. An acquisition result contributes its site content only, so a second fetch of the same
+ * site gives the same key and the same `siteIdentity`. The tiling family is the polygon, the
+ * preset's three metre sizes, the terrain margin, the tile cap and the wind datum.
  *
- * `legacy` gives the key of 0.12.13-next.17 and older, which hashed each
- * acquisition result WHOLE, per-fetch fields included. Only a retry of a
- * schedule those versions saved asks for it (`planning.ts`).
+ * @param inputs - What the site stage reads.
+ * @param texts - Collects the JSON text of each group written for the key, to reuse it when
+ *   the site is built.
+ * @param legacy - Computes the key of earlier SDK versions (see the note below).
+ * @returns The key, or `undefined` when the runtime has no SHA-256, in which case the site is
+ *   built uncached.
+ * @category Run an analysis
  */
+// Maintainer note (not published): the acquisition-result rule is D187. `legacy` gives the key of
+// 0.12.13-next.17 and older, which hashed each acquisition result WHOLE, per-fetch fields
+// included. Only a retry of a schedule those versions saved asks for it (`planning.ts`).
 export async function preparedSiteKey(inputs, texts, legacy = false) {
     const { payload, options, polygon, config } = inputs;
     // The third field names the inner document an acquisition result hands to
@@ -148,7 +149,19 @@ export async function preparedSiteKey(inputs, texts, legacy = false) {
     parts.push(JSON.stringify(polygon), String(config.inferenceSizeM), String(config.contextSizeM), String(config.stepM), String(inputs.terrainContextMarginM), String(options.maxTilesOverride), String(inputs.grade));
     return parts.join("\n");
 }
-/** The site stage of `planAreaSubmission`: layers, compose, checks. */
+/**
+ * Builds the prepared site: assembles the geometry layers, composes every tile and checks that
+ * no analysis target is dropped entirely.
+ *
+ * @param inputs - What the site stage reads.
+ * @param analysisType - The analysis type, which selects the tiling parameters.
+ * @param tiles - The tiles of the grid.
+ * @param slice - Lets the work yield the thread between tiles.
+ * @param texts - Group texts already written for the site key.
+ * @param terrain - The terrain, read once.
+ * @returns The prepared site.
+ * @category Run an analysis
+ */
 export async function buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain) {
     const { payload, options, polygon } = inputs;
     // D91: the wind family's datum, applied before the compose cuts the site
@@ -170,20 +183,31 @@ export async function buildPreparedSite(inputs, analysisType, tiles, slice, text
 function abortReason(signal) {
     return signal.reason ?? new DOMException("aborted", "AbortError");
 }
-/** Bounded, realm-local, single-flight. */
+/**
+ * The cache of prepared sites: bounded (least recently used out first), local to the process,
+ * and single-flight (concurrent requests for one key share one build).
+ *
+ * @category Run an analysis
+ */
 export class PreparedSiteCache {
     maxSites;
     sites = new Map();
+    /** @param maxSites - How many sites to keep; default 4. */
     constructor(maxSites = MAX_SITES) {
         this.maxSites = maxSites;
     }
     /**
-     * The site under `key`, built by `build` when no caller has built it yet.
+     * Returns the site under `key`, built by `build` when no caller has built it yet.
      *
-     * A caller that arrives while a build is in flight awaits that build. If the
-     * build fails, the failure is the builder's own — its stop signal, or an
-     * input it alone reported — so a waiter that was not itself stopped builds
-     * for itself rather than inherit it.
+     * With an undefined `key` the site is built every time and not kept. A caller that arrives
+     * while a build is in flight awaits that build. If the build fails, the failure is the
+     * builder's own (its stop signal, or an input it alone reported), so a waiter that was not
+     * itself stopped builds for itself rather than inherit it.
+     *
+     * @param key - The content key (see `preparedSiteKey`), or `undefined` to build without caching.
+     * @param build - Builds the site.
+     * @param signal - Cancels a caller that is waiting on another caller's build.
+     * @returns The prepared site.
      */
     async get(key, build, signal) {
         if (key === undefined)
@@ -241,7 +265,11 @@ export class PreparedSiteCache {
     }
 }
 const shared = new PreparedSiteCache();
-/** The realm's prepared sites. */
+/**
+ * Returns the cache of prepared sites that `runArea` uses in this process.
+ *
+ * @category Run an analysis
+ */
 export function preparedSites() {
     return shared;
 }
@@ -251,6 +279,9 @@ export function preparedSites() {
  * A long-lived process that has finished with a site can drop tens of
  * megabytes here instead of waiting for the byte bound to evict them. The
  * next `runArea` on that site prepares it again.
+ *
+ * @returns The number of sites that were held.
+ * @category Run an analysis
  */
 export function freePreparedSites() {
     return shared.clear();

@@ -84,18 +84,32 @@ function expandZip(content, maximum) {
         throw new Error("result ZIP archive is truncated");
     return join(chunks, length);
 }
-/** Throws for an archive option that is not a positive safe integer (no download needed). */
+/**
+ * Checks archive limits without downloading anything.
+ *
+ * @param options - The limits to check.
+ * @throws {TypeError} When a limit is not a positive safe integer.
+ * @category Results and legend
+ */
 export function checkArchiveOptions(options) {
     limit(options.maxCompressedBytes, DEFAULT_MAX_COMPRESSED_BYTES, "maxCompressedBytes");
     limit(options.maxExpandedBytes, DEFAULT_MAX_EXPANDED_BYTES, "maxExpandedBytes");
 }
 /**
- * Expand one server result archive with bounded retained output.
- * Raw JSON is not an archive contract.
+ * Expands one result archive (ZIP or GZIP) into the result document, with bounded output.
+ * Raw JSON is not accepted: the content must be an archive.
  *
- * The limits bound the already-downloaded compressed bytes and the expanded
- * document. They do not bound the later JSON object graph. Joining bounded
- * output chunks also needs a temporary destination buffer.
+ * The limits bound the downloaded compressed bytes and the expanded document. They do not
+ * bound the object graph of the JSON parsed from it. Joining the output chunks also needs a
+ * temporary destination buffer.
+ *
+ * @param content - The downloaded archive bytes.
+ * @param options - Size limits; see `DecompressResultArchiveOptions`.
+ * @returns The expanded document (JSON or binary result bytes).
+ * @throws {TypeError} When a limit is not a positive safe integer.
+ * @throws {Error} When the content is not a ZIP or GZIP archive, is truncated, or exceeds a
+ * limit.
+ * @category Results and legend
  */
 export function decompressResultArchive(content, options = {}) {
     const compressed = limit(options.maxCompressedBytes, DEFAULT_MAX_COMPRESSED_BYTES, "maxCompressedBytes");

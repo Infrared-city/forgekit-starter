@@ -1,7 +1,17 @@
 /** Typed failures for the direct data-acquisition layer. */
-/** The one command that installs the optional Overture parquet stack. */
+/**
+ * The command that installs the optional Overture parquet packages.
+ *
+ * @category Geodata
+ */
 export declare const INSTALL_COMMAND = "npm install hyparquet hyparquet-compressors";
-/** Base class: every direct-acquisition failure the caller must see. */
+/**
+ * Base class for every direct data-acquisition failure.
+ *
+ * Catch this class to handle any error thrown by the geodata readers.
+ *
+ * @category Errors
+ */
 export declare class GeodataError extends Error {
     readonly name: string;
 }
@@ -11,35 +21,43 @@ export declare class GeodataError extends Error {
  * The allow-list is what keeps credentials off public objects and keeps a
  * caller-supplied manifest from redirecting a range read at an arbitrary
  * host.
+ *
+ * @category Errors
  */
 export declare class HostNotAllowedError extends GeodataError {
     readonly name = "HostNotAllowedError";
     constructor(url: string);
 }
 /**
- * The optional Overture parquet stack is not installed.
+ * The optional Overture parquet packages are not installed.
  *
- * `hyparquet` and `hyparquet-compressors` are OPTIONAL peer dependencies:
- * only the `/geodata` Overture reader loads them, and it loads them with a
- * dynamic `import()`, so a caller who brings their own data never installs
- * them (`docs/DEVIATIONS.md` D55). Everything else in the package — payloads,
- * area runs over your own geometry, results, images, the static weather
- * catalog, and the FlatGeobuf layers the kernel reads — works without them.
+ * `hyparquet` and `hyparquet-compressors` are optional peer dependencies:
+ * only the Overture reader loads them, so a caller who brings their own data
+ * never installs them. Everything else in the package (payloads, area runs
+ * over your own geometry, results, images, the static weather catalog and the
+ * FlatGeobuf layers) works without them.
  *
- * ONE error, naming BOTH packages and the exact command, whichever of the two
- * is missing: installing one without the other is never the fix, and a
- * message that names only the half that failed sends the caller round twice.
- * There is no fallback decoder — an unreadable parquet file cannot become an
- * empty area.
+ * The message names both packages and the exact install command, whichever of
+ * the two is missing, because installing only one is never the fix. There is
+ * no fallback decoder.
+ *
+ * @category Errors
  */
 export declare class GeodataDependencyError extends GeodataError {
     readonly name = "GeodataDependencyError";
     /** The command to run, so a caller can print it without parsing prose. */
     static readonly installCommand = "npm install hyparquet hyparquet-compressors";
+    /** The package that could not be loaded. */
     readonly packageName: string;
     constructor(packageName: string, cause?: unknown);
 }
-/** A public host answered in a way the reader cannot use. */
+/**
+ * A public host answered in a way the reader cannot use.
+ *
+ * `status` carries the HTTP status code when there was one.
+ *
+ * @category Errors
+ */
 export declare class GeodataFetchError extends GeodataError {
     readonly status?: number | undefined;
     readonly name = "GeodataFetchError";
@@ -52,6 +70,8 @@ export declare class GeodataFetchError extends GeodataError {
  * ranges of one read (`If-Match` → 412), a server answered a `Range`
  * request with the whole object, or a whole-object read would exceed the
  * caller's byte cap.
+ *
+ * @category Errors
  */
 export declare class GeodataRangeError extends GeodataError {
     readonly status?: number | undefined;
@@ -59,22 +79,30 @@ export declare class GeodataRangeError extends GeodataError {
     constructor(url: string, detail: string, status?: number | undefined);
 }
 /**
- * An Overture read would move more compressed bytes than the realm allows.
+ * An Overture read would move more compressed data than the runtime allows.
  *
- * The row groups an AOI selects are known from the parquet footers BEFORE
- * any of them is fetched, so an area too large to decode fails here, once,
- * naming the limit, what it planned and the RECTANGLE it planned it for —
- * never as an out-of-memory kill or a dead browser tab (WP12 / D47).
+ * The amount to fetch is known from the parquet file footers before any data
+ * is fetched, so an area too large to decode fails up front. The error names
+ * the limit, the planned size and the rectangle it was planned for. Read a
+ * smaller area or raise `maxPlannedBytes`.
  *
- * The budget is per CALL, not per collection: one area read of three ground
- * themes shares one limit, because it is one process that holds all three.
+ * The limit applies to one call, not to each collection: an area read of
+ * several ground layers shares one limit.
+ *
+ * @category Errors
  */
 export declare class OvertureReadTooLargeError extends GeodataError {
+    /** The Overture collection being read, such as `"building"`. */
     readonly collection: string;
+    /** Compressed bytes the read would have fetched. */
     readonly plannedBytes: number;
+    /** The byte limit that was exceeded. */
     readonly limitBytes: number;
+    /** Number of parquet files in the plan. */
     readonly files: number;
+    /** Number of row groups in the plan. */
     readonly rowGroups: number;
+    /** The rectangle the read was planned for. */
     readonly bbox: {
         west: number;
         south: number;
@@ -82,7 +110,19 @@ export declare class OvertureReadTooLargeError extends GeodataError {
         north: number;
     };
     readonly name = "OvertureReadTooLargeError";
-    constructor(collection: string, plannedBytes: number, limitBytes: number, files: number, rowGroups: number, bbox: {
+    constructor(
+    /** The Overture collection being read, such as `"building"`. */
+    collection: string, 
+    /** Compressed bytes the read would have fetched. */
+    plannedBytes: number, 
+    /** The byte limit that was exceeded. */
+    limitBytes: number, 
+    /** Number of parquet files in the plan. */
+    files: number, 
+    /** Number of row groups in the plan. */
+    rowGroups: number, 
+    /** The rectangle the read was planned for. */
+    bbox: {
         west: number;
         south: number;
         east: number;
@@ -90,52 +130,67 @@ export declare class OvertureReadTooLargeError extends GeodataError {
     });
 }
 /**
- * More Overture files match an AOI than the caller's `maxFiles` allows.
+ * More Overture files match an area than the `maxFiles` option allows.
  *
- * Silently reading the first N was safe enough for one tile and is not safe
- * for an area: the dropped files are dropped for EVERY tile, so the answer
- * would be quietly short everywhere. The cap now names both counts and the
- * caller decides (WP12 / D47).
+ * Reading only the first N files would silently drop features everywhere in
+ * the area, so the read fails instead. The error names both counts and the
+ * caller decides whether to raise `maxFiles` or read a smaller area.
+ *
+ * @category Errors
  */
 export declare class OvertureFileLimitError extends GeodataError {
+    /** The Overture collection being read, such as `"building"`. */
     readonly collection: string;
+    /** Number of files that match the area. */
     readonly files: number;
+    /** The `maxFiles` limit that was exceeded. */
     readonly maxFiles: number;
     readonly name = "OvertureFileLimitError";
-    constructor(collection: string, files: number, maxFiles: number);
+    constructor(
+    /** The Overture collection being read, such as `"building"`. */
+    collection: string, 
+    /** Number of files that match the area. */
+    files: number, 
+    /** The `maxFiles` limit that was exceeded. */
+    maxFiles: number);
 }
 /**
- * One read chunk that failed, in the shape the Python host's
- * `TiledRunError.failed_tiles` carries.
+ * One read chunk that failed during a site read.
  *
- * The two hosts spell one record the same way so a caller who uses both reads
- * one field. `row` and `col` are `-1`: a site read fails by READ CHUNK, not by
- * simulation tile, and a chunk has no place in the simulation grid. The chunk
- * id itself is `chunk-r{row}c{col}` (row-major, zero-based) on both hosts.
+ * `row` and `col` are always `-1`: a site read fails by read chunk, not by
+ * simulation tile, so a chunk has no place in the simulation grid. The chunk
+ * id (`tileId`) is `chunk-r{row}c{col}`, row-major and zero-based.
+ *
+ * @category Errors
  */
 export interface SiteChunkFailure {
+    /** The chunk id, `chunk-r{row}c{col}`. */
     readonly tileId: string;
+    /** Always `-1`. */
     readonly row: number;
+    /** Always `-1`. */
     readonly col: number;
+    /** The failure message of that chunk. */
     readonly error: string;
 }
 /**
  * A site read in which at least one read chunk failed.
  *
- * Every chunk feeds the site, so ONE failing chunk fails the site. A partial
- * ground set is not a degraded answer. It is an emptier city that nobody can
- * see. The Python host raises `TiledRunError` with the same `failed_tiles`
- * records and the same first underlying error as its `__cause__`; this is the
- * TypeScript twin, so the two hosts refuse the same failure with the same
- * information (`docs/DEVIATIONS.md` D48).
+ * Every chunk feeds the site, so one failing chunk fails the whole read. A
+ * partial result would be an emptier city that nobody can see. `failedTiles`
+ * lists every chunk that failed, in row-major order.
  *
- * `cause` is the FIRST underlying failure in chunk order — the typed
- * `OvertureReadTooLargeError` or `GeodataFetchError` a caller used to catch
- * directly. Catch this class and read `cause` for the reason,
- * {@link failedTiles} for which chunks died.
+ * `cause` is the first underlying failure in chunk order, for example an
+ * `OvertureReadTooLargeError` or a `GeodataFetchError`. Catch this class and
+ * read `cause` for the reason and `failedTiles` for which chunks failed.
+ *
+ * @category Errors
  */
 export declare class SiteReadError extends GeodataError {
+    /** Every chunk that failed, in row-major order. */
     readonly failedTiles: readonly SiteChunkFailure[];
     readonly name = "SiteReadError";
-    constructor(message: string, failedTiles: readonly SiteChunkFailure[], cause?: unknown);
+    constructor(message: string, 
+    /** Every chunk that failed, in row-major order. */
+    failedTiles: readonly SiteChunkFailure[], cause?: unknown);
 }

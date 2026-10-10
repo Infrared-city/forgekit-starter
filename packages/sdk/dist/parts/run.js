@@ -1,8 +1,6 @@
-/**
- * `runAndWait` for an analysis the kernel splits into parts (daylight-factor,
- * D221): plan, submit the parts, wait, join. A request of one part takes the
- * one-job path and sends the bytes it always sent.
- */
+// Maintainer note (not published): `runAndWait` for an analysis the kernel splits into
+// parts (daylight-factor, D221): plan, submit the parts, wait, join. A request of one part
+// takes the one-job path and sends the bytes it always sent.
 import { waitForSchedule } from "../area/wait-schedule.js";
 import { decompressResultValue } from "../compat.js";
 import { requireCore } from "../internal/core.js";
@@ -17,15 +15,34 @@ import { planRequest, splitsAnalysis } from "./plan.js";
 import { resolveResultFormat } from "./result-format.js";
 import { submitParts } from "./submit.js";
 import { AnalysisPartsError } from "./types.js";
+/**
+ * Thrown when the parts of a run do not all finish within the timeout.
+ *
+ * The parts are already submitted and billed. `schedule` holds the accepted jobs, so the
+ * run can be merged again later or passed as `retryFrom`.
+ *
+ * @category Errors
+ */
 export class PartsTimeoutError extends Error {
     schedule;
     name = "PartsTimeoutError";
+    /**
+     * @param message - What timed out and how many parts had finished.
+     * @param schedule - The submitted parts run, with its accepted jobs.
+     */
     constructor(message, schedule) {
         super(message);
         this.schedule = schedule;
     }
 }
-/** The result's `warnings`, once per run, on the client logger. */
+/**
+ * Logs the `warnings` of a result once, at `warn` level, on the client logger.
+ *
+ * @param value - The result value; anything without warnings is ignored.
+ * @param analysisType - The analysis type, added to the log entry.
+ * @param logger - The logger to write to.
+ * @category Run an analysis
+ */
 export function logWarnings(value, analysisType, logger) {
     if (value === null || typeof value !== "object")
         return;
@@ -43,12 +60,20 @@ function splits(request) {
     return request.plan !== undefined && request.plan.parts.length > 1;
 }
 /**
- * The value of one daylight-factor result document in `format` (D234). A
- * frame is viewed in place. With `"irbf"`, a JSON document (an older server,
- * or a result the worker could not write as a frame) is turned into the
- * frame by the kernel; when it has no exact frame, the JSON value is
- * returned and logged.
+ * Turns one daylight-factor result document into a value in the requested format.
+ *
+ * A binary frame is viewed in place. With `"irbf"`, a JSON document (from an older server,
+ * or a result that could not be written as a frame) is converted to a frame; when it has no
+ * exact frame, the parsed JSON value is returned and the fallback is logged.
+ *
+ * @param document - The decompressed result document.
+ * @param format - `"irbf"` for a `DaylightFactorResult`, `"json"` for the JSON value.
+ * @param logger - Where a JSON fallback is logged.
+ * @returns A `DaylightFactorResult` or the parsed JSON value.
+ * @category Results and legend
  */
+// Maintainer note (not published): D234. The conversion to a frame is the kernel's
+// (`daylightFrameFromJson`).
 export function daylightValue(document, format, logger) {
     if (isDaylightFrame(document)) {
         const result = new DaylightFactorResult(document);
@@ -70,6 +95,22 @@ export function daylightValue(document, format, logger) {
     // `surfaces` key, but it is not a facade surface record.
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(document));
 }
+/**
+ * Submits a planned request, waits for it and returns the result.
+ *
+ * A request of one part runs as one job. A request of several parts submits every part,
+ * waits for all of them and joins the results. From the moment parts are submitted, every
+ * error leaves with the run's schedule so nothing has to be paid for twice.
+ *
+ * @param jobs - The job service.
+ * @param logger - The client logger.
+ * @param request - The planned request.
+ * @param options - Timeout, progress callbacks, result format, retry schedule and so on.
+ * @returns The analysis result: a `DaylightFactorResult` or a JSON value.
+ * @throws {PartsTimeoutError} When the parts do not finish within `options.timeout`.
+ * @throws {AnalysisPartsError} When a part fails or the results cannot be joined.
+ * @category Run an analysis
+ */
 export async function runPlannedAndWait(jobs, logger, request, options = {}) {
     // Checked before any POST: a bad timeout must not bill parts and lose them.
     // The default is the kernel's wait timeout (900 s) on both paths, as today.
@@ -139,10 +180,34 @@ async function waitAndJoin(jobs, logger, request, schedule, timeoutS, options) {
     logWarnings(value, request.analysisType, logger);
     return value;
 }
+/**
+ * Plans a request, submits it (as parts when it splits), waits and returns the result.
+ *
+ * @param jobs - The job service.
+ * @param logger - The client logger.
+ * @param input - The wire-keyed analysis request.
+ * @param options - Timeout, progress callbacks, result format, retry schedule and so on.
+ * @returns The analysis result: a `DaylightFactorResult` or a JSON value.
+ * @throws {PartsTimeoutError} When the parts do not finish within `options.timeout`.
+ * @throws {AnalysisPartsError} When a part fails or the results cannot be joined.
+ * @category Run an analysis
+ */
 export async function runAndWaitParts(jobs, logger, input, options = {}) {
     return runPlannedAndWait(jobs, logger, planRequest(jobs, input, options, logger), options);
 }
-/** Submit a request as parts; a request of one part is refused here (use `run`). */
+/**
+ * Submits a request as parts and returns the schedule without waiting.
+ *
+ * A request that is one job is refused here; submit it with `run` or `analyses.execute`.
+ *
+ * @param jobs - The job service.
+ * @param logger - The client logger.
+ * @param input - The wire-keyed analysis request.
+ * @param options - Part limits, workers, webhook, transport, result format and retry schedule.
+ * @returns The schedule of the submitted parts.
+ * @throws {Error} When the request is one job.
+ * @category Run an analysis
+ */
 export async function runParts(jobs, logger, input, options = {}) {
     const request = planRequest(jobs, input, options, logger);
     if (!splits(request)) {
@@ -150,7 +215,17 @@ export async function runParts(jobs, logger, input, options = {}) {
     }
     return submitParts(jobs, request, options, logger);
 }
-/** What a run of `input` submits and bills, offline: no request is sent. */
+/**
+ * Previews what a run of `input` would submit and bill, offline: no request is sent.
+ *
+ * @param jobs - The job service (only used to prepare the submission).
+ * @param logger - The client logger.
+ * @param input - The wire-keyed analysis request.
+ * @param options - The same options as the run.
+ * @param target - Optional planning target for the split.
+ * @returns The part count, sensors per part and estimated cost in tokens.
+ * @category Run an analysis
+ */
 export function previewParts(jobs, logger, input, options = {}, target) {
     const { analysisType, plan } = planRequest(jobs, input, options, logger, target);
     const parts = plan === undefined ? [] : plan.parts.map((part) => ({
@@ -165,8 +240,20 @@ export function previewParts(jobs, logger, input, options = {}, target) {
         notes: plan?.notes ?? [],
     };
 }
-/** `mergeParts`: the joined value of a finished run. Only a daylight-factor
- * schedule has the binary result; any other keeps its JSON value. */
+/**
+ * Joins the finished parts of a run into one result value.
+ *
+ * Only a daylight-factor run has the binary result; any other analysis keeps its JSON value.
+ *
+ * @param jobs - The job service used to poll and download.
+ * @param logger - The client logger.
+ * @param schedule - The submitted parts run.
+ * @param options - Worker count, abort signal and result format.
+ * @returns The joined result value.
+ * @throws {AnalysisPartsError} When a part has no result, is not finished, or fails to
+ * download.
+ * @category Run an analysis
+ */
 export async function mergePartsValue(jobs, logger, schedule, options = {}) {
     const format = mergeFormat(schedule, options);
     const document = await mergePartsDocument(jobs, schedule, { ...options, resultFormat: format, logger });

@@ -125,21 +125,27 @@ export class SiteAssignment {
     }
     #identity;
     /**
-     * One tile's artifact (D101): the first ask under a capability answer
-     * encodes every tile in one crossing and keeps the archives. Never a
-     * facade batch's (D156).
+     * One tile's artifact (D101), encoded on the first ask for THAT tile and
+     * kept: one kernel crossing per tile (#816, D277), so the first job uploads
+     * after its own encode, not after the encode of every tile. Never a facade
+     * batch's (D156).
      */
-    tileArtifact(index, boxTrees, limits) {
-        const key = [boxTrees, limits.maxGeometryBytes, limits.maxMetadataBytes,
+    tileArtifact(index, limits) {
+        if (!Number.isSafeInteger(index) || index < 0 || index >= this.tiles.length) {
+            throw new RangeError(`tile index ${index} is outside the site`);
+        }
+        const key = [limits.maxGeometryBytes, limits.maxMetadataBytes,
             limits.maxMeshes, limits.maxInstances].join("\n");
         let tiles = this.artifacts.get(key);
         if (tiles === undefined) {
-            tiles = this.encode(boxTrees, limits);
+            tiles = new Map();
             this.artifacts.set(key, tiles);
         }
-        const artifact = tiles[index];
-        if (artifact === undefined)
-            throw new RangeError(`tile index ${index} is outside the site`);
+        let artifact = tiles.get(index);
+        if (artifact === undefined) {
+            artifact = this.encode(index, limits);
+            tiles.set(index, artifact);
+        }
         return artifact;
     }
     /**
@@ -150,12 +156,11 @@ export class SiteAssignment {
      */
     facadeFrames(index, batches, parts) {
         const limits = parts.artifact?.limits;
-        const raw = this.withKernel((inner) => inner.facadeFrames(Uint32Array.from(batches, () => index), Uint32Array.from(batches, (ids) => ids.length), batches.flatMap((ids) => [...ids]), parts.body === true, false, parts.capture !== undefined, parts.capture?.alignment ?? undefined, parts.artifact !== undefined, parts.artifact?.boxTrees ?? false, BigInt(limits?.maxGeometryBytes ?? 0), limits?.maxMetadataBytes ?? 0, BigInt(limits?.maxMeshes ?? 0), BigInt(limits?.maxInstances ?? 0)));
+        const raw = this.withKernel((inner) => inner.facadeFrames(Uint32Array.from(batches, () => index), Uint32Array.from(batches, (ids) => ids.length), batches.flatMap((ids) => [...ids]), parts.body === true, false, parts.capture !== undefined, parts.capture?.alignment ?? undefined, parts.artifact !== undefined, BigInt(limits?.maxGeometryBytes ?? 0), limits?.maxMetadataBytes ?? 0, BigInt(limits?.maxMeshes ?? 0), BigInt(limits?.maxInstances ?? 0)));
         return raw.map((frame) => {
             if (frame.error !== undefined)
                 return { error: frame.error };
             const { body, capture, artifact } = frame;
-            const counts = artifact === undefined ? null : JSON.parse(artifact.treeBoxes);
             return {
                 ...(body === undefined ? {} : { body }),
                 ...(capture === undefined ? {} : { capture }),
@@ -164,7 +169,6 @@ export class SiteAssignment {
                         archive: artifact.archive, artifactDigest: artifact.artifactDigest,
                         geometryContentDigest: artifact.contentDigest, encoding: artifact.encoding,
                         targetIds: artifact.targetIds,
-                        ...(counts === null ? {} : { treeBoxes: counts }),
                     },
                 }),
             };
@@ -175,22 +179,17 @@ export class SiteAssignment {
      * `batches`, and each batch's job as a range into it, or its own frame.
      * `site-facade-scene.ts` shapes the kernel's raw answer.
      */
-    facadeScenes(index, batches, boxTrees, limits) {
-        const raw = this.withKernel((inner) => inner.facadeScenes(Uint32Array.from(batches, () => index), Uint32Array.from(batches, (ids) => ids.length), batches.flatMap((ids) => [...ids]), boxTrees, BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances)));
+    facadeScenes(index, batches, limits) {
+        const raw = this.withKernel((inner) => inner.facadeScenes(Uint32Array.from(batches, () => index), Uint32Array.from(batches, (ids) => ids.length), batches.flatMap((ids) => [...ids]), BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances)));
         return mapFacadeScenes(raw);
     }
-    encode(boxTrees, limits) {
-        const encoded = this.withKernel((inner) => inner.artifacts(0, this.tiles.length, boxTrees, BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances)));
-        const boxes = JSON.parse(encoded.treeBoxes);
-        return encoded.artifactDigests.map((artifactDigest, index) => {
-            const counts = boxes[index];
-            return {
-                archive: encoded.bytes.subarray(encoded.offsets[index], encoded.offsets[index + 1]),
-                artifactDigest,
-                geometryContentDigest: encoded.contentDigests[index],
-                encoding: encoded.encodings[index],
-                ...(counts === null || counts === undefined ? {} : { treeBoxes: counts }),
-            };
-        });
+    encode(index, limits) {
+        const encoded = this.withKernel((inner) => inner.artifacts(index, index + 1, BigInt(limits.maxGeometryBytes), limits.maxMetadataBytes, BigInt(limits.maxMeshes), BigInt(limits.maxInstances)));
+        return {
+            archive: encoded.bytes.subarray(encoded.offsets[0], encoded.offsets[1]),
+            artifactDigest: encoded.artifactDigests[0],
+            geometryContentDigest: encoded.contentDigests[0],
+            encoding: encoded.encodings[0],
+        };
     }
 }

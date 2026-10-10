@@ -33,7 +33,6 @@ export interface KernelFacadeSceneAnswer {
         readonly artifactDigest: string;
         readonly contentDigest: string;
         readonly encoding: "zip-store" | "zip-deflate";
-        readonly treeBoxes: string;
     }>;
     readonly jobs: ReadonlyArray<{
         readonly error?: string;
@@ -48,7 +47,6 @@ export interface KernelFacadeSceneAnswer {
             readonly artifactDigest: string;
             readonly contentDigest: string;
             readonly encoding: "zip-store" | "zip-deflate";
-            readonly treeBoxes: string;
             readonly targetIds: string[];
         };
     }>;

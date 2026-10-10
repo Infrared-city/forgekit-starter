@@ -2,19 +2,28 @@ import { assertAllowedUrl, geoUrlFor, GEO_BASE_URL } from "./allowed-hosts.js";
 import { GeodataError } from "./errors.js";
 import { fetchPublicJson, fetchPublicText, } from "./http.js";
 import { requireCore } from "../internal/core.js";
+// Maintainer note (not published): Public manifests: the city-overlay registry
+// and the Overture file index. Fetching is the host's job and the selection
+// logic is the kernel's, exactly as in `app/sources/registry.py` and
+// `app/maps/overture/fetcher_s3.py`. The caches below are module state, so
+// each realm (page, Web Worker, Node process) keeps its own: a Worker never
+// shares a cache with the main thread, which matches the SDK's one-core-per-
+// realm rule.
 /**
- * Public manifests: the city-overlay registry and the Overture file index.
+ * How long, in milliseconds (`300000`, five minutes), the city-overlay
+ * registry (`sources.json`) is cached before it is fetched again.
  *
- * Fetching is the host's job and the selection logic is the kernel's, exactly
- * as in `app/sources/registry.py` and `app/maps/overture/fetcher_s3.py`. The
- * caches below are module state, so each realm (page, Web Worker, Node
- * process) keeps its own — a Worker never shares a cache with the main
- * thread, which matches the SDK's one-core-per-realm rule.
+ * @category Geodata
  */
-/** `sources.json` refresh interval; matches the service's 5-minute TTL. */
+// Maintainer note (not published): matches the service's 5-minute TTL.
 export const SOURCES_TTL_MS = 300_000;
 const OVERTURE_INDEX_BASE = `${GEO_BASE_URL}/overture-index`;
-/** Collections the R2 index publishes a manifest for. */
+/**
+ * The Overture collections that have a published file index:
+ * `building`, `land_cover`, `water` and `land_use`.
+ *
+ * @category Geodata
+ */
 export const INDEXED_COLLECTIONS = Object.freeze([
     "building",
     "land_cover",
@@ -24,13 +33,26 @@ export const INDEXED_COLLECTIONS = Object.freeze([
 let sourcesCache;
 const overtureCache = new Map();
 const polygonCache = new Map();
-/** Drop every cached manifest in this realm (tests, long-lived workers). */
+/**
+ * Drop every cached manifest held by this runtime. Useful in tests and
+ * long-lived workers.
+ *
+ * @category Geodata
+ */
 export function clearManifestCaches() {
     sourcesCache = undefined;
     overtureCache.clear();
     polygonCache.clear();
 }
-/** Fetch `sources.json`, re-using the cached copy inside the TTL. */
+/**
+ * Fetch the city-overlay registry (`sources.json`), reusing the cached copy
+ * while it is younger than {@link SOURCES_TTL_MS}.
+ *
+ * @param options - Request options; `now` overrides the clock, in
+ *   milliseconds since the epoch.
+ * @returns The parsed registry document.
+ * @category Geodata
+ */
 export async function fetchSources(options = {}) {
     return (await fetchSourcesEntry(options)).document;
 }
@@ -71,14 +93,21 @@ async function cityPolygon(polygonUrl, options) {
     return text;
 }
 /**
- * Resolve the city overlay for an AOI, or nothing.
+ * Find the registered city overlay that covers an area, if any.
  *
- * Two stages, as the kernel documents them: a cheap bbox prefilter over
- * `sources.json`, then the precise polygon gate on each candidate. Fetch
- * failures degrade to "no overlay" with a warning — the utilities service
- * behaves the same way, so a registry outage keeps the default world sources
- * working instead of failing the whole acquisition.
+ * A quick bounding-box check over the registry picks candidate cities, then
+ * the city outline decides. If the registry or a city outline cannot be
+ * fetched, the result has no city and carries a warning, so a registry outage
+ * falls back to the global sources instead of failing the whole read.
+ *
+ * @param bbox - The area, in WGS84 degrees.
+ * @param options - Request options; `now` overrides the clock, in
+ *   milliseconds since the epoch.
+ * @returns The matching city, if any, and any warnings.
+ * @category Geodata
  */
+// Maintainer note (not published): Two stages, as the kernel documents them.
+// The utilities service degrades the same way on a fetch failure.
 export async function resolveOverlayCity(bbox, options = {}) {
     const warnings = [];
     let entry;
@@ -122,12 +151,20 @@ function pointerKey(collection) {
     return collection === "building" ? "latest.json" : `latest-${collection}.json`;
 }
 /**
- * Fetch the immutable Overture file manifest for a collection.
+ * Fetch the Overture file manifest for a collection.
  *
- * The pointer is read every call (it is edge-cached with a 5-minute
- * max-age); the manifest itself is re-fetched only when the release changes,
- * as in the Python reader.
+ * The latest-release pointer is read on every call; the manifest itself is
+ * fetched again only when the release changes.
+ *
+ * @param collection - An Overture collection such as `"building"`.
+ * @param options - Request options; `overtureRelease` pins a release.
+ * @returns The manifest text and the release it belongs to.
+ * @throws {GeodataError} when the requested release cannot be pinned for the collection.
+ * @category Geodata
  */
+// Maintainer note (not published): The pointer is edge-cached with a
+// 5-minute max-age; the manifest is re-fetched only when the release changes,
+// as in the Python reader.
 export async function fetchOvertureManifest(collection, options = {}) {
     const pinned = options.overtureRelease;
     const cached = overtureCache.get(collection);
@@ -156,7 +193,17 @@ export async function fetchOvertureManifest(collection, options = {}) {
     overtureCache.set(collection, { release, manifestJson });
     return { manifestJson, release };
 }
-/** Parquet URLs whose file bbox meets the AOI, chosen by the kernel. */
+/**
+ * List the Overture parquet files whose bounding box meets an area.
+ *
+ * Returns an empty list for a collection that has no published index.
+ *
+ * @param collection - An Overture collection such as `"building"`.
+ * @param bbox - The area, in WGS84 degrees.
+ * @param options - Request options; `overtureRelease` pins a release.
+ * @returns The file URLs and the release they belong to.
+ * @category Geodata
+ */
 export async function selectOvertureFiles(collection, bbox, options = {}) {
     if (!INDEXED_COLLECTIONS.includes(collection)) {
         return { urls: [], release: options.overtureRelease ?? "" };

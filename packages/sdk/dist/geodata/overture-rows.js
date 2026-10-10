@@ -8,22 +8,28 @@ import { httpRangeTransport } from "./range-transport.js";
 import { selectOvertureFiles } from "./manifests.js";
 import { mapLimit } from "../internal/map-limit.js";
 import { requireCore } from "../internal/core.js";
-/**
- * The parquet half of the Overture reader: files in, decoded rows out.
- *
- * Split out of `overture.ts` so the per-tile read and the area-level read
- * (WP12 / D47) share ONE decoder. Everything that decides which bytes are
- * fetched lives here — file selection, row-group pruning, the exact row
- * filter — so the two readers cannot drift apart in what they return.
- *
- * `hyparquet` is used rather than the kernel because the Rust parquet stack
- * needs C zstd, which does not build for wasm32. The long-term fix is
- * publishing these layers as FlatGeobuf on `geo.infrared.city`, after which
- * this module and its dependency go away (D39).
- */
+// Maintainer note (not published): The parquet half of the Overture reader:
+// files in, decoded rows out.
+//
+// Split out of `overture.ts` so the per-tile read and the area-level read
+// (WP12 / D47) share ONE decoder. Everything that decides which bytes are
+// fetched lives here (file selection, row-group pruning, the exact row
+// filter), so the two readers cannot drift apart in what they return.
+//
+// `hyparquet` is used rather than the kernel because the Rust parquet stack
+// needs C zstd, which does not build for wasm32. The long-term fix is
+// publishing these layers as FlatGeobuf on `geo.infrared.city`, after which
+// this module and its dependency go away (D39).
 const BASE_COLUMNS = ["id", "geometry", "bbox", "names", "sources", "class", "subtype"];
 export { isGeneralizedLandCover, LAND_COVER_MIN_MAX_ZOOM } from "./overture-keep.js";
-/** Column projection per collection; the Python reader's `COLUMNS_BY_TYPE`. */
+/**
+ * The parquet columns read for each Overture collection (`building`, `water`,
+ * `land_use`, `land_cover`).
+ *
+ * @category Geodata
+ */
+// Maintainer note (not published): Column projection per collection; the
+// Python reader's `COLUMNS_BY_TYPE`.
 export const COLUMNS_BY_COLLECTION = Object.freeze({
     building: [
         ...BASE_COLUMNS,
@@ -61,11 +67,27 @@ function statisticsFor(group) {
     }
     return out;
 }
-/** Row-group ranges whose bbox statistics can hold a feature in the AOI. */
+/**
+ * Row ranges of an Overture parquet file that can hold a feature inside an
+ * area, judged by the file's bounding-box statistics.
+ *
+ * @param metadata - The parquet file footer.
+ * @param bbox - The area, in WGS84 degrees.
+ * @returns `[start, end)` row ranges, one per selected row group.
+ * @category Geodata
+ */
 export function planRowGroups(metadata, bbox) {
     return selectRowGroups(metadata, bbox).map((group) => [group.start, group.end]);
 }
-/** The same selection, keeping each group's INDEX for the byte budget. */
+/**
+ * The same selection as {@link planRowGroups}, keeping each row group's index
+ * so its size can be counted against the byte budget.
+ *
+ * @param metadata - The parquet file footer.
+ * @param bbox - The area, in WGS84 degrees.
+ * @returns The selected row groups with their index and row range.
+ * @category Geodata
+ */
 export function selectRowGroups(metadata, bbox) {
     // Each group's bbox statistics as one feature box: the smallest xmin and
     // ymin, the largest xmax and ymax. No statistics means "cannot rule it
@@ -107,17 +129,23 @@ function numeric(value) {
     return undefined;
 }
 /**
- * One byte per box (`1`: the box meets `bbox`), by the kernel's rule
- * (`ir-geodata` `bbox_meets`, D160): closed intervals, so a feature that
- * only TOUCHES the rectangle is kept, and a box with a missing member is in
- * every rectangle (fail-open). The Python host asks the same rule.
+ * Test which feature boxes meet a rectangle.
  *
- * The SINGLE HOME of tile membership on this host: the per-tile reader
- * applies it to the tile's own rectangle while decoding, and the area reader
- * applies it afterwards to each tile's rectangle, over the features it read
- * once. This function only packs the boxes; a missing member is packed as
- * NaN, never as a stand-in value.
+ * Intervals are closed, so a box that only touches the rectangle counts, and a
+ * box with a missing member is treated as meeting every rectangle.
+ *
+ * @param boxes - The feature boxes; `undefined` entries count as missing.
+ * @param bbox - The rectangle, in WGS84 degrees.
+ * @returns One byte per box: `1` when it meets the rectangle, otherwise `0`.
+ * @category Geodata
  */
+// Maintainer note (not published): By the kernel's rule (`ir-geodata`
+// `bbox_meets`, D160); the Python host asks the same rule. The SINGLE HOME of
+// tile membership on this host: the per-tile reader applies it to the tile's
+// own rectangle while decoding, and the area reader applies it afterwards to
+// each tile's rectangle, over the features it read once. This function only
+// packs the boxes; a missing member is packed as NaN, never as a stand-in
+// value.
 export function boxesMeet(boxes, bbox) {
     const rows = new Float64Array(boxes.length * 4);
     for (const [index, box] of boxes.entries()) {
@@ -153,13 +181,24 @@ async function selectFiles(collection, bbox, options) {
 /**
  * Read one Overture collection for a rectangle, as decoded rows.
  *
- * The rows come back in file, then row-group, then row order — the order a
- * strictly serial read produced, whatever the concurrency did.
+ * Rows come back in file, then row-group, then row order. `map` is applied to
+ * each row as it is decoded, so a caller that keeps only a compact form never
+ * holds the decoded objects of the whole area at once.
  *
- * `map` runs while the row group is still the only decoded data in hand, so
- * a caller that keeps only text (the area reader) never holds the decoded
- * objects of the whole AOI as well.
+ * @param collection - An Overture collection such as `"building"`.
+ * @param bbox - The area, in WGS84 degrees.
+ * @param options - Read options.
+ * @param map - Converts each decoded row into the value that is kept.
+ * @returns The mapped rows and the Overture release they came from.
+ * @throws {OvertureFileLimitError} when more files match than `maxFiles` allows.
+ * @throws {OvertureReadTooLargeError} when the planned read exceeds the byte limit.
+ * @throws {GeodataError} when the collection has no published file index.
+ * @throws {GeodataDependencyError} when the optional parquet packages are not installed.
+ * @category Geodata
  */
+// Maintainer note (not published): The order is the one a strictly serial
+// read produced, whatever the concurrency did. `map` runs while the row group
+// is still the only decoded data in hand.
 export async function readOvertureRows(collection, bbox, options, map) {
     const columns = COLUMNS_BY_COLLECTION[collection];
     if (columns === undefined) {

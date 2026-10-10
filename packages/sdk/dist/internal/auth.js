@@ -1,6 +1,8 @@
-/** Request authentication kept in TypeScript, outside shared WASM state. */
+// Maintainer note (not published): request authentication is kept in TypeScript,
+// outside the shared WASM state.
 import { VERSION } from "../version.js";
-/** Internal pre-dispatch signal that a dynamic credential selected another cache partition. */
+// Maintainer note (not published): internal pre-dispatch signal that a dynamic
+// credential selected another cache partition.
 export class AuthPartitionChangedError extends Error {
     name = "AuthPartitionChangedError";
     constructor() {
@@ -8,7 +10,15 @@ export class AuthPartitionChangedError extends Error {
     }
 }
 const SDK_HEADER_VALUE = `ts-sdk/${VERSION}`;
-/** Build an authentication resolver that evaluates dynamic JWTs per request. */
+/**
+ * Build an authentication resolver that evaluates dynamic JWTs on every request.
+ *
+ * @param options - The credentials to use; see {@link AuthOptions}.
+ * @returns A function that resolves the authentication headers for one request.
+ * @throws {Error} If `token` and `getToken` are both given, if no credential is given, or
+ *   if `getToken` returns an empty or non-string value when the resolver runs.
+ * @category Client
+ */
 export function buildAuthResolver(options) {
     const { apiKey, token, getToken, surface = "script" } = options;
     if (token !== undefined && getToken !== undefined) {

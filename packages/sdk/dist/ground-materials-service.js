@@ -1,13 +1,22 @@
 import { cleaningExtent, resolveCleaner, } from "./internal/ground-merge.js";
+import { ensureCore } from "./internal/core.js";
 import { kernelPolygonOrigin } from "./area/tile-frames.js";
 import { rejectRemovedOption } from "./internal/service.js";
 import { consoleLogger } from "./logger.js";
 import { generateTilesForPolygon } from "./area/tiling.js";
 import { acquireGroundMaterials, acquireGroundMaterialsArea, groundReadDistanceM, httpRangeTransport, pointToBbox, resolveReadAnalysisType, siteRectangle, } from "./geodata/index.js";
+/**
+ * Reads the ground materials (roads, water, parks and so on) around a point
+ * or a polygon from the public data hosts. Available as
+ * `InfraredClient.groundMaterials`.
+ *
+ * @category Ground materials
+ */
 export class GroundMaterialsService {
     request;
-    /** The client's logger: the 20 km2 site warning goes through it (D48). */
+    // The client's logger: the 20 km2 site warning goes through it (D48).
     logger;
+    /** Creates the service from the client's transport settings (`fetch`, timeout and logger). */
     constructor(options) {
         // The client's fetch and timeout reach the public hosts too: a Worker
         // that injected a fetch must not have the direct path fall back to a
@@ -25,19 +34,34 @@ export class GroundMaterialsService {
         return { ...this.request };
     }
     /**
-     * One tile's layers composed in-process from the public data hosts.
+     * Reads the material layers of one square tile around a point.
      *
-     * Returns `null` for a tile with no material at all.
+     * @param lat - Centre latitude in degrees.
+     * @param lon - Centre longitude in degrees.
+     * @param distance - Half-width of the tile in metres.
+     * @returns The layers, or `null` when the tile has no material at all.
      */
     async getRaw(lat, lon, distance) {
+        await ensureCore("groundMaterials.getRaw");
         const { layers } = await acquireGroundMaterials(pointToBbox(lat, lon, distance), {
             ...this.directOptions(),
         });
         const empty = Object.values(layers).every((collection) => (collection.features?.length ?? 0) === 0);
         return empty ? null : layers;
     }
+    /**
+     * Reads the material layers for a whole polygon area and cleans them, ready
+     * to pass to `runArea` as `groundMaterials`. Which tiles are read, and how
+     * far around each, follows the analysis (`options.analysisType`).
+     *
+     * @param polygon - The GeoJSON polygon to cover.
+     * @param options - Read options; see each field.
+     * @returns The `AreaGroundMaterials`, with empty layers when the polygon has no tiles to read.
+     * @throws {InvalidOptionError} when the removed `acquisition` option is passed.
+     */
     async getArea(polygon, options = {}) {
         rejectRemovedOption(options, "acquisition", "ground materials are composed from the public data hosts only; remove the option");
+        await ensureCore("groundMaterials.getArea");
         const cleaner = resolveCleaner(options.cleaner);
         const started = performance.now();
         // The READ shape follows the analysis (D54): the kernel preset decides

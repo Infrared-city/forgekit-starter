@@ -13,9 +13,8 @@ import type { AreaGeometryGroups, IndexedTile, Polygon, SupportedAreaGroup } fro
  * kept site, so a run never sends the site to the kernel twice.
  *
  * The binary transport takes every tile's IRBF artifact from this site
- * (`tileArtifact`, D101): the kernel packs, describes, frames, zips and
- * digests each tile, boxing its trees where the capability carries no
- * `vegetation` (D70). A facade BATCH takes its own selection instead
+ * (`tileArtifact`, D101): the kernel packs, describes, frames and digests
+ * each tile. A facade BATCH takes its own selection instead
  * (`facadeFrames`, D156), or a shared scene and a target range (`facadeScenes`,
  * #602): the unsplit tile would make the server synthesize sensors on every
  * member of the tile.
@@ -46,9 +45,9 @@ export interface SiteAnswer {
     readonly unowned: readonly string[];
     /**
      * One tile's binary artifact from the site (D101), when the answer holds
-     * the site: every tile's is encoded on the first ask and kept.
+     * the site: each tile is encoded on its own first ask and kept.
      */
-    tileArtifact?(index: number, boxTrees: boolean, limits: ArtifactLimits): TileArtifact;
+    tileArtifact?(index: number, limits: ArtifactLimits): TileArtifact;
     /**
      * The parts of every facade BATCH of one tile, from one kernel call that
      * builds the tile once (`Site.facadeFrames`, WP3): each batch's targets in
@@ -57,7 +56,7 @@ export interface SiteAnswer {
     facadeFrames?(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): FacadeFrame[];
     /** One tile's facade SCENE (#602): a shared frame for `batches` plus each
      * batch's job as a range into it, or its own frame (WP3, per-tile). */
-    facadeScenes?(index: number, batches: readonly (readonly string[])[], boxTrees: boolean, limits: ArtifactLimits): FacadeSceneAnswer;
+    facadeScenes?(index: number, batches: readonly (readonly string[])[], limits: ArtifactLimits): FacadeSceneAnswer;
     /** One tile's group as the kernel wrote it, when the answer holds the arena. */
     group?(tile: number, name: SupportedAreaGroup): TileGroup | undefined;
     /**
@@ -83,7 +82,6 @@ export interface FacadeFrameParts {
     };
     /** The binary artifact under the capability answer. */
     readonly artifact?: {
-        readonly boxTrees: boolean;
         readonly limits: ArtifactLimits;
     };
 }
@@ -122,11 +120,11 @@ export interface KernelSite {
     allTileIds(): string;
     unowned(): string[];
     bodies(start: number, end: number): unknown;
-    artifacts(start: number, end: number, boxTrees: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
+    artifacts(start: number, end: number, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
     facadeBatches(start: number, end: number, requestJson: string): string;
-    facadeFrames(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], body: boolean, identity: boolean, capture: boolean, alignment: string | undefined, artifact: boolean, boxTrees: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown[];
+    facadeFrames(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], body: boolean, identity: boolean, capture: boolean, alignment: string | undefined, artifact: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown[];
     /** One scene frame per tile and a target range per job (#602). */
-    facadeScenes(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], boxTrees: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
+    facadeScenes(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
     checkTerrain(start: number, end: number): void;
     identity(start: number, end: number): unknown;
     free(): void;
@@ -176,11 +174,12 @@ export declare class SiteAssignment implements SiteAnswer {
      */
     identity(): TileIdentity;
     /**
-     * One tile's artifact (D101): the first ask under a capability answer
-     * encodes every tile in one crossing and keeps the archives. Never a
-     * facade batch's (D156).
+     * One tile's artifact (D101), encoded on the first ask for THAT tile and
+     * kept: one kernel crossing per tile (#816, D277), so the first job uploads
+     * after its own encode, not after the encode of every tile. Never a facade
+     * batch's (D156).
      */
-    tileArtifact(index: number, boxTrees: boolean, limits: ArtifactLimits): TileArtifact;
+    tileArtifact(index: number, limits: ArtifactLimits): TileArtifact;
     /**
      * The parts of every facade batch of tile `index`, from ONE kernel call
      * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
@@ -193,6 +192,6 @@ export declare class SiteAssignment implements SiteAnswer {
      * `batches`, and each batch's job as a range into it, or its own frame.
      * `site-facade-scene.ts` shapes the kernel's raw answer.
      */
-    facadeScenes(index: number, batches: readonly (readonly string[])[], boxTrees: boolean, limits: ArtifactLimits): FacadeSceneAnswer;
+    facadeScenes(index: number, batches: readonly (readonly string[])[], limits: ArtifactLimits): FacadeSceneAnswer;
     private encode;
 }

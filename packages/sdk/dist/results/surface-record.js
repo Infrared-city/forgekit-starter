@@ -138,11 +138,32 @@ function parseRecord(rawValue, options, trustedBulk) {
         cellGeometry: complete ? "complete" : "omitted",
     };
 }
-/** Parse and fully validate an ordinary JSON surface record. */
+/**
+ * Parses and fully validates a surface result that was read from JSON.
+ *
+ * @param rawValue - The parsed JSON value.
+ * @param options - Surface parse options.
+ * @returns The validated result with `route: "surface"`.
+ * @throws {TypeError} When a field is missing, malformed or has the wrong number of cells.
+ * @throws {Error} When `requireCellGeometry` is set and cell geometry is omitted.
+ * @category Results and legend
+ */
 export function parseSurfaceRecord(rawValue, options = {}) {
     return parseRecord(rawValue, options, false);
 }
-/** Project bulk arrays that the strict IRBF decoder already validated. */
+/**
+ * Builds a surface result from a binary result whose bulk arrays were already validated, so
+ * they are not checked again.
+ *
+ * @param rawValue - The decoded surface value.
+ * @param options - Surface parse options.
+ * @returns The validated result with `route: "surface"`.
+ * @throws {TypeError} When a field is missing, malformed or has the wrong number of cells.
+ * @throws {Error} When `requireCellGeometry` is set and cell geometry is omitted.
+ * @category Results and legend
+ */
+// Maintainer note (not published): Projects bulk arrays that the strict IRBF decoder
+// already validated.
 export function parseValidatedIrBfSurfaceRecord(rawValue, options = {}) {
     return parseRecord(rawValue, options, true);
 }

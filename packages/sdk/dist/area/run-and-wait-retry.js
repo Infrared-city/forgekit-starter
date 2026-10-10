@@ -19,30 +19,39 @@ import { buildRetryContext } from "./retry-context.js";
  */
 export async function runAreaAndWaitRounds(jobs, runArea, checkAreaState, input, polygon, options, schedule0) {
     let schedule = schedule0;
-    const waitRound = () => waitForSchedule(jobs, schedule, {
-        timeoutS: options.areaTimeout,
-        check: (sweep) => checkAreaState(schedule, sweep),
-        ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
-        onTimeout: options.onTimeout,
-    });
-    await waitRound();
-    const retries = options.retries ?? 1;
-    for (let round = 0; round < retries; round += 1) {
-        // Never retry after a 402: `submissionAbortStatus` is the one round-stop
-        // this loop checks before the kernel, so an aborted schedule costs no
-        // extra poll.
-        if (schedule.submissionAbortStatus !== null)
-            break;
-        const ctx = await buildRetryContext(jobs, schedule, {
+    try {
+        const waitRound = () => waitForSchedule(jobs, schedule, {
+            timeoutS: options.areaTimeout,
+            check: (sweep) => checkAreaState(schedule, sweep),
             ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
             ...(options.signal === undefined ? {} : { signal: options.signal }),
+            ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+            onTimeout: options.onTimeout,
         });
-        if (ctx.resubmitKeys.size === 0)
-            break;
-        schedule = await runArea(input, polygon, { ...options, retryFrom: schedule });
         await waitRound();
+        const retries = options.retries ?? 1;
+        for (let round = 0; round < retries; round += 1) {
+            // Never retry after a 402: `submissionAbortStatus` is the one round-stop
+            // this loop checks before the kernel, so an aborted schedule costs no
+            // extra poll.
+            if (schedule.submissionAbortStatus !== null)
+                break;
+            const ctx = await buildRetryContext(jobs, schedule, {
+                ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
+            });
+            if (ctx.resubmitKeys.size === 0)
+                break;
+            schedule = await runArea(input, polygon, { ...options, retryFrom: schedule });
+            await waitRound();
+        }
+        return schedule;
     }
-    return schedule;
+    catch (error) {
+        // This call returns no schedule when it throws, so no merge can follow: release the
+        // captures of every round, or the client would hold them for its whole life.
+        jobs.captures?.forgetSchedule(schedule0);
+        jobs.captures?.forgetSchedule(schedule);
+        throw error;
+    }
 }

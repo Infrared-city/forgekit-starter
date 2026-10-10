@@ -1,19 +1,20 @@
-/**
- * Typed errors, decoding and indexing for the static weather reader.
- *
- * Split out of `weather-static.ts` to keep both files under the 400-line
- * cap, the same split the Python twin makes
- * (`layers/_static_decode.py`). This module is the ONE place the static
- * path builds a {@link WeatherServiceError}, so the reader and its
- * helpers report failures the same way.
- */
+// Maintainer note (not published): typed errors, decoding and indexing for the static
+// weather reader. Split out of `weather-static.ts` to keep both files under the 400-line
+// cap, the same split the Python twin makes (`layers/_static_decode.py`). This module is
+// the ONE place the static path builds a `WeatherServiceError`, so the reader and its
+// helpers report failures the same way.
 import { gunzipSync } from "fflate";
 /**
- * A weather read that failed, with the status the deleted utilities route
- * would have answered. A malformed catalog, a body that is not JSON and a
- * refused answer are all `502`: the reader reached the host and the host's
- * answer was unusable.
+ * Thrown when a weather read fails.
+ *
+ * `statusCode` is an HTTP-style status and `operation` names the call that failed. A
+ * malformed catalog, a body that is not JSON and a refused answer are all `502`: the
+ * weather host was reached but its answer was unusable.
+ *
+ * @category Errors
  */
+// Maintainer note (not published): `statusCode` is the status the deleted utilities
+// route would have answered.
 export class WeatherServiceError extends Error {
     statusCode;
     operation;
@@ -24,7 +25,7 @@ export class WeatherServiceError extends Error {
         this.operation = operation;
     }
 }
-/** gzip magic number, sniffed only as a fallback (D40). */
+// Maintainer note (not published): gzip magic number, sniffed only as a fallback (D40).
 const GZIP_MAGIC = [0x1f, 0x8b];
 export function failWeather(message, statusCode, operation) {
     throw new WeatherServiceError(message, statusCode, operation);
@@ -37,7 +38,7 @@ export function decodeUtf8(bytes, subject, operation) {
         return failWeather(`${subject} payload was not UTF-8 text`, 502, operation);
     }
 }
-/** Parse TEXT as a JSON object, or raise the typed error (twin of D40). */
+// Maintainer note (not published): parse TEXT as a JSON object, or raise the typed error (twin of D40).
 export function parseJsonObject(text, subject, operation) {
     let value;
     try {
@@ -51,19 +52,15 @@ export function parseJsonObject(text, subject, operation) {
     }
     return value;
 }
-/** Decode BYTES as a JSON object. */
+// Maintainer note (not published): decode BYTES as a JSON object.
 export function decodeJsonObject(bytes, subject, operation) {
     return parseJsonObject(decodeUtf8(bytes, subject, operation), subject, operation);
 }
-/**
- * The station bytes, decompressed.
- *
- * R2 serves `stations/{uuid}.json` with `Content-Encoding: gzip`, which
- * `fetch` decodes while the capped body streams — no manual step on the
- * normal path. The magic-number sniff here is the fallback for a host or
- * proxy that strips the header; a failed decode is the typed 502, never a
- * bare fflate error.
- */
+// Maintainer note (not published): the station bytes, decompressed. R2 serves
+// `stations/{uuid}.json` with `Content-Encoding: gzip`, which `fetch` decodes while the
+// capped body streams, so there is no manual step on the normal path. The magic-number
+// sniff here is the fallback for a host or proxy that strips the header; a failed decode
+// is the typed 502, never a bare fflate error.
 export function gunzipIfNeeded(bytes, uuid, operation) {
     if (bytes.length < 2 || bytes[0] !== GZIP_MAGIC[0] || bytes[1] !== GZIP_MAGIC[1])
         return bytes;
@@ -75,7 +72,7 @@ export function gunzipIfNeeded(bytes, uuid, operation) {
             `decompress: ${error instanceof Error ? error.message : String(error)}`, 502, operation);
     }
 }
-/** Index a parsed catalog by `uuid`, by `fileName` and for ranking. */
+// Maintainer note (not published): index a parsed catalog by `uuid`, by `fileName` and for ranking.
 export function indexStations(catalog, operation) {
     const stations = catalog["stations"] ?? [];
     if (!Array.isArray(stations)) {
@@ -127,15 +124,12 @@ export function indexStations(catalog, operation) {
         rankingJson: JSON.stringify({ stations: ranking }),
     };
 }
-/**
- * The kernel's own answer shape, rebuilt from the rows it ranked.
- *
- * `nearest_stations` returns `{uuid, fileName, location_data}` per station,
- * with `null` for a field the row does not carry. The ranking index carries
- * none of those three, so they are read back from the full row here — the
- * same three fields, in the same order, for the same rows in the same order.
- * The RANKING stays in the kernel; this is a projection, not logic.
- */
+// Maintainer note (not published): the kernel's own answer shape, rebuilt from the rows
+// it ranked. `nearest_stations` returns `{uuid, fileName, location_data}` per station,
+// with `null` for a field the row does not carry. The ranking index carries none of those
+// three, so they are read back from the full row here: the same three fields, in the same
+// order, for the same rows in the same order. The RANKING stays in the kernel; this is a
+// projection, not logic.
 export function projectRankedStations(ranked, index, operation) {
     return ranked.map((entry) => {
         const key = entry["uuid"];

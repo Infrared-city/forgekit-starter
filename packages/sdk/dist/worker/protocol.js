@@ -1,21 +1,26 @@
-/**
- * The messages between `createWorkerClient` (page) and `serveSdkWorker`
- * (worker), the error copy and the transfer list. Internal to the worker
- * entry; the message shapes are not public API.
- *
- * Channels:
- * - The worker's own port carries `init`, `call` and the token bridge.
- *   The SDK client lives for the life of the worker, so a token request is
- *   not bound to one call.
- * - Each call has its own `MessageChannel`. The worker sends `progress`,
- *   `accepted`, then `done` or `failed` on it; the page sends `abort`.
- *   One port keeps these in order, so every `accepted` arrives before the
- *   result of its call.
- */
+// Maintainer note (not published): The messages between `createWorkerClient` (page) and
+// `serveSdkWorker` (worker), the error copy and the transfer list. Internal to the worker
+// entry; the message shapes are not public API.
+//
+// Channels:
+// - The worker's own port carries `init`, `call` and the token bridge.
+//   The SDK client lives for the life of the worker, so a token request is
+//   not bound to one call.
+// - Each call has its own `MessageChannel`. The worker sends `progress`,
+//   `accepted`, then `done` or `failed` on it; the page sends `abort`.
+//   One port keeps these in order, so every `accepted` arrives before the
+//   result of its call.
 import { areaScheduleFromJSON, areaScheduleToJSON } from "../area/schedule.js";
 function stringList(value) {
     return Array.isArray(value) && value.every((item) => typeof item === "string") ? [...value] : undefined;
 }
+/**
+ * Copies an error into the form that crosses the worker boundary.
+ *
+ * @param error - Any thrown value.
+ * @returns The error's name, message and the fixed list of fields.
+ * @category Worker
+ */
 export function serializeError(error) {
     const fields = (typeof error === "object" && error !== null ? error : {});
     const name = typeof fields.name === "string" ? fields.name : "Error";
@@ -37,6 +42,13 @@ export function serializeError(error) {
         ...(fields.terminal === true ? { terminal: true } : {}),
     };
 }
+/**
+ * Rebuilds a plain `Error` from its serialized form, with the same name and fields.
+ *
+ * @param detail - A serialized error.
+ * @returns A plain `Error`, not the SDK class.
+ * @category Worker
+ */
 export function restoreError(detail) {
     const error = new Error(detail.message);
     error.name = detail.name;
@@ -52,10 +64,14 @@ export function restoreError(detail) {
     return Object.assign(error, fields);
 }
 /**
- * The buffers to TRANSFER with a result: every `ArrayBuffer` that one typed
+ * Finds the buffers to transfer with a result: every `ArrayBuffer` that one typed
  * array covers from its first to its last byte. A view on part of a buffer
  * (for example on WebAssembly memory) is cloned instead, because a transfer
  * would detach the whole buffer for its other users.
+ *
+ * @param value - The result to search, including nested objects and arrays.
+ * @returns The buffers to put in the transfer list.
+ * @category Worker
  */
 export function transferables(value) {
     const found = new Set();

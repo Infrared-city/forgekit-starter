@@ -1,17 +1,19 @@
 import { GatewayTransport } from "./transport.js";
 import { trimTrailingSlashes } from "./url-trim.js";
-/** A site-context option was given a value the SDK does not have. */
+/**
+ * Thrown when an option is given a value the SDK does not support, or a removed option is
+ * passed. The message names what to use instead.
+ *
+ * @category Errors
+ */
 export class InvalidOptionError extends TypeError {
     name = "InvalidOptionError";
 }
-/**
- * Refuse an option this SDK removed, and name what replaces it.
- *
- * A removed selector must not be ignored in silence: a caller that still
- * passes `acquisition: "service"` asked for the utilities service, and the
- * utilities service is gone. The error names the replacement so the caller
- * can act on the message alone. Kept for one minor version (MIGRATION.md).
- */
+// Maintainer note (not published): refuse an option this SDK removed, and name what
+// replaces it. A removed selector must not be ignored in silence: a caller that still
+// passes `acquisition: "service"` asked for the utilities service, and the utilities
+// service is gone. The error names the replacement so the caller can act on the message
+// alone. Kept for one minor version (MIGRATION.md).
 export function rejectRemovedOption(options, name, replacement) {
     if (options === undefined)
         return;
@@ -34,10 +36,7 @@ export function requireJson(value, operation) {
         throw new Error(`${operation} returned an empty response`);
     return value;
 }
-/**
- * Ordered concurrency, re-exported.
- *
- * The implementation moved to `map-limit.ts` so the credential-free geodata
- * layer can use it without importing this module's gateway transport.
- */
+// Maintainer note (not published): ordered concurrency, re-exported. The
+// implementation moved to `map-limit.ts` so the credential-free geodata layer can use
+// it without importing this module's gateway transport.
 export { mapLimit } from "./map-limit.js";

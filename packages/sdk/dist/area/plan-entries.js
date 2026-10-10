@@ -1,4 +1,6 @@
 import { facadeBatchesForTile, facadeTileBase, planFacadeRecords, } from "./site-facade.js";
+import { ARENA_GROUPS } from "./site-assign.js";
+import { KernelGroup } from "../internal/kernel-group.js";
 import { requireCore } from "../internal/core.js";
 import { areaTransport } from "../internal/transport-choice.js";
 import { areaIdempotencyKey } from "./retry-plan.js";
@@ -69,7 +71,10 @@ export async function buildEntries(tiles, input, slice) {
             // written below, and the kernel's compose output is already a fresh
             // document per tile.
             const value = { ...base };
-            Object.assign(value, composed[tile.tileId] ?? {});
+            if (composed === undefined)
+                Object.assign(value, kernelGroups(site, index));
+            else
+                Object.assign(value, composed[tile.tileId] ?? {});
             if (location !== undefined) {
                 value.latitude = location.latitude;
                 value.longitude = location.longitude;
@@ -115,9 +120,32 @@ export async function buildEntries(tiles, input, slice) {
     }
     return { entries, batchMembership, batchSensorCounts, extraPositions };
 }
+/**
+ * A binary grid tile's groups, unwritten (#816, D277): one {@link KernelGroup}
+ * per group the run carries. The binary route sends the kernel's artifact,
+ * never these bodies, so no tile body is written or parsed before the first
+ * job; the kernel's `artifacts()` applies the terrain cap. A reader that asks
+ * for a group's text still gets the kernel's bytes. Whether a group is empty
+ * comes from the tile's answer for `geometries` (its members) and
+ * `context-geometry` (its context ids), the same test as the composed body's
+ * key count; for the other groups from the cached `identity()` mask, read only
+ * when a reader asks.
+ */
+function kernelGroups(site, index) {
+    const answer = site.tiles[index];
+    const groups = {};
+    for (const group of site.carried ?? []) {
+        const slot = ARENA_GROUPS.indexOf(group);
+        const empty = group === "geometries" && answer !== undefined ? answer.members.length === 0
+            : group === "context-geometry" && answer !== undefined ? answer.context.length === 0
+                : () => ((site.identity().present[index] ?? 0) & (1 << slot)) === 0;
+        groups[group] = new KernelGroup(() => site.group(index, group), empty);
+    }
+    return groups;
+}
 /** A grid tile's binary artifact thunk, or none when the site has none. */
 function tileArtifactFor(site, index) {
     return site.tileArtifact === undefined ? {} : {
-        artifact: (boxTrees, limits) => site.tileArtifact(index, boxTrees, limits),
+        artifact: (limits) => site.tileArtifact(index, limits),
     };
 }

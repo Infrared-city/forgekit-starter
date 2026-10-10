@@ -44,7 +44,7 @@ export interface FacadeBatch {
     /** The kernel's pretty capture for the body's `terrain-alignment` (`null`: unsent). */
     readonly capture: (alignment: string | null) => Uint8Array;
     /** The batch's binary artifact (D156), when the site answers artifacts. */
-    readonly artifact?: (boxTrees: boolean, limits: ArtifactLimits) => FacadeArtifact;
+    readonly artifact?: (limits: ArtifactLimits) => FacadeArtifact;
 }
 /**
  * The kernel request for this run: only what the caller set, and a retry's

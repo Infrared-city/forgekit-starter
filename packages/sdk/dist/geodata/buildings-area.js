@@ -10,7 +10,23 @@ import { extrudePieces, extrudeRectangle } from "./buildings-extrude.js";
 import { reanchorEntries } from "../area/reanchor.js";
 import { warnIfOverOneFrame } from "./site-chunks.js";
 import { consoleLogger } from "../logger.js";
-/** Read and extrude every footprint of one site, in one frame. */
+/**
+ * Read and extrude every building footprint of one site, in one frame.
+ *
+ * A registered city overlay is used when one covers the site, otherwise the
+ * global Overture building layer. The site is read once and extruded once, so
+ * every mesh shares the origin in {@link BuildingsAreaResult.origin}.
+ *
+ * @param site - The site rectangle, in WGS84 degrees.
+ * @param options - Read options; `defaultHeightM` is required.
+ * @returns The building meshes keyed by id, the frame origin, the source and
+ *   any warnings.
+ * @throws {OvertureReadTooLargeError} when the planned Overture read exceeds
+ *   the byte limit.
+ * @throws {GeodataDependencyError} when Overture must be read and the optional
+ *   parquet packages are not installed.
+ * @category Buildings
+ */
 export async function acquireBuildingsArea(site, options) {
     // The frame rules are the SITE's, not the chunk grid's, so they belong on
     // this leg too: it reads and extrudes the whole site in one frame and never

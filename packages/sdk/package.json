@@ -1,6 +1,6 @@
 {
-  "name": "@infrared-city/infrared-sdk-ts",
-  "version": "0.14.0-next.0",
+  "name": "@infrared-city/infrared-sdk",
+  "version": "1.0.1",
   "description": "WASM-first Infrared City TypeScript SDK",
   "license": "Apache-2.0",
   "type": "module",
@@ -24,18 +24,21 @@
     "./utilities": {
       "types": "./dist/utilities.d.ts",
       "require": null,
+      "node": "./dist/node-utilities.js",
       "import": "./dist/utilities.js",
       "default": "./dist/utilities.js"
     },
     "./geodata": {
       "types": "./dist/geodata/index.d.ts",
       "require": null,
+      "node": "./dist/node-geodata.js",
       "import": "./dist/geodata/index.js",
       "default": "./dist/geodata/index.js"
     },
     "./billing": {
       "types": "./dist/billing.d.ts",
       "require": null,
+      "node": "./dist/node-billing.js",
       "import": "./dist/billing.js",
       "default": "./dist/billing.js"
     },
@@ -79,6 +82,6 @@
   ],
   "vendored": {
     "note": "Built output only, copied by scripts/update-sdk.mjs. Do not edit by hand.",
-    "integrity": "sha512-c8WgONkz7jlyatoj8F0KWMXMSP7BIe/H29LNiza6k6iEuniO4PRBBcZyVfJ90c19sYWuJbezXOiUg51QSLBtKQ=="
+    "integrity": "sha512-E6ybfIez55O4ydFt4kBsm1I06ooCJ7m/dd+bK0A/YGBqlfqT8NIghw+tTqcghz15e8z6iyJPY4BC/7foB3+HsQ=="
   }
 }

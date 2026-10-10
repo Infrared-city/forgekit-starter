@@ -25,26 +25,36 @@ export interface SubmissionEntry {
      * retry plan or, on a fresh run, attempt 1 of the run's own id. */
     readonly idempotencyKey?: string;
 }
+/**
+ * The plan for one area run: the tiles, the requests built for them and the
+ * identity used to resume the run. `submitAreaPlan` sends it.
+ *
+ * @category Run an analysis
+ */
 export interface AreaSubmissionPlan {
+    /** The area the run covers. */
     readonly polygon: Polygon;
+    /** The analysis the run performs. */
     readonly analysisType: string;
+    /** Digest of the settings the plan was built with. */
     readonly configHash: string;
-    /** Digest of the prepared site's input identity; guards paid partial retries. */
+    /** Digest of the site inputs; a resumed run checks it before it resubmits paid jobs. */
     readonly siteIdentity?: string;
+    /** Rows and columns of the tile grid. */
     readonly gridShape: readonly [number, number];
+    /** Where each tile sits in the grid. */
     readonly tilePositions: readonly TilePosition[];
+    /** The requests to send, one per job. */
     readonly entries: readonly SubmissionEntry[];
-    /** `entries.length`, named for what it prices (WP-6): the real planned
-     * job count, which equals the tile count on a grid run but not on a
-     * facade (`analysisSurfaces`) run, where a tile can split into several
-     * separately billed sub-batches. Optional so a hand-built plan (a test
-     * fixture, say) need not carry it -- `planAreaSubmission` always sets
-     * it; a reader falls back to `entries.length` itself. */
+    /**
+     * The number of jobs the run will submit. It equals the tile count on a
+     * grid run but can be larger on a facade run, where a tile can split into
+     * several separately billed jobs. When absent, use `entries.length`.
+     */
     readonly plannedJobCount?: number;
+    /** Whether the analysis returns per-surface fields rather than a grid. */
     readonly surfaceFields: boolean;
-    /** The caller asked for `cell-tris`, so the merge synthesizes them locally
-     * (`area/facade-synthesis.ts`, `docs/DEVIATIONS.md` D88). Plan-only: the
-     * SCHEDULE never carries it, because the capture it gates is per client. */
+    /** Whether the caller asked for `cell-tris`, which the merge then builds locally. Every surface run keeps its layout capture for the outline; this flag only asks for the triangles. */
     readonly localCellTris?: boolean;
     readonly batchingPolicyVersion?: 2;
     readonly batchMembership?: Readonly<Record<string, readonly string[]>>;
@@ -52,10 +62,8 @@ export interface AreaSubmissionPlan {
     readonly terrainContextMarginM: number;
     /** The weather this plan's payloads were built from, if it is provable. */
     readonly weatherIdentity?: string;
-    /** The area retry identity (D224): the run id every entry's
-     * `Idempotency-Key` is derived from, kept on the schedule. */
+    /** Identifies the run; each job's idempotency key is derived from it, and the schedule keeps it. */
     readonly runId: string;
-    /** Present only on a `retryFrom` plan: the kernel's retry plan, read by
-     * `submission.ts` to stamp the schedule and carry the uncertain list. */
+    /** Present only when the run continues an earlier one with `retryFrom`. */
     readonly retryContext?: AreaRetryContext;
 }

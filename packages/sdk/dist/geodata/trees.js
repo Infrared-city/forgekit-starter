@@ -3,33 +3,50 @@ import { readFgbBboxJson } from "./fgb.js";
 import { featureCollectionJson, featuresArrayText, requireFeatureCollection, requireJsonArray, spliceJsonArrays, } from "./json-chain.js";
 import { resolveOverlayCity } from "./manifests.js";
 import { requireCore } from "../internal/core.js";
+// Maintainer note (not published): direct tree acquisition — the client-side
+// twin of `GET /utils/gis/vegetation?source=fgb`.
+//
+// Same shape as the service: the global OSM FlatGeobuf and, when the AOI
+// falls inside a registered city, that city's OGD overlay, read in parallel
+// and merged with the city winning near-duplicates. Attribute normalisation
+// and dedup are kernel calls, so the numbers match the service's.
+//
+// The chain read → normalise → dedup passes JSON text from one kernel call
+// to the next (bulk-data rule 1). Only `acquireTrees`, the object-returning
+// wrapper, parses — once, at the end.
 /**
- * Direct tree acquisition — the client-side twin of
- * `GET /utils/gis/vegetation?source=fgb`.
+ * URL of the global OpenStreetMap tree layer on the public Infrared data mirror.
  *
- * Same shape as the service: the global OSM FlatGeobuf and, when the AOI
- * falls inside a registered city, that city's OGD overlay, read in parallel
- * and merged with the city winning near-duplicates. Attribute normalisation
- * and dedup are kernel calls, so the numbers match the service's.
- *
- * The chain read → normalise → dedup passes JSON text from one kernel call
- * to the next (bulk-data rule 1). Only `acquireTrees`, the object-returning
- * wrapper, parses — once, at the end.
+ * @category Geodata
  */
-/** The global OSM tree layer on the public R2 mirror. */
 export const TREES_URL = `${GEO_BASE_URL}/trees-world.fgb`;
 /** Registry layer key naming a city's OGD tree overlay. */
 const OVERLAY_LAYER_KEY = "trees_overlay";
-/** Two trees closer than this are the same tree (`tree_dedup.DEFAULT_RADIUS_M`). */
+/**
+ * Distance in metres (2.0) below which two trees from different sources are
+ * treated as the same tree.
+ *
+ * @category Geodata
+ */
+// Maintainer note (not published): mirrors `tree_dedup.DEFAULT_RADIUS_M`.
 export const DEDUP_RADIUS_M = 2.0;
 /**
- * Dedup with the service's own rule: two trees of the SAME source are never
- * deduplicated against each other — only a city tree against a coincident
- * OSM one, which is what the `false` argument says.
+ * Remove duplicate trees from a feature array: a tree from the preferred source
+ * wins over a coincident tree from another source.
  *
- * The kernel is matched at `initializeCore()`, so the four-argument shape is
- * the only one this package can meet.
+ * Two trees of the same source are never deduplicated against each other.
+ *
+ * @param featuresJson - JSON text of an array of tree features.
+ * @param preferred - Source keys whose trees win over coincident ones.
+ * @returns JSON text of the deduplicated feature array.
+ * @category Geodata
  */
+// Maintainer note (not published): dedup with the service's own rule: two trees
+// of the SAME source are never deduplicated against each other — only a city
+// tree against a coincident OSM one, which is what the `false` argument says.
+//
+// The kernel is matched at `initializeCore()`, so the four-argument shape is
+// the only one this package can meet.
 export function dedupWithServiceParity(featuresJson, preferred) {
     const out = requireCore().dedupTrees(featuresJson, DEDUP_RADIUS_M, preferred, false);
     // `dedupTrees` takes and returns a feature ARRAY. If a future kernel
@@ -37,7 +54,23 @@ export function dedupWithServiceParity(featuresJson, preferred) {
     // contract fix — not something the scanner quietly papers over.
     return requireJsonArray(out, "dedupTrees");
 }
-/** Read trees for an AOI straight from the public hosts, as JSON text. */
+/**
+ * Read trees for an area straight from the public data hosts, as JSON text.
+ *
+ * Reads the global OpenStreetMap tree layer and, when the area falls inside a
+ * registered city (and `bestAvailable` is not `false`), that city's open-data
+ * overlay, in parallel. The two are normalised and merged, with the city's trees
+ * winning over coincident OpenStreetMap trees. If only the overlay fails, the
+ * result is still returned and a `<city>_overlay_unavailable` warning is added.
+ *
+ * @param bbox - The area's bounding box in WGS84 degrees.
+ * @param options - Read options and `bestAvailable`.
+ * @returns The features as JSON array text, the contributing sources and any
+ *   warnings.
+ * @throws {GeodataFetchError} when the global OpenStreetMap read fails.
+ * @throws {HostNotAllowedError} when a data URL is not on the allow-list.
+ * @category Vegetation
+ */
 export async function acquireTreesJson(bbox, options = {}) {
     // FeatureCollection in, FeatureCollection out (signature 5). `idPrefix` is
     // the registry CITY id, which the service passes as well
@@ -94,7 +127,18 @@ export async function acquireTreesJson(bbox, options = {}) {
     }
     return { featuresJson: featuresArrayText(collection, "treesNormalize"), sources, warnings };
 }
-/** The same read, parsed once for a caller that wants feature objects. */
+/**
+ * Read trees for an area, returning parsed feature objects.
+ *
+ * The same read as {@link acquireTreesJson}, parsed once.
+ *
+ * @param bbox - The area's bounding box in WGS84 degrees.
+ * @param options - Read options and `bestAvailable`.
+ * @returns The tree features, the contributing sources and any warnings.
+ * @throws {GeodataFetchError} when the global OpenStreetMap read fails.
+ * @throws {HostNotAllowedError} when a data URL is not on the allow-list.
+ * @category Vegetation
+ */
 export async function acquireTrees(bbox, options = {}) {
     const { featuresJson, sources, warnings } = await acquireTreesJson(bbox, options);
     return {
@@ -103,7 +147,13 @@ export async function acquireTrees(bbox, options = {}) {
         warnings,
     };
 }
-/** The same result as a GeoJSON FeatureCollection. */
+/**
+ * Convert an acquired tree result into a GeoJSON FeatureCollection.
+ *
+ * @param result - The result of {@link acquireTrees}.
+ * @returns A `FeatureCollection` object holding the tree features.
+ * @category Vegetation
+ */
 export function treesFeatureCollection(result) {
     return { type: "FeatureCollection", features: [...result.features] };
 }

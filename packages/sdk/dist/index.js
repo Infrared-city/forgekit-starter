@@ -11,6 +11,7 @@ export { BuildingsService } from "./buildings.js";
 export { ConfigHashPolicyError } from "./area/planning.js";
 export { FacadeCountContractError } from "./area/count-contract.js";
 export { cleanMesh } from "./mesh-clean.js";
+export { FacadeLayout, synthesizeFacadeLayout, attachValues } from "./area/facade-layout.js";
 // The typed geodata failures. MIGRATION and D48-TS both tell a caller to catch
 // these from `getArea` / `getBuildingsInArea`, and until now they were only on
 // the ESM-ONLY `/geodata` subpath — so the root import a caller already has
@@ -54,6 +55,15 @@ export { DaylightFactorResult, NO_ROOM } from "./parts/daylight-result.js";
 export { DEFAULT_DAYLIGHT_RESULT_FORMAT } from "./parts/result-format.js";
 export { InvalidOptionError } from "./internal/service.js";
 export { buildAuthResolver } from "./internal/auth.js";
+/**
+ * The version of the computation core bundled with this SDK.
+ *
+ * Call `initializeCore` first.
+ *
+ * @returns The version string.
+ * @throws {CoreNotReadyError} when the core has not been initialised.
+ * @category Client
+ */
 export function coreVersion() {
     return requireCore().coreVersion();
 }

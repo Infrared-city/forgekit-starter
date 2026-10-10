@@ -12,7 +12,11 @@
  * cannot silently read a file that was replaced meanwhile.
  */
 import { type PublicRequestOptions } from "./http.js";
-/** One ranged read: the bytes, plus what the answer said about the object. */
+/**
+ * One ranged read: the bytes, plus what the answer said about the object.
+ *
+ * @category Geodata
+ */
 export interface RangeReadResult {
     readonly bytes: Uint8Array;
     /** Entity tag of the object this range came from, when the host sends one. */
@@ -20,33 +24,71 @@ export interface RangeReadResult {
     /** Total object size, from `Content-Range`, when the answer carries it. */
     readonly totalSize?: number;
 }
+/**
+ * Options for one ranged read.
+ *
+ * @category Geodata
+ */
 export interface RangeReadOptions {
     /**
-     * Sent as `If-Match`. Every follow-up range of one logical read carries
-     * the entity tag the first range answered with, so a quarterly file
-     * replacement between two requests fails loudly instead of decoding two
-     * halves of two different files.
+     * Entity tag sent as `If-Match`. Every follow-up range of one logical read
+     * carries the entity tag the first range answered with, so a file replaced
+     * between two requests fails with an error instead of mixing two versions of
+     * the file.
      */
     readonly ifMatch?: string;
 }
 /**
- * A byte-range reader over one remote object.
+ * A byte-range reader over remote objects.
  *
- * Both FlatGeobuf backends and the Parquet reader talk to the network only
- * through this seam, so a test can serve an object from memory and a caller
- * can supply its own caching or credential-free transport.
+ * The FlatGeobuf and Parquet readers reach the network only through this
+ * interface, so you can supply your own transport (for example one that serves
+ * bytes from memory or adds caching).
  *
- * One instance is meant to be reused across the tiles of one area: it
- * carries the object-size cache, and a fresh one per tile re-learns every
- * object's size.
+ * Reuse one instance across all tiles of an area: it caches object sizes, and a
+ * fresh instance per tile has to learn every size again.
+ *
+ * @category Geodata
  */
 export interface RangeTransport {
-    /** Total object size in bytes. */
+    /**
+     * Total size of the object at `url`, in bytes.
+     *
+     * @param url - The object URL.
+     */
     byteLength(url: string): Promise<number>;
-    /** Bytes `[start, endExclusive)`; `endExclusive` omitted means "to the end". */
+    /**
+     * Read the bytes `[start, endExclusive)` of the object at `url`;
+     * `endExclusive` omitted means "to the end".
+     *
+     * @param url - The object URL.
+     * @param start - First byte offset.
+     * @param endExclusive - End offset (exclusive).
+     * @param options - Per-read options such as `ifMatch`.
+     */
     read(url: string, start: number, endExclusive?: number, options?: RangeReadOptions): Promise<RangeReadResult>;
 }
-/** HTTP `Range` reader with a per-instance object-size cache. */
+/**
+ * Create a {@link RangeTransport} that reads objects over HTTP `Range` requests,
+ * with a per-instance object-size cache.
+ *
+ * Requests go only to allowed public hosts, carry no credentials and are
+ * retried on transient failures.
+ *
+ * @param options - Fetch, abort signal, timeout, logger and stall timeout.
+ * @returns A transport; reuse it for all reads of one area.
+ * @category Geodata
+ */
 export declare function httpRangeTransport(options?: PublicRequestOptions): RangeTransport;
-/** Serve one in-memory object as a range transport (tests, cached buffers). */
+/**
+ * Create a {@link RangeTransport} that serves one in-memory object, for tests or
+ * already-downloaded buffers.
+ *
+ * @param bytes - The object's bytes.
+ * @param url - The URL the object answers to; defaults to
+ *   `https://geo.infrared.city/in-memory.fgb`. Reads of any other URL are
+ *   rejected with a `GeodataFetchError`.
+ * @returns A transport over the bytes.
+ * @category Geodata
+ */
 export declare function bytesRangeTransport(bytes: Uint8Array, url?: string): RangeTransport;

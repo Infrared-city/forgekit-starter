@@ -22,7 +22,8 @@ export class KernelGroup {
     #ids;
     /**
      * `empty`: the group holds no mesh, known from the plan without writing it
-     * (its text is `{}`). `ids`: a batch's `geometries`, the targets it counted.
+     * (its text is `{}`); a function is asked on the first read only.
+     * `ids`: a batch's `geometries`, the targets it counted.
      */
     constructor(load, empty, ids) {
         this.#load = load;
@@ -31,6 +32,8 @@ export class KernelGroup {
     }
     /** True when the group holds no mesh. */
     get empty() {
+        if (typeof this.#empty === "function")
+            this.#empty = this.#empty();
         return this.#empty;
     }
     /** The target ids of a batch's `geometries`, or `undefined` for other groups. */
@@ -40,7 +43,7 @@ export class KernelGroup {
     /** The kernel's text, written on the first ask and kept. */
     text() {
         if (this.#text === undefined)
-            this.#text = this.#empty ? EMPTY : this.#load();
+            this.#text = this.empty ? EMPTY : this.#load();
         return this.#text;
     }
     /**
