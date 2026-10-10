@@ -2,7 +2,7 @@
 // Analysis: direct-sun-hours with `analysisSurfaces: 'all'`. The sensors
 // sit on the building walls and roofs, not on the ground. Billing is per building batch
 // (use previewAreaBatches, not previewArea, to price it).
-import type { SurfaceColumns } from '@infrared-city/infrared-sdk-ts'
+import type { SurfaceColumns } from '@infrared-city/infrared-sdk'
 import { useMemo, useState } from 'react'
 import { FacadeScene } from '../components/FacadeScene'
 import { Legend } from '../components/Legend'

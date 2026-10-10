@@ -3,7 +3,7 @@
 // The demo explorer stores and draws this per-surface shape.
 // Row `r`: vectors at [3r, 3r + 3), cells at [cellOffsets[r], cellOffsets[r + 1]).
 // A cell without a value is NaN in the columns and null here.
-import { type SurfaceColumns, surfaceId } from '@infrared-city/infrared-sdk-ts'
+import { type SurfaceColumns, surfaceId, surfaceValuesF32 } from '@infrared-city/infrared-sdk'
 
 export interface PlainSurface {
   origin: number[]
@@ -18,7 +18,8 @@ export interface PlainSurface {
 export function surfacesFromColumns(r: SurfaceColumns): Record<string, PlainSurface> {
   const out: Record<string, PlainSurface> = {}
   for (let row = 0; row < r.surfaceCount; row++) {
-    const cells = r.values.subarray(r.cellOffsets[row], r.cellOffsets[row + 1])
+    // `values` keeps the server's type (f16 bits): read physical values with the helper.
+    const cells = surfaceValuesF32(r, r.cellOffsets[row], r.cellOffsets[row + 1])
     out[surfaceId(r, row)] = {
       origin: Array.from(r.origin.subarray(3 * row, 3 * row + 3)),
       uAxis: Array.from(r.uAxis.subarray(3 * row, 3 * row + 3)),

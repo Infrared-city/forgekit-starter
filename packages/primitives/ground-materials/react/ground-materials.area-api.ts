@@ -3,7 +3,7 @@
  *
  * Separate from the legacy 501-guarded collect/clean mutations in
  * `ground-materials.api.ts` — this path calls the new
- * `@infrared-city/infrared-sdk-ts` `groundMaterials.getRaw(lat, lon, distance,
+ * `@infrared-city/infrared-sdk` `groundMaterials.getRaw(lat, lon, distance,
  * 'fgb')` (one whole-AOI fetch over the Overture/R2-indexed source, not the
  * tiled Mapbox `getArea` fan-out) and writes the result to
  * `useGroundMaterialsStore.areaLayers` for the deck.gl display layer to
@@ -51,7 +51,7 @@ export function isPolygonSafeToFetch(polygon: GeoJsonPolygon | null): polygon is
 
 /**
  * Structural shape of the SDK's `GroundMaterialCleaner` (0.12.2+). Defined
- * locally so the primitive stays free of a hard `@infrared-city/infrared-sdk-ts`
+ * locally so the primitive stays free of a hard `@infrared-city/infrared-sdk`
  * dependency — the app injects a concrete cleaner (e.g. a Web Worker bridge).
  */
 export interface GroundMaterialCleanerLike {

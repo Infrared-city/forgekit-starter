@@ -1,8 +1,9 @@
 import {
   type AreaState,
   AreaTimeoutError,
+  areaGridValuesF32,
   type InfraredClient,
-} from '@infrared-city/infrared-sdk-ts'
+} from '@infrared-city/infrared-sdk'
 import type { Polygon as GeoJSONPolygon } from 'geojson'
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
@@ -372,6 +373,9 @@ export function createUseRunArea(client: InfraredClient) {
         }
 
         const [gridRows, gridCols] = result.gridShape
+        // `mergedGrid` keeps the server's type (f16 bits, i16 with a divisor):
+        // read the physical values with the SDK helper.
+        const values = areaGridValuesF32(result)
         // Prefer the SDK's own grid extent (it can be padded to the NE).
         const gridBounds = result.bounds
           ? {
@@ -381,7 +385,7 @@ export function createUseRunArea(client: InfraredClient) {
               north: result.bounds[3],
             }
           : computeGridBounds(polygon, gridRows, gridCols)
-        const [minLegend, maxLegend] = computeLegendBounds(result.mergedGrid)
+        const [minLegend, maxLegend] = computeLegendBounds(values)
         const totalJobs = lastState?.totalCount ?? 0
         const succeededJobs = Math.max(
           0,
@@ -389,7 +393,7 @@ export function createUseRunArea(client: InfraredClient) {
         )
 
         const storeResult: AreaRunResult = {
-          mergedGrid: gridToNestedList(result.mergedGrid, gridRows, gridCols),
+          mergedGrid: gridToNestedList(values, gridRows, gridCols),
           gridShape: [gridRows, gridCols],
           gridBounds,
           polygon: input.polygon,

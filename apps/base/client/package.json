@@ -18,7 +18,7 @@
     "deploy:preview": "npm run build && wrangler pages deploy dist --project-name=my-climate-app --branch=preview"
   },
   "dependencies": {
-    "@infrared-city/infrared-sdk-ts": "*",
+    "@infrared-city/infrared-sdk": "*",
     "@infrared/analysis-colors": "*",
     "@infrared/design-tokens": "*",
     "@infrared/mapbox-theme": "*",

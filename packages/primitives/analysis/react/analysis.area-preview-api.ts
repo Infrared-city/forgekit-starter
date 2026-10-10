@@ -1,4 +1,4 @@
-import type { InfraredClient } from '@infrared-city/infrared-sdk-ts'
+import type { InfraredClient } from '@infrared-city/infrared-sdk'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 import { type AnalysesName, TILING_SUPPORTED_TYPES } from '../core/analysis.sdk-types'

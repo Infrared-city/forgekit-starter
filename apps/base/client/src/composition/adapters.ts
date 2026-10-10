@@ -9,7 +9,7 @@
  * Only the weather adapter remains — it is consumed by the area-tiled
  * analysis slice to populate the weather station selector.
  */
-import type { InfraredClient } from '@infrared-city/infrared-sdk-ts'
+import type { InfraredClient } from '@infrared-city/infrared-sdk'
 
 // ---------------------------------------------------------------------------
 // Weather adapter

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { InfraredClient } from '@infrared-city/infrared-sdk-ts'
+import type { InfraredClient } from '@infrared-city/infrared-sdk'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { Polygon as GeoJSONPolygon } from 'geojson'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -163,13 +163,13 @@ describe('createUseAreaPreview', () => {
 // ─── No tiling imports assertion (area UI files) ─────────────────────────
 
 describe('no tiling imports (area UI files)', () => {
-  it('none of the area UI files import from @infrared-city/infrared-sdk-ts/tiling', () => {
+  it('none of the area UI files import from @infrared-city/infrared-sdk/tiling', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const paths = [resolve(here, '../react/analysis.area-preview-api.ts')]
     for (const p of paths) {
       const source = readFileSync(p, 'utf8')
-      expect(source, `${p} must not import @infrared-city/infrared-sdk-ts/tiling`).not.toContain(
-        '@infrared-city/infrared-sdk-ts/tiling',
+      expect(source, `${p} must not import @infrared-city/infrared-sdk/tiling`).not.toContain(
+        '@infrared-city/infrared-sdk/tiling',
       )
     }
   })

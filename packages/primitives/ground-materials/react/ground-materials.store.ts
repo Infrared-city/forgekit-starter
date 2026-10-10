@@ -6,7 +6,7 @@ import type { DrawModes, ImportPreviewState } from '../core/ground-materials.typ
 /**
  * Loose `FeatureCollection` shape consumed by the SDK display path.
  *
- * Matches `@infrared-city/infrared-sdk-ts`'s public type — looser than the
+ * Matches `@infrared-city/infrared-sdk`'s public type — looser than the
  * Zod-validated `FeatureCollection` from `core/ground-materials.sdk-types`,
  * which is reserved for the manual draw / collect pipeline.
  */

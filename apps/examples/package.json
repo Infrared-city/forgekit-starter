@@ -12,7 +12,7 @@
     "deploy": "npm run build && wrangler pages deploy dist --project-name=my-infrared-examples"
   },
   "dependencies": {
-    "@infrared-city/infrared-sdk-ts": "*",
+    "@infrared-city/infrared-sdk": "*",
     "hyparquet": "^1.31.1",
     "hyparquet-compressors": "^1.1.1",
     "leaflet": "^1.9.4",

@@ -183,7 +183,7 @@ ground materials over a polygon via a single whole-AOI SDK `getRaw` call
 (`source: 'fgb'` → Overture, R2-file-indexed — NOT the tiled, Mapbox-default
 `getArea` fan-out), then runs `clean-v3` over the result. The optional second
 argument forwards a swappable clean-v3 backend to the SDK (needs
-`@infrared-city/infrared-sdk-ts` ≥ 0.12.2):
+`@infrared-city/infrared-sdk` ≥ 0.12.2):
 
 ```ts
 const mutation = useGroundMaterialsAreaMutation(sdkClient, {

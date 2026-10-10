@@ -100,10 +100,13 @@ of the grid (NaN), and the difference must be zero away from the change.
 
 ## SDK reference
 
-For `@infrared-city/infrared-sdk-ts` 0.14.0-next.0 (the copy in
-`packages/sdk`). This section is the one complete reference: README and the
+For `@infrared-city/infrared-sdk` 1.0.1 (the copy in
+`packages/sdk`; full docs: https://infrared.city/docs/sdk/). This section is the one complete reference: README and the
 code comments link here. Every snippet compiles against `packages/sdk`, and
 every request shape passes the SDK's own validators (`prepareAreaPayload`).
+Claude Code users can also add the agent skill:
+`/plugin marketplace add Infrared-city/infrared-skills`, then
+`/plugin install infrared@infrared-skills`.
 
 ### Basics
 
@@ -144,7 +147,7 @@ import {
   JobFailedError,
   ReadMarginError,
   SubmissionUncertainError,
-} from '@infrared-city/infrared-sdk-ts'
+} from '@infrared-city/infrared-sdk'
 import { squareAround } from '../lib/geo'
 import { errorText, getClient } from '../lib/infrared'
 
@@ -218,9 +221,14 @@ try {
 `runAreaAndWait` returns `{ mergedGrid, gridShape: [rows, cols], bounds?,
 legend?, failedJobs, skippedJobs, executionTime }`.
 
-- `mergedGrid` is a flat `Float32Array` or `Float64Array`, 1 m cells,
-  `mergedGrid[row * cols + col]`. **Row 0 is the SOUTH edge.** Flip the rows
-  to draw north-up (`gridToDataUrl` in `src/lib/colors.ts` does it).
+- **Read values with `areaGridValuesF32(result)`**, never `mergedGrid`
+  directly. Since SDK 1.0 `mergedGrid` keeps the type the server stored
+  (`valueDtype`): half-float BITS in a `Uint16Array` (`'f16'`: solar, sky
+  view, wind, thermal statistics), integers with a divisor (`'i16'`: UTCI,
+  10 times too large if read raw), or floats. The helper gives one
+  `Float32Array` of physical values.
+- 1 m cells, `values[row * cols + col]`. **Row 0 is the SOUTH edge.** Flip
+  the rows to draw north-up (`gridToDataUrl` in `src/lib/colors.ts` does it).
 - `NaN` = no value (for example a building footprint). Skip it in means.
 - Place the image with `result.bounds` (`[west, south, east, north]`), not
   with the polygon. `bounds` is optional in the type: check it.
@@ -236,7 +244,12 @@ Put `analysisSurfaces` in the input: `'facades'` (walls), `'roofs'` or
 analyses and the wind analyses refuse it.
 
 ```ts
-import { isVertical, surfaceId, type SurfaceColumns } from '@infrared-city/infrared-sdk-ts'
+import {
+  isVertical,
+  type SurfaceColumns,
+  surfaceId,
+  surfaceValuesF32,
+} from '@infrared-city/infrared-sdk'
 
 const input = {
   analysisType: 'direct-sun-hours',
@@ -263,7 +276,8 @@ for (let row = 0; row < facades.surfaceCount; row++) {
   const kind = isVertical(facades, row) ? 'wall' : 'roof'
   const origin = facades.origin.subarray(3 * row, 3 * row + 3) // same for uAxis, vAxis
   const nu = facades.nu[row]
-  const cells = facades.values.subarray(facades.cellOffsets[row], facades.cellOffsets[row + 1])
+  // Physical values (never `facades.values` directly: it can hold f16 bits).
+  const cells = surfaceValuesF32(facades, facades.cellOffsets[row], facades.cellOffsets[row + 1])
   for (let k = 0; k < cells.length; k++) {
     const i = k % nu
     const j = Math.floor(k / nu)
@@ -280,8 +294,10 @@ for (let row = 0; row < facades.surfaceCount; row++) {
   back in it. Surface `row` has its vectors at `[3*row, 3*row + 3)` of
   `origin`, `uAxis` and `vAxis`, its `gridSize[row]`, `nu[row]`, `nv[row]`,
   `area[row]`, `mean[row]`, `peak[row]`, and its cells at
-  `values[cellOffsets[row] .. cellOffsets[row + 1])`. A cell without a value
-  is `NaN` (it was `null` before 0.13.0).
+  `cellOffsets[row] .. cellOffsets[row + 1]`. Read them with
+  `surfaceValuesF32(result, first, last)`: since SDK 1.0 `values` keeps the
+  server's type (`valueDtype`, often f16 bits). A cell without a value is
+  `NaN` in the helper's output.
 - Look a surface up by id with `surfaceIndex(result).get(id)`. Join two
   results (for example a variant and the base) by id and cell index, never by
   row: the row order is the run's schedule order.
@@ -294,11 +310,11 @@ for (let row = 0; row < facades.surfaceCount; row++) {
 - `aggregates` holds `{ area, mean, peak }` per building, in groups (for
   example `aggregates.buildings[buildingId]`). `sensorCount`, `minLegend`
   and `maxLegend` are also on the result.
-- To draw: two triangles per cell (see `src/components/FacadeScene.tsx`).
-  For exact cell shapes on odd walls, set `emitCellTris: true`: then
-  `result.triangles.positions[g]` holds the triangles of job `g` in its
-  tile-local frame; add `triangles.anchors[2g]`, `[2g + 1]` as the mesh
-  position, and colour it with `vertexValues(result, g)`.
+- To draw: `surfaceRenderBuffers(result)` gives the outline triangles of
+  each wall or roof part, one value per cell and a validity bit per cell.
+  `src/lib/surface-mesh.ts` turns them into one three.js mesh with a shader
+  that colours each cell exactly; `src/components/FacadeScene.tsx` uses it.
+  Test the validity bit, never the value (a cell without a value is `0`).
 - For the old per-surface object shape, see `surfacesFromColumns` in
   `apps/examples/src/lib/surfaces.ts`.
 
@@ -472,7 +488,7 @@ window maximum, wind 0-15 m/s, UTCI about -40 to 46 °C, SVF / daylight 0-100).
 
 ## Advanced
 
-- `@infrared-city/infrared-sdk-ts/worker` runs the SDK in a Web Worker
+- `@infrared-city/infrared-sdk/worker` runs the SDK in a Web Worker
   (`serveSdkWorker()` in the worker file, `createWorkerClient({ worker,
   module, config })` on the page) so big sites do not freeze the page. Its
   `fetch` must forward `init.signal`, and it needs the same S3 rewrite.

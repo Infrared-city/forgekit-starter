@@ -1,64 +1,24 @@
-// Draws facade results in 3D with three.js. Each surface is a flat grid of
-// sensor cells. `origin` is the CENTRE of cell (0, 0): cell (i, j) is centred
-// on origin + i*gridSize*uAxis + j*gridSize*vAxis and reaches half a cell to
-// each side. Coordinates are metres from the area's south-west corner: x east,
-// y north, z up. See AGENTS.md "Facades and roofs".
-// The SDK gives the result as columns: surface `row` has its vectors at
-// [3*row, 3*row + 3) and its cells at [cellOffsets[row], cellOffsets[row + 1]).
-import type { SurfaceColumns } from '@infrared-city/infrared-sdk-ts'
+// Draws facade results in 3D with three.js. The SDK turns the result into
+// render buffers (`surfaceRenderBuffers`): a few outline triangles per wall or
+// roof part, one value per cell, and a validity bit per cell. One shader draws
+// every cell with its exact colour (see src/lib/surface-mesh.ts).
+// The SDK frame is metres from the area's south-west corner: x east, y north,
+// z up. three.js uses y up, so the mesh sits in a group turned -90 degrees
+// about x. See AGENTS.md "Facades and roofs".
+import { type SurfaceColumns, surfaceRenderBuffers } from '@infrared-city/infrared-sdk'
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { ramp, type Scale } from '../lib/colors'
+import { createSurfaceMesh, disposeSurfaceMesh } from '../lib/surface-mesh'
 
-function buildMesh(result: SurfaceColumns, scale: Scale): THREE.Mesh {
-  const pos: number[] = []
-  const col: number[] = []
-  const grey = [0.6, 0.6, 0.6]
-  for (let row = 0; row < result.surfaceCount; row++) {
-    const [ox, oy, oz] = result.origin.subarray(3 * row, 3 * row + 3)
-    const g = result.gridSize[row]
-    const u = Array.from(result.uAxis.subarray(3 * row, 3 * row + 3), (a) => a * g)
-    const v = Array.from(result.vAxis.subarray(3 * row, 3 * row + 3), (a) => a * g)
-    const nu = result.nu[row]
-    const nv = result.nv[row]
-    const first = result.cellOffsets[row]
-    const count = result.cellOffsets[row + 1] - first
-    for (let j = 0; j < nv; j++) {
-      for (let i = 0; i < nu; i++) {
-        const k = j * nu + i
-        if (k >= count) continue
-        const value = result.values[first + k]
-        const c = Number.isNaN(value)
-          ? grey
-          : ramp((value - scale.min) / (scale.max - scale.min)).map((x) => x / 255)
-        // Four corners of the cell (centre +- half a cell). Swap y and z: three.js uses y up.
-        const p = (ci: number, cj: number) => {
-          const a = ci - 0.5
-          const b = cj - 0.5
-          const x = ox + a * u[0] + b * v[0]
-          const y = oy + a * u[1] + b * v[1]
-          const z = oz + a * u[2] + b * v[2]
-          return [x, z, -y]
-        }
-        const p00 = p(i, j)
-        const p10 = p(i + 1, j)
-        const p11 = p(i + 1, j + 1)
-        const p01 = p(i, j + 1)
-        for (const q of [p00, p10, p11, p00, p11, p01]) {
-          pos.push(...q)
-          col.push(...c)
-        }
-      }
-    }
+/** The colour ramp as a 256 x 1 RGBA table for the shader. */
+function rampTable(): Uint8Array {
+  const out = new Uint8Array(256 * 4)
+  for (let i = 0; i < 256; i++) {
+    out.set([...ramp(i / 255).map(Math.round), 255], 4 * i)
   }
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-  return new THREE.Mesh(
-    geo,
-    new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }),
-  )
+  return out
 }
 
 export function FacadeScene({ result, scale }: { result: SurfaceColumns; scale: Scale }) {
@@ -72,11 +32,16 @@ export function FacadeScene({ result, scale }: { result: SurfaceColumns; scale: 
     host.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
     scene.background = new THREE.Color('#f4f4f2')
-    const mesh = buildMesh(result, scale)
-    scene.add(mesh)
+    const mesh = createSurfaceMesh(surfaceRenderBuffers(result), rampTable(), [
+      scale.min,
+      scale.max,
+    ])
+    const zUp = new THREE.Group()
+    zUp.rotation.x = -Math.PI / 2 // SDK (x, y, z) -> three.js (x, z, -y)
+    zUp.add(mesh)
+    scene.add(zUp)
 
-    mesh.geometry.computeBoundingBox()
-    const box = mesh.geometry.boundingBox ?? new THREE.Box3()
+    const box = new THREE.Box3().setFromObject(zUp)
     const mid = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3()).length()
     const ground = new THREE.Mesh(
@@ -107,7 +72,9 @@ export function FacadeScene({ result, scale }: { result: SurfaceColumns; scale: 
     return () => {
       cancelAnimationFrame(frame)
       controls.dispose()
-      mesh.geometry.dispose()
+      disposeSurfaceMesh(mesh)
+      ground.geometry.dispose()
+      ground.material.dispose()
       renderer.dispose()
       host.removeChild(renderer.domElement)
     }
