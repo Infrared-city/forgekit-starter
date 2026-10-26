@@ -23,5 +23,6 @@ export { freePreparedSites } from "./prepared-site.js";
 export { ConfigHashPolicyError } from "./planning.js";
 export { FacadeCountContractError } from "./count-contract.js";
 export { mergeAreaJobs, mergeSurfaceAreaJobs } from "./merge.js";
+export { areaGridHasValue, areaGridValuesF32 } from "./area-grid.js";
 export { SCHEDULE_CONTRACT_VERSION, WeatherIdentityError, } from "./weather-guard.js";
 export { TileFailurePhase } from "./schedule-types.js";

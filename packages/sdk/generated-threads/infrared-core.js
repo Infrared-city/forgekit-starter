@@ -4,48 +4,167 @@ import { startWorkers } from './snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src
 
 
 /**
- * JS-owned result. Getters return handles to buffers that do not borrow WASM.
+ * The incremental merge of one area run's grid tiles.
  */
-export class AreaGridMerge {
-    static __wrap(ptr) {
-        const obj = Object.create(AreaGridMerge.prototype);
-        obj.__wbg_ptr = ptr;
-        AreaGridMergeFinalization.register(obj, obj.__wbg_ptr, obj);
-        return obj;
-    }
+export class AreaGridMerger {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
-        AreaGridMergeFinalization.unregister(this);
+        AreaGridMergerFinalization.unregister(this);
         return ptr;
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_areagridmerge_free(ptr, 0);
+        wasm.__wbg_areagridmerger_free(ptr, 0);
     }
     /**
-     * @returns {Float64Array | undefined}
+     * Finish the merge: `{ values, valuesDtype, valueDivisor, valid?, shape,
+     * bounds?, legend?, minLegend?, maxLegend? }`. `valid` is set for
+     * `"i16"` only; `legend` for a categorical run (the values are then
+     * `f32` class codes); `minLegend`/`maxLegend` are the exact range of a
+     * numeric run.
+     * @returns {any}
      */
-    get bounds() {
-        const ret = wasm.areagridmerge_bounds(this.__wbg_ptr);
-        return ret;
+    finish() {
+        const ret = wasm.areagridmerger_finish(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * @returns {Uint32Array}
+     * `strategy` is `"default"`, `"directional"` or `"directional_blend"`;
+     * the directional ones need `windDirectionDeg`. `block` is 1 to 928.
+     * @param {number} num_rows
+     * @param {number} num_cols
+     * @param {string} config_json
+     * @param {string} polygon_json
+     * @param {string | null} [strategy]
+     * @param {number | null} [wind_direction_deg]
+     * @param {number | null} [block]
      */
-    get shape() {
-        const ret = wasm.areagridmerge_shape(this.__wbg_ptr);
-        return ret;
+    constructor(num_rows, num_cols, config_json, polygon_json, strategy, wind_direction_deg, block) {
+        const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        var ptr2 = isLikeNone(strategy) ? 0 : passStringToWasm0(strategy, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len2 = WASM_VECTOR_LEN;
+        const ret = wasm.areagridmerger_new(num_rows, num_cols, ptr0, len0, ptr1, len1, ptr2, len2, !isLikeNone(wind_direction_deg), isLikeNone(wind_direction_deg) ? 0 : wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        AreaGridMergerFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
     /**
-     * @returns {Float64Array}
+     * Add one tile archive at tile position `(row, col)`. `undefined` when
+     * the tile is merged; the reason when the tile is not usable (an archive
+     * that does not decode, a wrong shape, an IRBF family that is not a
+     * grid). Throws for a run error (numeric and categorical tiles mixed, a
+     * position outside the layout).
+     * @param {number} row
+     * @param {number} col
+     * @param {Uint8Array} archive
+     * @returns {string | undefined}
      */
-    get values() {
-        const ret = wasm.areagridmerge_values(this.__wbg_ptr);
-        return ret;
+    push(row, col, archive) {
+        const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.areagridmerger_push(this.__wbg_ptr, row, col, ptr0, len0);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        let v2;
+        if (ret[0] !== 0) {
+            v2 = getStringFromWasm0(ret[0], ret[1]).slice();
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v2;
     }
 }
-if (Symbol.dispose) AreaGridMerge.prototype[Symbol.dispose] = AreaGridMerge.prototype.free;
+if (Symbol.dispose) AreaGridMerger.prototype[Symbol.dispose] = AreaGridMerger.prototype.free;
+
+/**
+ * See the module documentation.
+ */
+export class CaptureStore {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        CaptureStoreFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_capturestore_free(ptr, 0);
+    }
+    /**
+     * Drop everything, as `free()` would, but keep the handle.
+     */
+    clear() {
+        wasm.capturestore_clear(this.__wbg_ptr);
+    }
+    /**
+     * Drop job `jobId`'s reference. An unknown id does nothing.
+     * @param {string} job_id
+     */
+    forget(job_id) {
+        const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.capturestore_forget(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * The bytes held: the distinct captures and the syntheses cached for them.
+     * @returns {number}
+     */
+    get heldBytes() {
+        const ret = wasm.capturestore_heldBytes(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * The jobs that hold a capture.
+     * @returns {number}
+     */
+    get jobCount() {
+        const ret = wasm.capturestore_jobCount(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * An empty store.
+     */
+    constructor() {
+        const ret = wasm.capturestore_new();
+        this.__wbg_ptr = ret;
+        CaptureStoreFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Keep `capture` for job `jobId` and return its content key (64 hex
+     * characters). A job that is remembered again is replaced.
+     * @param {string} job_id
+     * @param {Uint8Array} capture
+     * @returns {string}
+     */
+    remember(job_id, capture) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArray8ToWasm0(capture, wasm.__wbindgen_malloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.capturestore_remember(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            deferred3_0 = ret[0];
+            deferred3_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) CaptureStore.prototype[Symbol.dispose] = CaptureStore.prototype.free;
 
 /**
  * JS-owned canonical categorical values and their sorted observed legend.
@@ -85,85 +204,94 @@ export class CategoricalAreaDense {
 if (Symbol.dispose) CategoricalAreaDense.prototype[Symbol.dispose] = CategoricalAreaDense.prototype.free;
 
 /**
- * JS-owned category ordinals and sorted observed dictionary.
+ * A rebuilt layout, held on the wasm side so `toBytes()` can export the
+ * SAME layout later without a second synthesis pass (see the module docs).
+ * `fields()` and `toBytes()` both read `self.0`; nothing here
+ * re-synthesizes. Free with the generated `.free()` (or let the JS
+ * `FinalizationRegistry` wasm-bindgen installs do it) once a caller is
+ * done with a result, the same as any other wasm-bindgen class.
  */
-export class CompactAreaCategories {
+export class FacadeLayoutHandle {
     static __wrap(ptr) {
-        const obj = Object.create(CompactAreaCategories.prototype);
+        const obj = Object.create(FacadeLayoutHandle.prototype);
         obj.__wbg_ptr = ptr;
-        CompactAreaCategoriesFinalization.register(obj, obj.__wbg_ptr, obj);
+        FacadeLayoutHandleFinalization.register(obj, obj.__wbg_ptr, obj);
         return obj;
     }
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
-        CompactAreaCategoriesFinalization.unregister(this);
+        FacadeLayoutHandleFinalization.unregister(this);
         return ptr;
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_compactareacategories_free(ptr, 0);
+        wasm.__wbg_facadelayouthandle_free(ptr, 0);
     }
     /**
-     * @returns {Array<any>}
+     * This layout as typed fields (no export bytes): `layoutKey`,
+     * `surfgridVersion`, `coreVersion`, `synthParams`, and `jobs` (each the
+     * SAME shape `synthesizeSurfaces(..., returnBuffers: true)` gives --
+     * `points`, `normals`, `cellArea`, `cellTris`/`cellTrisOffsets`,
+     * `frames`, `sensorLayoutHash`, `entityHashes`, `warnings` -- plus
+     * `jobId` and `hasTerrain`).
+     *
+     * `points`/`normals`/`cellArea`/`cellTris`/`cellTrisOffsets` are
+     * zero-copy VIEWS onto this handle's own buffers (`buffers_to_js_view`,
+     * perf/ts-facade-layout-views) -- valid only while this handle is not
+     * freed and wasm linear memory has not grown since; see the module docs.
+     *
+     * Refuses an oversize layout with the same `MAX_LAYOUT_CELLS_WASM`
+     * cap `toBytes()` enforces, BEFORE allocating the JS typed arrays --
+     * a `fromBytes()` -> `fields()` call on an oversize layout hit this
+     * exact allocation as an un-catchable wasm `unreachable` otherwise
+     * (TS stress test 2026-10-05, HK Mid-Levels 817 buildings, grid 1 m).
+     * @returns {any}
      */
-    get legend() {
-        const ret = wasm.compactareacategories_legend(this.__wbg_ptr);
-        return ret;
+    fields() {
+        const ret = wasm.facadelayouthandle_fields(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * @returns {Float32Array}
+     * @param {any} columns
+     * @returns {any}
      */
-    get values() {
-        const ret = wasm.compactareacategories_values(this.__wbg_ptr);
-        return ret;
+    surfaceRenderBuffers(columns) {
+        const ret = wasm.facadelayouthandle_surfaceRenderBuffers(this.__wbg_ptr, columns);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * The compact export (`crate::facade_layout_export::to_bytes`) of THIS
+     * held layout -- never re-synthesizes. Call only when the host
+     * actually wants to save the layout; `fields()` alone is enough to show
+     * one.
+     *
+     * Refuses a layout too large for wasm's fixed linear memory with a
+     * plain `Err` BEFORE allocating the export buffers, rather than letting
+     * a huge `Vec` allocation fail -- in wasm that is an un-catchable abort
+     * (`unreachable`), not a `Result` a caller could handle (issue #707
+     * "toBytes() crash -- root cause", 2026-10-04). A caller with a site
+     * this large should pass per-tile `activeIds` (`docs/UPGRADING.md`,
+     * "Show facade results after a reload") so each job's export fits.
+     * @returns {Uint8Array}
+     */
+    toBytes() {
+        const ret = wasm.facadelayouthandle_toBytes(this.__wbg_ptr);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
     }
 }
-if (Symbol.dispose) CompactAreaCategories.prototype[Symbol.dispose] = CompactAreaCategories.prototype.free;
-
-/**
- * JS-owned f32 result; the four geographic bounds retain f64 precision.
- */
-export class CompactAreaGrid {
-    static __wrap(ptr) {
-        const obj = Object.create(CompactAreaGrid.prototype);
-        obj.__wbg_ptr = ptr;
-        CompactAreaGridFinalization.register(obj, obj.__wbg_ptr, obj);
-        return obj;
-    }
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        CompactAreaGridFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_compactareagrid_free(ptr, 0);
-    }
-    /**
-     * @returns {Float64Array | undefined}
-     */
-    get bounds() {
-        const ret = wasm.compactareagrid_bounds(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {Uint32Array}
-     */
-    get shape() {
-        const ret = wasm.compactareagrid_shape(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    get values() {
-        const ret = wasm.compactareagrid_values(this.__wbg_ptr);
-        return ret;
-    }
-}
-if (Symbol.dispose) CompactAreaGrid.prototype[Symbol.dispose] = CompactAreaGrid.prototype.free;
+if (Symbol.dispose) FacadeLayoutHandle.prototype[Symbol.dispose] = FacadeLayoutHandle.prototype.free;
 
 export class GridDecode {
     static __wrap(ptr) {
@@ -437,17 +565,20 @@ export class Site {
      * two per tile), as `identity` answers them. Four additive per-tile
      * fact buffers report checked frame bytes, metadata bytes, mesh count
      * and instance count without changing the existing archive fields.
+     *
+     * D249: the TypeScript host never boxes trees; the kernel still carries
+     * the `box_trees` parameter for the .NET binding, so this calls it with
+     * `false`.
      * @param {number} start
      * @param {number} end
-     * @param {boolean} box_trees
      * @param {bigint} max_total_bytes
      * @param {number} max_metadata_bytes
      * @param {bigint} max_meshes
      * @param {bigint} max_instances
      * @returns {any}
      */
-    artifacts(start, end, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
-        const ret = wasm.site_artifacts(this.__wbg_ptr, start, end, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+    artifacts(start, end, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+        const ret = wasm.site_artifacts(this.__wbg_ptr, start, end, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -521,10 +652,14 @@ export class Site {
      * (`{present, meshGroupHashes}`), `capture` (the pretty capture with the
      * request's `terrain-alignment`: `alignment`, or `undefined` when the
      * request does not send it) and `artifact` (`{targetIds, archive,
-     * artifactDigest, contentDigest, encoding, treeBoxes, frameByteLength,
+     * artifactDigest, contentDigest, encoding, frameByteLength,
      * metadataByteLength, meshCount, instanceCount}`). A job the kernel
      * refuses is `{error}`; the other jobs are kept. The kernel builds each
      * tile once for all of its jobs.
+     *
+     * D249: the TypeScript host never boxes trees; the kernel still carries
+     * the `box_trees` parameter for the .NET binding, so this calls it with
+     * `false`.
      * @param {Uint32Array} tiles
      * @param {Uint32Array} id_counts
      * @param {string[]} ids
@@ -533,14 +668,13 @@ export class Site {
      * @param {boolean} capture
      * @param {string | null | undefined} alignment
      * @param {boolean} artifact
-     * @param {boolean} box_trees
      * @param {bigint} max_total_bytes
      * @param {number} max_metadata_bytes
      * @param {bigint} max_meshes
      * @param {bigint} max_instances
      * @returns {Array<any>}
      */
-    facadeFrames(tiles, id_counts, ids, body, identity, capture, alignment, artifact, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+    facadeFrames(tiles, id_counts, ids, body, identity, capture, alignment, artifact, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
         const ptr0 = passArray32ToWasm0(tiles, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray32ToWasm0(id_counts, wasm.__wbindgen_malloc);
@@ -549,7 +683,7 @@ export class Site {
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(alignment) ? 0 : passStringToWasm0(alignment, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.site_facadeFrames(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, body, identity, capture, ptr3, len3, artifact, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        const ret = wasm.site_facadeFrames(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, body, identity, capture, ptr3, len3, artifact, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -559,29 +693,31 @@ export class Site {
      * One scene frame per tile and a target range per job (#602). The jobs
      * are given as for `facadeFrames`; give every job of a tile in one call.
      * Returns `{scenes, jobs}`: a scene is `{tile, archive, artifactDigest,
-     * contentDigest, encoding, treeBoxes, frameByteLength,
-     * metadataByteLength, meshCount, instanceCount}`; a job is `{targets:
-     * {scene, start, count}, targetIds}` (a range of `scenes[scene]`'s
-     * `geometries`), `{artifact}` (its own frame, as `facadeFrames` answers
-     * it) or `{error}`.
+     * contentDigest, encoding, frameByteLength, metadataByteLength,
+     * meshCount, instanceCount}`; a job is `{targets: {scene, start, count},
+     * targetIds}` (a range of `scenes[scene]`'s `geometries`), `{artifact}`
+     * (its own frame, as `facadeFrames` answers it) or `{error}`.
+     *
+     * D249: the TypeScript host never boxes trees; the kernel still carries
+     * the `box_trees` parameter for the .NET binding, so this calls it with
+     * `false`.
      * @param {Uint32Array} tiles
      * @param {Uint32Array} id_counts
      * @param {string[]} ids
-     * @param {boolean} box_trees
      * @param {bigint} max_total_bytes
      * @param {number} max_metadata_bytes
      * @param {bigint} max_meshes
      * @param {bigint} max_instances
      * @returns {object}
      */
-    facadeScenes(tiles, id_counts, ids, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+    facadeScenes(tiles, id_counts, ids, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
         const ptr0 = passArray32ToWasm0(tiles, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray32ToWasm0(id_counts, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passArrayJsValueToWasm0(ids, wasm.__wbindgen_malloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.site_facadeScenes(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        const ret = wasm.site_facadeScenes(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -1601,6 +1737,40 @@ export function computeGridBounds(polygon_json, num_rows, num_cols, config_json)
 }
 
 /**
+ * Hash of one geometry group for `configHashV2`'s `groupHashesJson`: the
+ * registry rule when the kernel has one, else the document hash. Throws on a
+ * malformed group.
+ * @param {string} model
+ * @param {string} name
+ * @param {string} group_json
+ * @returns {string}
+ */
+export function configGroupHash(model, name, group_json) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(group_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.configGroupHash(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
  * sha256 (lowercase hex) of a simulation-parameters JSON document — the
  * `configHash` term of the result-cache key ("how it's run", alongside
  * `tileGeoHash`'s "what is there").
@@ -1629,6 +1799,44 @@ export function configHash(config_json) {
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Schedule hash of one request: lowercase hex sha256.
+ *
+ * `controlJson` is the pre-tile request body as JSON text, wire keys, with no
+ * geometry groups. `groupHashesJson` is `{key: hash}` for the groups the
+ * request holds. The kernel picks the fields from the field registry, hashes
+ * an unset field as its server default and refuses a key the registry does
+ * not list for `model`. Throws on any refusal.
+ * @param {string} model
+ * @param {string} control_json
+ * @param {string} group_hashes_json
+ * @returns {string}
+ */
+export function configHashV2(model, control_json, group_hashes_json) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(control_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(group_hashes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.configHashV2(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
     }
 }
 
@@ -2267,6 +2475,20 @@ export function encodeSurfaceArchive(archive) {
 }
 
 /**
+ * The year the server uses for an energy-balance request. `year` undefined:
+ * `nowYear`, or the year before in a leap year with 8760 rows. The host
+ * passes the clock.
+ * @param {number | null | undefined} year
+ * @param {number} now_year
+ * @param {number} rows
+ * @returns {number}
+ */
+export function energyBalanceYear(year, now_year, rows) {
+    const ret = wasm.energyBalanceYear(isLikeNone(year) ? Number.MAX_SAFE_INTEGER : (year) >> 0, now_year, rows);
+    return ret;
+}
+
+/**
  * sha256 (lowercase hex) of ONE ground-material layer — a material NAME plus
  * the polygons carrying it (D25).
  *
@@ -2542,6 +2764,25 @@ export function extrudeFootprintsWithAttributes(fc, origin_lon, origin_lat, defa
 }
 
 /**
+ * Load a facade layout's export bytes back into the same held shape
+ * `synthesize_facade_layout` gives (`fields()`/`toBytes()` both work; a
+ * `toBytes()` right back is a cheap re-compression of what was just
+ * decompressed, not a synthesis). Every elided (derivable) cell has
+ * already been regenerated.
+ * @param {Uint8Array} bytes
+ * @returns {FacadeLayoutHandle}
+ */
+export function facadeLayoutFromBytes(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.facadeLayoutFromBytes(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return FacadeLayoutHandle.__wrap(ret[0]);
+}
+
+/**
  * Phase 3: decode the fetched feature ranges.
  *
  * `header` is the first `12 + header_len` bytes; `featuresBytes` the fetched
@@ -2692,6 +2933,25 @@ export function fgbToFeaturesBbox(bytes, west, south, east, north) {
         return getStringFromWasm0(ptr2, len2);
     } finally {
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * The field registry: one JSON document with, for each routed model, every
+ * request field (wire key, JSON type, enum, range, doc, hash class and
+ * server default). It is the committed document of `ir-schemas`.
+ * @returns {string}
+ */
+export function fieldRegistryJson() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.fieldRegistryJson();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
     }
 }
 
@@ -2848,23 +3108,19 @@ export function geojsonLayersToDotbim(layers_json) {
  * One body's IRBF geometry artifact (D101): the geometry groups of
  * `bodyJson` as given — packed, framed, zipped and digested in the kernel.
  * The direct `submit` path; an area run takes `SiteAssignment.artifacts`.
- * With `boxTrees` the body's trees become boxes in `geometries` (D70), in
- * the frame of the body's own `longitude`/`latitude`.
  *
- * Returns `{archive: Uint8Array, artifactDigest, contentDigest, encoding,
- * treeBoxes}` — `treeBoxes` the substitution's counts as JSON, or `null`.
+ * Returns `{archive: Uint8Array, artifactDigest, contentDigest, encoding}`.
  * @param {string} body_json
- * @param {boolean} box_trees
  * @param {bigint} max_total_bytes
  * @param {number} max_metadata_bytes
  * @param {bigint} max_meshes
  * @param {bigint} max_instances
  * @returns {any}
  */
-export function geometryArtifact(body_json, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+export function geometryArtifact(body_json, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
     const ptr0 = passStringToWasm0(body_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.geometryArtifact(ptr0, len0, box_trees, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+    const ret = wasm.geometryArtifact(ptr0, len0, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3385,6 +3641,21 @@ export function groundMaterialsLayerHash(layers_json) {
 }
 
 /**
+ * The wire keys a host class carries on `model` that the server ignores; the
+ * kernel drops them from the hash. Skip them before serialising.
+ * @param {string} model
+ * @returns {string[]}
+ */
+export function inertKeys(model) {
+    const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.inertKeys(ptr0, len0);
+    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v2;
+}
+
+/**
  * @param {number} num_threads
  * @returns {Promise<any>}
  */
@@ -3503,24 +3774,33 @@ export function interiorArtifact(request, model, max_total_bytes, max_metadata_b
  *
  * `archives[i]` is job `i`'s `decodeSurfaceArchive` handle (consumed, also
  * on an error), `entryIds[i]` its schedule entry, `anchors[2i..2i+2]` its
- * tile SW offset, `captures[i]` its kept capture or `undefined`. Returns the
+ * tile SW offset, `jobIds[i]` the id its capture was remembered under in
+ * `store` (a `CaptureStore`), or `undefined` for a job without one. The join
+ * releases every job it consumes, also on an error.
+ * `emitCellTris` (the join input flag, default `false` in the kernel) asks for
+ * the per-cell triangle table and `triangles.positions`; the OUTLINE of every
+ * surface (`SurfaceJoin::outline` in the kernel) is made for every job that has a
+ * capture, with or without it. Returns the
  * columns: see `SurfaceJoin` in `ir-simprep` for every field. The triangle
  * positions come back as `triangles.positions[i]`, one `Float32Array` per
  * job in its tile-local frame (empty when the job has none).
  * @param {SurfaceArchive[]} archives
  * @param {string[]} entry_ids
  * @param {Float64Array} anchors
- * @param {Array<any>} captures_in
+ * @param {CaptureStore} store
+ * @param {Array<any>} job_ids
+ * @param {boolean} emit_cell_tris
  * @returns {any}
  */
-export function joinSurfaceJobs(archives, entry_ids, anchors, captures_in) {
+export function joinSurfaceJobs(archives, entry_ids, anchors, store, job_ids, emit_cell_tris) {
     const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayJsValueToWasm0(entry_ids, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArrayF64ToWasm0(anchors, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.joinSurfaceJobs(ptr0, len0, ptr1, len1, ptr2, len2, captures_in);
+    _assertClass(store, CaptureStore);
+    const ret = wasm.joinSurfaceJobs(ptr0, len0, ptr1, len1, ptr2, len2, store.__wbg_ptr, job_ids, emit_cell_tris);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3585,16 +3865,25 @@ export function lawsonLabels() {
  * trimmed ends collapse while the true extremes differ; `"fixed"` returns
  * `[fixedMin, fixedMax]` WITHOUT reading `values` (both REQUIRED, finite,
  * `min < max`). Returns `[min, max]` as a `Float64Array`.
+ *
+ * A grid in its wire dtype (D273) is read cell by cell, with no widened
+ * copy: a `Uint16Array` is `f16` bits; an `Int16Array` is scaled integers
+ * (physical value = stored / `divisor`) and needs its `valid` bitmap (least
+ * significant bit first).
  * @param {any} values
  * @param {string | null} [mode]
  * @param {number | null} [fixed_min]
  * @param {number | null} [fixed_max]
+ * @param {number | null} [divisor]
+ * @param {Uint8Array | null} [valid]
  * @returns {Float64Array | undefined}
  */
-export function legendRange(values, mode, fixed_min, fixed_max) {
+export function legendRange(values, mode, fixed_min, fixed_max, divisor, valid) {
     var ptr0 = isLikeNone(mode) ? 0 : passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.legendRange(values, ptr0, len0, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max);
+    var ptr1 = isLikeNone(valid) ? 0 : passArray8ToWasm0(valid, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.legendRange(values, ptr0, len0, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max, isLikeNone(divisor) ? Number.MAX_SAFE_INTEGER : (divisor) >>> 0, ptr1, len1);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3759,126 +4048,6 @@ export function mergeAndCleanTileLayersBytes(tile_layers, latitude, longitude, d
     var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v3;
-}
-
-/**
- * Merge the default center-crop strategy with f32 input, work and output grids.
- * @param {Float32Array} values
- * @param {Uint32Array} positions
- * @param {number} num_rows
- * @param {number} num_cols
- * @param {string} config_json
- * @param {string} polygon_json
- * @returns {CompactAreaGrid}
- */
-export function mergeAreaGridCompact(values, positions, num_rows, num_cols, config_json, polygon_json) {
-    const ptr0 = passArrayF32ToWasm0(values, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArray32ToWasm0(positions, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeAreaGridCompact(ptr0, len0, ptr1, len1, num_rows, num_cols, ptr2, len2, ptr3, len3);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return CompactAreaGrid.__wrap(ret[0]);
-}
-
-/**
- * Merge Wind with f32 scene storage and bounded f64 block computation.
- * `block` must be 1..=928; omitted means 928. The strategy is directional or directional_blend.
- * @param {Float32Array} values
- * @param {Uint32Array} positions
- * @param {number} num_rows
- * @param {number} num_cols
- * @param {string} config_json
- * @param {string} polygon_json
- * @param {string} strategy_name
- * @param {number} wind_direction_deg
- * @param {number | null} [block]
- * @returns {CompactAreaGrid}
- */
-export function mergeAreaGridCompactWind(values, positions, num_rows, num_cols, config_json, polygon_json, strategy_name, wind_direction_deg, block) {
-    const ptr0 = passArrayF32ToWasm0(values, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArray32ToWasm0(positions, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    const ptr4 = passStringToWasm0(strategy_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len4 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeAreaGridCompactWind(ptr0, len0, ptr1, len1, num_rows, num_cols, ptr2, len2, ptr3, len3, ptr4, len4, wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return CompactAreaGrid.__wrap(ret[0]);
-}
-
-/**
- * Merge concatenated row-major f32 tiles without base64 or a host JSON grid.
- * @param {Float32Array} values
- * @param {Uint32Array} positions
- * @param {number} num_rows
- * @param {number} num_cols
- * @param {string} config_json
- * @param {string} polygon_json
- * @param {string | null} [strategy_name]
- * @param {number | null} [wind_direction_deg]
- * @param {number | null} [block]
- * @returns {AreaGridMerge}
- */
-export function mergeAreaGridDense(values, positions, num_rows, num_cols, config_json, polygon_json, strategy_name, wind_direction_deg, block) {
-    const ptr0 = passArrayF32ToWasm0(values, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArray32ToWasm0(positions, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    var ptr4 = isLikeNone(strategy_name) ? 0 : passStringToWasm0(strategy_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len4 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeAreaGridDense(ptr0, len0, ptr1, len1, num_rows, num_cols, ptr2, len2, ptr3, len3, ptr4, len4, !isLikeNone(wind_direction_deg), isLikeNone(wind_direction_deg) ? 0 : wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return AreaGridMerge.__wrap(ret[0]);
-}
-
-/**
- * Merge JSON-origin f64 tiles without narrowing their numeric precision.
- * @param {Float64Array} values
- * @param {Uint32Array} positions
- * @param {number} num_rows
- * @param {number} num_cols
- * @param {string} config_json
- * @param {string} polygon_json
- * @param {string | null} [strategy_name]
- * @param {number | null} [wind_direction_deg]
- * @param {number | null} [block]
- * @returns {AreaGridMerge}
- */
-export function mergeAreaGridDenseF64(values, positions, num_rows, num_cols, config_json, polygon_json, strategy_name, wind_direction_deg, block) {
-    const ptr0 = passArrayF64ToWasm0(values, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArray32ToWasm0(positions, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    var ptr4 = isLikeNone(strategy_name) ? 0 : passStringToWasm0(strategy_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len4 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeAreaGridDenseF64(ptr0, len0, ptr1, len1, num_rows, num_cols, ptr2, len2, ptr3, len3, ptr4, len4, !isLikeNone(wind_direction_deg), isLikeNone(wind_direction_deg) ? 0 : wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return AreaGridMerge.__wrap(ret[0]);
 }
 
 /**
@@ -4094,28 +4263,6 @@ export function mergeTilesSmart(tiles_json, num_rows, num_cols, config_json, win
     } finally {
         wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
-}
-
-/**
- * Normalize typed codes without a JSON array or host string for each cell.
- * @param {Uint32Array} codes
- * @param {Uint8Array} validity
- * @param {string} legends_json
- * @param {number} tile_cells
- * @returns {CompactAreaCategories}
- */
-export function normalizeAreaCategoricalCompact(codes, validity, legends_json, tile_cells) {
-    const ptr0 = passArray32ToWasm0(codes, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArray8ToWasm0(validity, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(legends_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.normalizeAreaCategoricalCompact(ptr0, len0, ptr1, len1, ptr2, len2, tile_cells);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return CompactAreaCategories.__wrap(ret[0]);
 }
 
 /**
@@ -4858,6 +5005,27 @@ export function renderGridRegistry(values, width, height, config_json, reverse_r
 }
 
 /**
+ * The default `terrain-alignment` for a request with a supplied scene on
+ * terrain: `"as-is"`, or undefined when the SDK leaves the request as built.
+ * @param {string} model
+ * @param {boolean} alignment_set
+ * @param {boolean} has_terrain
+ * @param {boolean} has_scene
+ * @returns {string | undefined}
+ */
+export function resolveTerrainAlignment(model, alignment_set, has_terrain, has_scene) {
+    const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.resolveTerrainAlignment(ptr0, len0, alignment_set, has_terrain, has_scene);
+    let v2;
+    if (ret[0] !== 0) {
+        v2 = getStringFromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v2;
+}
+
+/**
  * Road-surface normalisation — utilities-service
  * `app/gis/surfaces.py::_to_ir_features`.
  *
@@ -5224,6 +5392,95 @@ export function submitResendDelaySeconds(sends_done, jitter_unit, retry_after_s)
 }
 
 /**
+ * The columns of a blob, in the shape `joinSurfaceJobs` returns, plus
+ * `layoutKey` (absent when the blob has none). Refuses a blob the kernel
+ * cannot read, an unknown version included.
+ * @param {Uint8Array} bytes
+ * @returns {any}
+ */
+export function surfaceColumnsFromBytes(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.surfaceColumnsFromBytes(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * The blob of `columns` (a `SurfaceColumns`), made for the layout `layoutKey`.
+ * @param {any} columns
+ * @param {string | null} [layout_key]
+ * @returns {Uint8Array}
+ */
+export function surfaceColumnsToBytes(columns, layout_key) {
+    var ptr0 = isLikeNone(layout_key) ? 0 : passStringToWasm0(layout_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.surfaceColumnsToBytes(columns, ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * Build the render buffers of a run from its surface columns. Returns
+ * `anchor` (`Float64Array` 3), `frames` (`Float32Array`), `dims`
+ * (`Uint32Array`), `outline` (`Float32Array`), `outlineOffsets`
+ * (`Uint32Array`), `values` (`Uint16Array` of half bits when `valueDtype` is
+ * `"f16"`, else `Float32Array`), `valueDtype` (`"f16"` or `"f32"`),
+ * `validity` (`Uint8Array`), `valueMin`, `valueMax` and `anyValid`.
+ *
+ * `columns` needs `origin`, `uAxis`, `vAxis`, `gridSize`, `nu`, `nv`,
+ * `cellOffsets`, `values` with `valueDtype` (and for `"i16"` `valueDivisor`
+ * and `valid`). The outline comes from `layout` (a saved or rebuilt layout,
+ * found by surface id with `ids` and `idOffsets`) when it is given, else from
+ * the columns `outline` and `outlineOffsets`. Fails with the kernel's reason
+ * on any input the contract refuses.
+ * @param {any} columns
+ * @returns {any}
+ */
+export function surfaceRenderBuffers(columns) {
+    const ret = wasm.surfaceRenderBuffers(columns);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Cells `start..end` of a value column as physical `f32`, NaN for a cell
+ * without a value. `bytes` are the column's little-endian bytes (the bytes of
+ * the typed array), `dtype` its `valuesDtype`, `divisor` its `valueDivisor`
+ * and `valid` its `valuesValid` bitmap (`i16` only).
+ * @param {Uint8Array} bytes
+ * @param {string} dtype
+ * @param {number} divisor
+ * @param {Uint8Array | null | undefined} valid
+ * @param {number} start
+ * @param {number} end
+ * @returns {Float32Array}
+ */
+export function surfaceValuesF32(bytes, dtype, divisor, valid, start, end) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(dtype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(valid) ? 0 : passArray8ToWasm0(valid, wasm.__wbindgen_malloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.surfaceValuesF32(ptr0, len0, ptr1, len1, divisor, ptr2, len2, start, end);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v4 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v4;
+}
+
+/**
  * The canonical defaults for the three optional synthesis knobs, so a TS caller
  * can import them instead of hardcoding literals that could drift from the
  * kernel. Returns `[partialCells, minCoverage, emitCellTris]`.
@@ -5244,6 +5501,23 @@ export function surfgridDefaults() {
 export function surfgridVersion() {
     const ret = wasm.surfgridVersion();
     return ret >>> 0;
+}
+
+/**
+ * Rebuild a facade/roof layout offline from the original inputs and hold it
+ * for later reading (`FacadeLayoutHandle::fields`) and/or export
+ * (`FacadeLayoutHandle::toBytes`).
+ * @param {string} request_json
+ * @returns {FacadeLayoutHandle}
+ */
+export function synthesizeFacadeLayoutHandle(request_json) {
+    const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.synthesizeFacadeLayoutHandle(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return FacadeLayoutHandle.__wrap(ret[0]);
 }
 
 /**
@@ -5380,6 +5654,20 @@ export function synthesizeSurfacesOnTerrain(geometries_json, mode, grid_size, of
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * True when a host may take a terrain group hash from its `SiteTerrain`
+ * handle for `model` (false for the interior models, which hash every group
+ * as a document).
+ * @param {string} model
+ * @returns {boolean}
+ */
+export function terrainHandleHashApplies(model) {
+    const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.terrainHandleHashApplies(ptr0, len0);
+    return ret !== 0;
 }
 
 /**
@@ -5778,94 +6066,6 @@ export function vegetationRegistryVersion() {
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
         wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-    }
-}
-
-/**
- * Whether this model's trees are boxed, and what decided it.
- *
- * `geometryGroupsJson` is the model's `geometryGroups` from the LIVE
- * `/binary/v1/capabilities` document, as a JSON array, or `"null"` when the
- * caller has not read one. The capability is the AUTHORITY: a model that
- * advertises `vegetation` gets real trees whatever the kernel's fallback list
- * says, which is what stops both SDKs from silently substituting boxes on
- * every paid run the day the backend ships trees on binary wind.
- *
- * Returns the decision tag — `"capability-excludes-vegetation"`,
- * `"capability-lists-vegetation"`, `"fallback-model-list"` or
- * `"model-not-boxed"`.
- * @param {string} model
- * @param {string} geometry_groups_json
- * @returns {string}
- */
-export function vegetationTreeBoxDecision(model, geometry_groups_json) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(geometry_groups_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.vegetationTreeBoxDecision(ptr0, len0, ptr1, len1);
-        var ptr3 = ret[0];
-        var len3 = ret[1];
-        if (ret[3]) {
-            ptr3 = 0; len3 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-}
-
-/**
- * The tree → box substitution the binary wind routes need, as one call.
- *
- * `vegetationJson` is the body's `vegetation` group, `groundGeometryJson` its
- * `ground-geometry` group (`"null"` when it carries none) and
- * `reservedIdsJson` the ids the geometry group already uses (a JSON array, or
- * `"null"`). A tree whose id names a reserved one is reported instead of
- * boxed — real geometry outranks a stand-in. `centreLon`/`centreLat` are the
- * payload's own `longitude`/`latitude` — the tile CENTRE; the local frame the
- * boxes are emitted in is derived from it.
- *
- * Out: `{"boxes": {id: {mesh_id, coordinates, indices}}, "trees": n,
- * "boxesSent": n, "seatedOnTerrain": n, "outsideTile": n, "idCollisions": [],
- * "footprintM": 1.8, "heightM": 3.5}` as JSON. Every count is of boxes
- * ACTUALLY EMITTED, so the host merges `boxes` into the geometry group and
- * records the rest without arithmetic; it re-implements nothing (ADR 0006).
- * @param {string} vegetation_json
- * @param {string} ground_geometry_json
- * @param {number} centre_lon
- * @param {number} centre_lat
- * @param {string} reserved_ids_json
- * @returns {string}
- */
-export function vegetationTreesToBoxes(vegetation_json, ground_geometry_json, centre_lon, centre_lat, reserved_ids_json) {
-    let deferred5_0;
-    let deferred5_1;
-    try {
-        const ptr0 = passStringToWasm0(vegetation_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(ground_geometry_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(reserved_ids_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.vegetationTreesToBoxes(ptr0, len0, ptr1, len1, centre_lon, centre_lat, ptr2, len2);
-        var ptr4 = ret[0];
-        var len4 = ret[1];
-        if (ret[3]) {
-            ptr4 = 0; len4 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred5_0 = ptr4;
-        deferred5_1 = len4;
-        return getStringFromWasm0(ptr4, len4);
-    } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
     }
 }
 
@@ -6315,6 +6515,10 @@ function __wbg_get_imports(memory) {
             const ret = arg0 === null;
             return ret;
         },
+        __wbg___wbindgen_is_string_ea5e6cc2e4141dfe: function(arg0) {
+            const ret = typeof(arg0) === 'string';
+            return ret;
+        },
         __wbg___wbindgen_is_undefined_c05833b95a3cf397: function(arg0) {
             const ret = arg0 === undefined;
             return ret;
@@ -6383,6 +6587,36 @@ function __wbg_get_imports(memory) {
             const ret = result;
             return ret;
         },
+        __wbg_instanceof_Int16Array_14184a9fabaa7da7: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Int16Array;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
+        __wbg_instanceof_Uint16Array_4688e2da208e85be: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Uint16Array;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
+        __wbg_instanceof_Uint32Array_27cc9a6a9eb3732e: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Uint32Array;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
         __wbg_instanceof_Uint8Array_309b927aaf7a3fc7: function(arg0) {
             let result;
             try {
@@ -6423,7 +6657,15 @@ function __wbg_get_imports(memory) {
             const ret = arg0.length;
             return ret;
         },
+        __wbg_length_530364c9b0329c79: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
         __wbg_length_98f10d1e2f4ea968: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
+        __wbg_length_f835a518a2e03647: function(arg0) {
             const ret = arg0.length;
             return ret;
         },
@@ -6447,6 +6689,14 @@ function __wbg_get_imports(memory) {
             const ret = new Float64Array(getArrayF64FromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_new_from_slice_8ba5ff5ce7af1fe8: function(arg0, arg1) {
+            const ret = new Uint16Array(getArrayU16FromWasm0(arg0, arg1));
+            return ret;
+        },
+        __wbg_new_from_slice_c4333d9b7581f1a8: function(arg0, arg1) {
+            const ret = new Int16Array(getArrayI16FromWasm0(arg0, arg1));
+            return ret;
+        },
         __wbg_new_from_slice_ddf8b82c4d6af38e: function(arg0, arg1) {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
             return ret;
@@ -6463,6 +6713,10 @@ function __wbg_get_imports(memory) {
             const ret = new Array(arg0 >>> 0);
             return ret;
         },
+        __wbg_of_5f1b88183ddb5d94: function(arg0, arg1) {
+            const ret = Array.of(arg0, arg1);
+            return ret;
+        },
         __wbg_parse_1c0d8a8656d7e016: function() { return handleError(function (arg0, arg1) {
             const ret = JSON.parse(getStringFromWasm0(arg0, arg1));
             return ret;
@@ -6470,11 +6724,17 @@ function __wbg_get_imports(memory) {
         __wbg_prototypesetcall_21a175a0a8157491: function(arg0, arg1, arg2) {
             Float64Array.prototype.set.call(getArrayF64FromWasm0(arg0, arg1), arg2);
         },
+        __wbg_prototypesetcall_2d459e246bf63d88: function(arg0, arg1, arg2) {
+            Int16Array.prototype.set.call(getArrayI16FromWasm0(arg0, arg1), arg2);
+        },
         __wbg_prototypesetcall_4770620bbe4688a0: function(arg0, arg1, arg2) {
             Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
         },
         __wbg_prototypesetcall_62396032bc038599: function(arg0, arg1, arg2) {
             Uint32Array.prototype.set.call(getArrayU32FromWasm0(arg0, arg1), arg2);
+        },
+        __wbg_prototypesetcall_94e3eb9c867df1e5: function(arg0, arg1, arg2) {
+            Uint16Array.prototype.set.call(getArrayU16FromWasm0(arg0, arg1), arg2);
         },
         __wbg_prototypesetcall_ba9c9a7197c11933: function(arg0, arg1, arg2) {
             Float32Array.prototype.set.call(getArrayF32FromWasm0(arg0, arg1), arg2);
@@ -6492,6 +6752,10 @@ function __wbg_get_imports(memory) {
         }, arguments); },
         __wbg_set_8a16b38e4805b298: function(arg0, arg1, arg2) {
             arg0[arg1 >>> 0] = arg2;
+        },
+        __wbg_slice_50189eefc9ab9fe9: function(arg0, arg1, arg2) {
+            const ret = arg0.slice(arg1 >>> 0, arg2 >>> 0);
+            return ret;
         },
         __wbg_startWorkers_8b582d57e92bd2d4: function(arg0, arg1, arg2) {
             const ret = startWorkers(arg0, arg1, wbg_rayon_PoolBuilder.__wrap(arg2));
@@ -6513,6 +6777,10 @@ function __wbg_get_imports(memory) {
             const ret = typeof window === 'undefined' ? null : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
+        __wbg_stringify_b54333f60f1e4dad: function() { return handleError(function (arg0) {
+            const ret = JSON.stringify(arg0);
+            return ret;
+        }, arguments); },
         __wbg_subarray_3ed232c8a6baee09: function(arg0, arg1, arg2) {
             const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
             return ret;
@@ -6531,11 +6799,26 @@ function __wbg_get_imports(memory) {
             return ret;
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(Slice(F32)) -> NamedExternref("Float32Array")`.
+            const ret = getArrayF32FromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(Slice(F64)) -> NamedExternref("Float64Array")`.
+            const ret = getArrayF64FromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_cast_0000000000000004: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(Slice(U32)) -> NamedExternref("Uint32Array")`.
+            const ret = getArrayU32FromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_cast_0000000000000005: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
         },
-        __wbindgen_cast_0000000000000003: function(arg0) {
+        __wbindgen_cast_0000000000000006: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return ret;
@@ -6549,7 +6832,7 @@ function __wbg_get_imports(memory) {
             table.set(offset + 2, true);
             table.set(offset + 3, false);
         },
-        memory: memory || new WebAssembly.Memory({initial:27,maximum:65536,shared:true}),
+        memory: memory || new WebAssembly.Memory({initial:28,maximum:65536,shared:true}),
     };
     return {
         __proto__: null,
@@ -6557,18 +6840,18 @@ function __wbg_get_imports(memory) {
     };
 }
 
-const AreaGridMergeFinalization = (typeof FinalizationRegistry === 'undefined')
+const AreaGridMergerFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_areagridmerge_free(ptr, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_areagridmerger_free(ptr, 1));
+const CaptureStoreFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_capturestore_free(ptr, 1));
 const CategoricalAreaDenseFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_categoricalareadense_free(ptr, 1));
-const CompactAreaCategoriesFinalization = (typeof FinalizationRegistry === 'undefined')
+const FacadeLayoutHandleFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_compactareacategories_free(ptr, 1));
-const CompactAreaGridFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_compactareagrid_free(ptr, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_facadelayouthandle_free(ptr, 1));
 const GridDecodeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_griddecode_free(ptr, 1));
@@ -6678,6 +6961,11 @@ function getArrayF64FromWasm0(ptr, len) {
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
 
+function getArrayI16FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt16ArrayMemory0().subarray(ptr / 2, ptr / 2 + len);
+}
+
 function getArrayJsValueFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     const mem = getDataViewMemory0();
@@ -6687,6 +6975,11 @@ function getArrayJsValueFromWasm0(ptr, len) {
     }
     wasm.__externref_drop_slice(ptr, len);
     return result;
+}
+
+function getArrayU16FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint16ArrayMemory0().subarray(ptr / 2, ptr / 2 + len);
 }
 
 function getArrayU32FromWasm0(ptr, len) {
@@ -6723,8 +7016,24 @@ function getFloat64ArrayMemory0() {
     return cachedFloat64ArrayMemory0;
 }
 
+let cachedInt16ArrayMemory0 = null;
+function getInt16ArrayMemory0() {
+    if (cachedInt16ArrayMemory0 === null || cachedInt16ArrayMemory0.buffer !== wasm.memory.buffer) {
+        cachedInt16ArrayMemory0 = new Int16Array(wasm.memory.buffer);
+    }
+    return cachedInt16ArrayMemory0;
+}
+
 function getStringFromWasm0(ptr, len) {
     return decodeText(ptr >>> 0, len);
+}
+
+let cachedUint16ArrayMemory0 = null;
+function getUint16ArrayMemory0() {
+    if (cachedUint16ArrayMemory0 === null || cachedUint16ArrayMemory0.buffer !== wasm.memory.buffer) {
+        cachedUint16ArrayMemory0 = new Uint16Array(wasm.memory.buffer);
+    }
+    return cachedUint16ArrayMemory0;
 }
 
 let cachedUint32ArrayMemory0 = null;
@@ -6875,6 +7184,8 @@ function __wbg_finalize_init(instance, module, thread_stack_size) {
     cachedDataViewMemory0 = null;
     cachedFloat32ArrayMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
+    cachedInt16ArrayMemory0 = null;
+    cachedUint16ArrayMemory0 = null;
     cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     if (typeof thread_stack_size !== 'undefined' && (typeof thread_stack_size !== 'number' || thread_stack_size === 0 || thread_stack_size % 65536 !== 0)) {

@@ -1,9 +1,10 @@
 /**
  * How many encoded bytes ONE CLIENT's preflight may hold for its submits.
  *
- * The binary preflight has to encode every tile before the first billable POST,
- * and unless the encoded artifact is kept the submit encodes the very same body
- * again: two IRBF encodes a tile, one of which is never sent. Keeping it costs
+ * A caller that pre-checks a submission with `preflightPrepared` encodes it
+ * before the paid POST, and unless the encoded artifact is kept the submit
+ * encodes the very same body again: two IRBF encodes a tile, one of which is
+ * never sent. An area run makes no such pre-check (#816, D277). Keeping it costs
  * memory, so the client stops retaining once it holds this much and any further
  * tile is encoded a second time, exactly as before.
  *

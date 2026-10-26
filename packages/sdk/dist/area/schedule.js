@@ -22,6 +22,8 @@ function frozenMap(source) {
     });
     return proxy;
 }
+/** Returns a frozen copy of a schedule; its lists, polygon and job map cannot be changed.
+ * @category Run an analysis */
 export function freezeAreaSchedule(schedule) {
     const membership = schedule.batchMembership === undefined ? undefined : Object.freeze(Object.fromEntries(Object.entries(schedule.batchMembership).map(([key, ids]) => [key, Object.freeze([...ids])])));
     const counts = schedule.batchSensorCounts === undefined
@@ -66,6 +68,8 @@ function jsonJob(job) {
     };
     return copy;
 }
+/** Converts a schedule to plain JSON for saving; read it back with `areaScheduleFromJSON`.
+ * @category Run an analysis */
 export function areaScheduleToJSON(schedule) {
     return {
         jobs: [...schedule.jobs].map(([key, job]) => [key, jsonJob(job)]),
@@ -188,6 +192,9 @@ function validateSubmissionReferences(jobs, failedSubmissions, uncertainSubmissi
         }
     }
 }
+/** Rebuilds a frozen schedule from the JSON saved by `areaScheduleToJSON`, validating it.
+ * @throws {TypeError} when the JSON is not a valid area schedule.
+ * @category Run an analysis */
 export function areaScheduleFromJSON(value) {
     const raw = object(value, "root");
     if (!Array.isArray(raw.jobs))
@@ -364,6 +371,8 @@ function optionalPositiveIntegers(value, name) {
     }
     return Object.fromEntries(entries);
 }
+/** Counts the jobs of a schedule by status; `isComplete` is true when none is pending or running.
+ * @category Run an analysis */
 export function computeAreaState(schedule) {
     let completedCount = 0, failedCount = 0, skippedCount = 0, pendingCount = 0, runningCount = 0;
     for (const job of schedule.jobs.values()) {

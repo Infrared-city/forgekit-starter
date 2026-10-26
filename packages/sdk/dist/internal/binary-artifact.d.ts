@@ -23,20 +23,8 @@ export interface UploadArtifact {
         readonly count: number;
     };
 }
-/** The kernel's count of what boxing a tile's trees did (D70), or nothing. */
-export interface TreeBoxCounts {
-    readonly trees: number;
-    readonly boxesSent: number;
-    readonly seatedOnTerrain: number;
-    readonly outsideTile: number;
-    readonly idCollisions: readonly string[];
-    readonly footprintM: number;
-    readonly heightM: number;
-}
-/** One tile's artifact from the site, with the tree-box counts beside it. */
-export interface TileArtifact extends UploadArtifact {
-    readonly treeBoxes?: TreeBoxCounts;
-}
+/** One tile's artifact from the site. */
+export type TileArtifact = UploadArtifact;
 /** The four capability limits the encoder applies. */
 export interface ArtifactLimits {
     readonly maxGeometryBytes: number;
@@ -50,9 +38,5 @@ export interface ArtifactLimits {
      */
     readonly facadeTargets?: number;
 }
-/**
- * One body's artifact: its geometry groups as given, encoded by the kernel —
- * and, with `boxTrees`, its trees boxed into `geometries` by the kernel (D70)
- * in the frame of the body's own `longitude`/`latitude`.
- */
-export declare function bodyArtifact(body: Readonly<Record<string, unknown>>, boxTrees: boolean, limits: ArtifactLimits): TileArtifact;
+/** One body's artifact: its geometry groups as given, encoded by the kernel. */
+export declare function bodyArtifact(body: Readonly<Record<string, unknown>>, limits: ArtifactLimits): TileArtifact;

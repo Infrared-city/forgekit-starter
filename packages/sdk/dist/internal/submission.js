@@ -1,11 +1,21 @@
 import { dispatchKeyed } from "./idempotent-dispatch.js";
 import { TransportError } from "./transport.js";
 import { uploadPresignedZip } from "./upload.js";
+/**
+ * Thrown when a job submission was sent but it is not certain whether the API created a
+ * job, so repeating it could be billed twice.
+ *
+ * `acceptedJobIds` lists any job ids the API reported, so they can be checked or
+ * reconciled against billing. The SDK does not retry such a submission by itself.
+ *
+ * @category Errors
+ */
 export class SubmissionUncertainError extends Error {
     acceptedJobIds;
     name = "SubmissionUncertainError";
+    /** Always `"unknown-acceptance"`. */
     phase = "unknown-acceptance";
-    /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
+    /** The HTTP status when the answer was a redirect (3xx) or a server error (5xx), otherwise `undefined`. */
     status;
     constructor(acceptedJobIds, status) {
         super(status === undefined

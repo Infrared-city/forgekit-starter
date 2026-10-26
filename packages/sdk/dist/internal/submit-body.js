@@ -1,12 +1,7 @@
 import { validatePreparedAnalysisRequest } from "../request-validation.js";
 import { takesGradeDrop } from "../to-grade.js";
 import { requireCore } from "./core.js";
-import { groupHasContent } from "./kernel-group.js";
-const INTERIOR_ANALYSES = new Set([
-    "daylight-factor",
-    "energy-balance",
-    "spatial-daylight-autonomy",
-]);
+import { suppliedSceneAlignment } from "./scene-alignment.js";
 const UNSUPPORTED_TOP_LEVEL_ALIASES = new Set([
     "analysisType", "analysis_type", "analysisSurfaces", "analysis_surfaces",
     "binaryResults", "binary_results", "contextGeometry", "context_geometry",
@@ -41,7 +36,7 @@ export function prepareSubmissionBody(analysisType, payload, options) {
     if (Object.prototype.hasOwnProperty.call(payload, "binary-results")) {
         throw new TypeError("unsupported payload field binary-results; use transport instead");
     }
-    const hasAlignment = Object.prototype.hasOwnProperty.call(payload, "terrain-alignment");
+    const supplied = suppliedSceneAlignment(analysisType, payload);
     const body = { ...payload, "analysis-type": analysisType };
     // The alignment VALUE rule is checked inside `validatePreparedAnalysisRequest`
     // (D111), which is why the delete below happens AFTER it and not before: the
@@ -67,11 +62,7 @@ export function prepareSubmissionBody(analysisType, payload, options) {
         body["webhook-url"] = options.webhookUrl;
     if (options.webhookEvents !== undefined)
         body["webhook-events"] = [...options.webhookEvents];
-    const suppliedScene = [
-        "geometries", "context-geometry", "vegetation", "vegetation-instances",
-    ].some((name) => groupHasContent(body[name]));
-    if (!INTERIOR_ANALYSES.has(analysisType) && !hasAlignment &&
-        groupHasContent(body["ground-geometry"]) && suppliedScene)
-        body["terrain-alignment"] = "as-is";
+    if (supplied !== undefined)
+        body["terrain-alignment"] = supplied;
     return body;
 }

@@ -1,4 +1,10 @@
-/** Analysis names supported by the public gateway. */
+/**
+ * The analysis names the API accepts, as the value of a request's
+ * `analysisType`: `AnalysesName.WindSpeed` is `"wind-speed"`, and so on for
+ * each analysis.
+ *
+ * @category Requests
+ */
 export const AnalysesName = {
     WindSpeed: "wind-speed",
     DaylightAvailability: "daylight-availability",
@@ -10,8 +16,19 @@ export const AnalysesName = {
     ThermalComfortStatistics: "thermal-comfort-statistics",
     DaylightFactor: "daylight-factor",
 };
+/**
+ * The wind analyses: `wind-speed` and `pedestrian-wind-comfort`.
+ *
+ * @category Requests
+ */
 export const WIND_ANALYSIS_TYPES = new Set([
     AnalysesName.WindSpeed,
     AnalysesName.PedestrianWindComfort,
 ]);
+/**
+ * The analyses that can be run over a polygon area, split into tiles: every
+ * analysis name except `daylight-factor`.
+ *
+ * @category Tiling
+ */
 export const TILING_SUPPORTED_TYPES = new Set(Object.values(AnalysesName).filter((name) => name !== AnalysesName.DaylightFactor));

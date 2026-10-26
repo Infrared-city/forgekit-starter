@@ -1,18 +1,33 @@
+/**
+ * Whether the API resolved a reference to previously uploaded geometry.
+ *
+ * `"supported"` means it did, `"unsupported"` means it did not.
+ *
+ * @category Client
+ */
 export type GeometryReuseProbeOutcome = "supported" | "unsupported";
 /**
- * What the first reference-carrying submission of a partition settled.
+ * What the first submission that refers to previously uploaded geometry settled.
  *
- * `acceptedJobIds` are REAL customer jobs — the SDK submits no probe job of
- * its own (D71). On `supported` it is the job whose acknowledgement proved the
- * deployment resolves the field, and for an area run that ID is also a tile on
- * the schedule. On `unsupported` it is the job that was accepted WITHOUT a
- * valid acknowledgement, whose result must be discarded and which is reported
- * here so it can be reconciled against a bill.
+ * `acceptedJobIds` are real jobs from your own run, not extra test jobs. On
+ * `"supported"` it is the job whose acknowledgement confirmed that the API resolves
+ * geometry references. On `"unsupported"` it is the job that was accepted without a valid
+ * acknowledgement; its result is discarded and it is reported here so it can be
+ * reconciled against billing.
+ *
+ * @category Client
  */
 export interface GeometryReuseProbeEvent {
+    /** Whether the API resolved the geometry reference. */
     readonly outcome: GeometryReuseProbeOutcome;
+    /** Ids of the jobs that were accepted by this submission. */
     readonly acceptedJobIds: readonly string[];
 }
+/**
+ * A callback that receives a {@link GeometryReuseProbeEvent}. It may return a promise.
+ *
+ * @category Client
+ */
 export type OnGeometryReuseProbe = (event: GeometryReuseProbeEvent) => void | Promise<void>;
 export interface ReuseDocument {
     readonly key: string;

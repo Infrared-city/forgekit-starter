@@ -1,55 +1,83 @@
-/**
- * The binary daylight-factor result (IRBF family 7, `daylight-points`, D232, TypeScript host D234;
- * `docs/binary-daylight-result-contract.md`). The kernel validates the frame
- * and describes it (`decodeDaylightResult`); this file only builds TypedArray
- * VIEWS over the one frame at the offsets the kernel gives. No per-sensor
- * object is made. `toJsonBytes()` / `toJson()` give the worker's JSON result on
- * demand (`daylightJsonFromFrame`), byte for byte. `toJsonBytes()` /
- * `toJson()` are the names the Python `DaylightFactorResult` uses too.
- */
+// Maintainer note (not published): The binary daylight-factor result (IRBF family 7,
+// `daylight-points`, D232, TypeScript host D234;
+// `docs/binary-daylight-result-contract.md`). The kernel validates the frame
+// and describes it (`decodeDaylightResult`); this file only builds TypedArray
+// VIEWS over the one frame at the offsets the kernel gives. No per-sensor
+// object is made. `toJsonBytes()` / `toJson()` give the worker's JSON result on
+// demand (`daylightJsonFromFrame`), byte for byte. `toJsonBytes()` /
+// `toJson()` are the names the Python `DaylightFactorResult` uses too.
 import { requireCore } from "../internal/core.js";
 import { RESULT_DECODE_LIMITS } from "../results/router.js";
-/** `ROOM` value of a sensor with no room (`"room": null`, or a group without rooms). */
+/**
+ * The `room` value of a sensor that has no room (`"room": null` in the JSON result, or a
+ * group without rooms).
+ *
+ * @category Results and legend
+ */
 export const NO_ROOM = 0xffff;
 function daylightCore() {
     return requireCore();
 }
 /**
  * A daylight-factor result as columns. Sensor `i` of group `g` is element
- * `groups[g].start + i` of `x`, `y`, `z`, `values`, `room`.
+ * `groups[g].start + i` of `x`, `y`, `z`, `values` and `room`.
  *
- * `values` (the daylight factor) is the stored `f32` of the worker's 4-significant-digit value; the
- * JSON number is that value rounded to 4 significant digits again (exact for
- * every DF value, contract §5). `toJson()` gives the JSON numbers.
+ * The columns are typed-array views over one binary frame, so no object is created per
+ * sensor. `values` holds the daylight factor as 32-bit floats; `toJson()` gives the same
+ * result as plain JSON numbers (each value rounded to 4 significant digits).
+ *
+ * @category Results and legend
  */
+// Maintainer note (not published): `values` is the stored `f32` of the worker's
+// 4-significant-digit value; the JSON number is that value rounded to 4 significant
+// digits again (exact for every DF value, contract §5). `toJson()` gives the JSON numbers.
 export class DaylightFactorResult {
-    /** The result shape, as `SurfaceColumns.kind` for a facade run. */
+    /** Result discriminator: always `"daylight-points"`. */
+    // Maintainer note (not published): The result shape, as `SurfaceColumns.kind` for a facade run.
     kind = "daylight-points";
     /** The frame's schema version. */
     version;
-    /** The IRBF frame every view reads. Do not change it. */
+    /** The binary frame every view reads. Do not change it. */
     frame;
+    /** How the sensors are grouped. */
     layout;
+    /** Total number of sensors (the length of every per-sensor column). */
     sensorCount;
-    /** The worker's `min-legend` / `max-legend`, as for a grid or facade result. */
+    /** Lower end of the colour legend, as for a grid or facade result. */
+    // Maintainer note (not published): The worker's `min-legend` / `max-legend`.
     minLegend;
+    /** Upper end of the colour legend. */
     maxLegend;
+    /** Sensor x coordinates. */
     x;
+    /** Sensor y coordinates. */
     y;
+    /** Sensor z coordinates. */
     z;
     /** The daylight factor per sensor: the `values` column of the grid and facade results. */
     values;
     /** Bit `i % 8` of byte `i / 8`: `values[i]` is present (as a grid result's `validity`). */
     validity;
-    /** Index into `rooms`, or `NO_ROOM`. */
+    /** Index into `rooms` per sensor, or `NO_ROOM` for a sensor without a room. */
     room;
+    /** The sensor groups, in frame order. */
     groups;
+    /** The room rows, which `groups` and `room` index into. */
     rooms;
+    /** Building names, indexed by `DaylightGroup.building`. */
     buildings;
-    /** The result's root `warnings`. */
+    /** Warnings the analysis reported for the whole result. */
     warnings;
-    /** Validate `frame` (a family 7 frame) and view it. The views share its
-     * buffer when it starts on an 8-byte boundary; else it is copied once. */
+    /**
+     * Validates `frame` and creates the views over it.
+     *
+     * The views share the buffer of `frame` when it starts on an 8-byte boundary; otherwise
+     * it is copied once.
+     *
+     * @param frame - A binary daylight-factor result.
+     * @throws {RangeError} When the frame exceeds the result size limit.
+     * @throws {Error} When the frame is not a valid daylight-factor result.
+     */
     constructor(frame) {
         // `new Uint8Array(frame)` copies into a fresh buffer at offset 0 (a Node
         // `Buffer.slice()` would share the memory and keep the offset).
@@ -86,17 +114,35 @@ export class DaylightFactorResult {
         this.buildings = Object.freeze([...summary.buildings]);
         this.warnings = Object.freeze([...summary.warnings]);
     }
-    /** The worker's JSON result bytes, byte for byte (`daylightJsonFromFrame`). */
+    /**
+     * Returns the result as the analysis's JSON document, as UTF-8 bytes.
+     *
+     * @returns The JSON bytes.
+     */
+    // Maintainer note (not published): Byte for byte the worker's JSON (`daylightJsonFromFrame`).
     toJsonBytes() {
         const core = daylightCore();
         return core.daylightJsonFromFrame(this.frame);
     }
-    /** The worker's JSON result, parsed: the value the JSON result format returns. */
+    /**
+     * Returns the result as the parsed JSON value, the same value the `"json"` result
+     * format gives.
+     *
+     * @returns The parsed JSON document.
+     */
     toJson() {
         return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(this.toJsonBytes()));
     }
 }
-/** IRBF frame family 7 (`daylight-points`): magic, then the `u16` family at byte 10. */
+/**
+ * Tells whether `document` is a binary daylight-factor result.
+ *
+ * @param document - The bytes of a result document.
+ * @returns True when the bytes start a daylight-factor frame.
+ * @category Results and legend
+ */
+// Maintainer note (not published): IRBF frame family 7 (`daylight-points`): magic, then
+// the `u16` family at byte 10.
 export function isDaylightFrame(document) {
     return document.length >= 12 && document[0] === 73 && document[1] === 82
         && document[2] === 66 && document[3] === 70 && document[10] === 7 && document[11] === 0;

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Replace packages/sdk with the BUILT output of one published version of
-// @infrared-city/infrared-sdk-ts. Maintainers only: novices never run this.
+// @infrared-city/infrared-sdk. Maintainers only: novices never run this.
 //
-//   NPM_TOKEN=<token with read:packages> npm run update-sdk -- 0.14.0-next.0
+//   npm run update-sdk -- 1.0.1
 //
 // Options:
-//   --registry <url>   default https://npm.pkg.github.com (use
-//                      https://registry.npmjs.org when the SDK is public)
+//   --registry <url>   default https://registry.npmjs.org (public, no token).
+//                      A private registry such as https://npm.pkg.github.com
+//                      needs NPM_TOKEN.
 //
 // What it does: read the package document, download the tarball, check its
 // sha512 integrity, and copy ONLY the built files (dist/ without source maps,
@@ -27,12 +28,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const PKG = '@infrared-city/infrared-sdk-ts'
+const PKG = '@infrared-city/infrared-sdk'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const target = join(root, 'packages', 'sdk')
 
 const args = process.argv.slice(2)
-let registry = 'https://npm.pkg.github.com'
+let registry = 'https://registry.npmjs.org'
 let version
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--registry') registry = args[++i]

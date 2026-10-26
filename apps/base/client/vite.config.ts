@@ -140,7 +140,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     // Prevent ESBuild from trying to bundle web-ifc WASM binary
-    exclude: ['web-ifc', '@infrared-city/infrared-sdk-ts'],
+    exclude: ['web-ifc', '@infrared-city/infrared-sdk'],
     // Force pre-bundling of heavy vendor libs on dev-server startup so they
     // aren't re-discovered + esbuilt lazily on first import (which adds
     // seconds to warm reloads when the Vite dep cache is cold or busted).

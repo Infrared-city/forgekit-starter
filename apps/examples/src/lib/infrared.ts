@@ -2,8 +2,8 @@
 //
 // RULE: the browser never holds your API key. Every SDK request goes to the
 // Worker in apps/base/api (route /infrared/*). The Worker adds the real key.
-import { InfraredClient, initializeCore } from '@infrared-city/infrared-sdk-ts'
-import coreWasmUrl from '@infrared-city/infrared-sdk-ts/core.wasm?url'
+import { InfraredClient, initializeCore } from '@infrared-city/infrared-sdk'
+import coreWasmUrl from '@infrared-city/infrared-sdk/core.wasm?url'
 
 /** Your Worker. Dev: "/api" (Vite forwards it). Production: set VITE_API_URL. */
 const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '')

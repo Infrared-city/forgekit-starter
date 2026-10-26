@@ -2,48 +2,71 @@ import { CoreVersionSkewError } from "./internal/errors.js";
 /**
  * Local point-to-mesh conversion for trees.
  *
- * The Python SDK offers the same computation as
- * `VegetationServiceClient.convert_to_mesh(converter="local")` over
- * `ir_simprep::vegetation::convert_points_to_meshes`. This module is the
- * TypeScript host adapter for the same kernel function, exposed by the WASM
- * package as `vegetationPointsToMeshes`.
- *
- * The TypeScript SDK has never had a remote convert route, so this path is
- * local-only (recorded as D39). The option is still named `converter` so the
- * two SDKs read alike.
- *
- * Contract, matching the Python host: the collection carries
+ * The input is a GeoJSON feature collection that carries
  * `referencePoint: [lon, lat]` (the origin of the local metric frame) and
- * `features` (GeoJSON Point features). `properties.height` / `height_m` and
- * `properties.crownDiameter` / `diameter_crown` / `diameter_m` / `crown_m`
- * are the dimension keys; `properties.modelId` selects a registry model.
+ * `features` (GeoJSON Point features). The dimension keys are
+ * `properties.height` / `height_m` and `properties.crownDiameter` /
+ * `diameter_crown` / `diameter_m` / `crown_m`; `properties.modelId` selects a
+ * tree model from the registry.
  *
- * Registry: the kernel's baked registry document (v1.3.0) is the default
- * source. Untagged trees use its first model, an archetype (D10, D15).
+ * The built-in registry document is the default source. A tree without a model
+ * id uses its first model, an archetype.
  */
-/** A dotbim mesh as the kernel emits it. */
+/**
+ * One tree mesh in dotbim form: flat vertex coordinates plus triangle indices.
+ *
+ * @category Vegetation
+ */
 export interface VegetationMesh extends Readonly<Record<string, unknown>> {
+    /** Identifier of the mesh. */
     readonly mesh_id: number;
+    /** Flat vertex coordinates `[x, y, z, ...]`, in metres in the local frame. */
     readonly coordinates: readonly number[];
+    /** Flat triangle vertex indices. */
     readonly indices: readonly number[];
 }
-/** A vegetation operation failed in a way the caller must see. */
+/**
+ * Thrown when a vegetation operation fails in a way the caller must see, for
+ * example a malformed feature collection or a failed conversion.
+ *
+ * @category Errors
+ */
 export declare class VegetationMeshError extends Error {
     readonly name = "VegetationMeshError";
 }
+/**
+ * Options for `VegetationService.toMeshes`.
+ *
+ * @category Vegetation
+ */
 export interface ToMeshesOptions {
-    /** Only `"local"` exists in TypeScript; see D39. */
+    /** Where the conversion runs. Only `"local"` is supported, and it is the default. */
     readonly converter?: "local";
-    /** Overrides the kernel's baked registry document. */
+    /** Replaces the built-in tree registry document with your own, as JSON text. */
     readonly registryJson?: string;
 }
 /**
- * Convert tree Point features to dotbim meshes with the initialized core.
+ * Converts tree Point features to dotbim meshes, locally.
  *
- * Errors are typed and never collapse to `[]`: an empty result means the
- * input held no convertible trees, never that the conversion failed.
+ * Errors are typed and never collapse to `[]`: an empty result means the input
+ * held no convertible trees, never that the conversion failed.
+ *
+ * @param featureCollection - A feature collection with `referencePoint: [lon, lat]`
+ *   and `features` (GeoJSON Point features).
+ * @param options - `registryJson` replaces the built-in tree registry.
+ * @returns One mesh per convertible tree.
+ * @throws {VegetationMeshError} when `featureCollection` is not an object, has no
+ *   valid `referencePoint` or no `features` array, or the conversion fails.
+ * @category Vegetation
  */
 export declare function convertPointsToMeshesLocal(featureCollection: Readonly<Record<string, unknown>>, options?: Pick<ToMeshesOptions, "registryJson">): VegetationMesh[];
-/** The kernel's baked vegetation registry document (v1.3.0) as JSON. */
+/**
+ * The built-in tree registry document, as JSON text.
+ *
+ * Pass an edited copy as `registryJson` to replace it.
+ *
+ * @returns The registry document.
+ * @category Vegetation
+ */
 export declare function vegetationRegistryDocument(): string;
 export { CoreVersionSkewError };

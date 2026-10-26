@@ -5,5 +5,8 @@ export type { GridExpectedKind, ParsedResult, ParseResultOptions } from "./route
 export { parseSurfaceResult } from "./surface.js";
 export type { ParsedSurfaceResult, ParseSurfaceOptions, SurfaceEntry, SurfaceResultValue, } from "./surface.js";
 export type { BuildingAggregate, SurfaceAnalysisResponse, SurfaceSensorGrid, } from "./surface-analysis.js";
-export { isVertical, surfaceId, surfaceIndex, vertexValues } from "./surface-columns.js";
-export type { SurfaceColumns, SurfaceTriangles } from "./surface-columns.js";
+export { isVertical, surfaceHasValue, surfaceId, surfaceIndex, surfaceValuesF32, vertexValues, } from "./surface-columns.js";
+export type { SurfaceColumns, SurfaceTriangles, SurfaceValueDtype, SurfaceValues, } from "./surface-columns.js";
+export { surfaceColumnsFromBytes, surfaceColumnsToBytes } from "./surface-columns-bytes.js";
+export { surfaceRenderBuffers } from "./surface-render.js";
+export type { SurfaceRenderBuffers, SurfaceRenderOptions } from "./surface-render.js";

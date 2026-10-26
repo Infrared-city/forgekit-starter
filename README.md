@@ -134,7 +134,7 @@ GeoJSON layers, and the hill as a terrain mesh (`groundGeometry` with
 `terrainAlignment: 'auto-align'`). `apps/examples/scripts/precompute-demo.ts`
 ran every analysis on Infrared staging (SDK 0.12.13-next.18, 400
 AItokens for a full run) and stored the results. The stored results have not
-been re-run on SDK 0.14.0-next.0. To run it again (needs Node 22.18
+been re-run on SDK 1.0.1. To run it again (needs Node 22.18
 or newer, and spends AItokens). The script turns on the SDK's threaded core
 (`initializeCore({ threads: 4 })`), which makes the facade merge about twice as
 fast on large runs. Do the same in your own Node scripts. The browser app
@@ -149,7 +149,9 @@ npm run demo:precompute --workspace apps/examples -- --run       # runs what is 
 
 The easiest way: open this folder in Claude Code, Cursor, Codex or another AI
 coding tool and ask for what you want. The tool reads `CLAUDE.md` /
-`AGENTS.md`, which explain the SDK and the rules. Good first prompts:
+`AGENTS.md`, which explain the SDK and the rules. In Claude Code, also add
+the Infrared agent skill: `/plugin marketplace add Infrared-city/infrared-skills`,
+then `/plugin install infrared@infrared-skills`. Good first prompts:
 
 - "Add a page to apps/examples that shows sky view factor for a place I click."
 - "In the UTCI example, let me compare two months side by side."
@@ -240,24 +242,24 @@ More details: [docs/cloudflare.md](./docs/cloudflare.md).
 
 ### Update the SDK
 
-`packages/sdk` holds the **built** output of `@infrared-city/infrared-sdk-ts`
-(no source, no source maps). The current copy is **0.14.0-next.0**, a
-prerelease from the GitHub Packages `next` channel. Since 0.13.0 the facade
-(surface) result is columns, not one object per surface: see "SDK reference"
-in `AGENTS.md`. Until the SDK is on public npm, it comes from GitHub
-Packages:
+`packages/sdk` holds the **built** output of `@infrared-city/infrared-sdk`
+(no source, no source maps). The current copy is **1.0.1**, from the public
+npm registry. Since 1.0 the result arrays keep the type the server stored
+(for example half-float bits): read values with `areaGridValuesF32` and
+`surfaceValuesF32`, see "SDK reference" in `AGENTS.md`. To update (no token
+needed):
 
 ```bash
-NPM_TOKEN=<GitHub token with read:packages> npm run update-sdk -- 0.14.0-next.0
+npm run update-sdk -- 1.0.1
 npm install
-npm run typecheck && npm run build
+npm run typecheck && npm run build && npm test
 ```
 
 `scripts/update-sdk.mjs` downloads the tarball, checks its sha512 integrity
 and its Apache-2.0 license, and replaces `packages/sdk` with `dist/`, the WASM
-glue, `LICENSE`, `NOTICE` and a trimmed `package.json`. When the SDK is on
-public npm, add `--registry https://registry.npmjs.org` (no token needed), or
-replace the vendored copy with a normal npm dependency.
+glue, `LICENSE`, `NOTICE` and a trimmed `package.json`. The SDK is now on
+public npm, so the vendored copy could also become a normal npm dependency
+(`"@infrared-city/infrared-sdk": "^1.0.1"`); that is a separate change.
 
 After an update, run the four examples against staging once (put
 the staging `INFRARED_BASE_URL` and a staging key in

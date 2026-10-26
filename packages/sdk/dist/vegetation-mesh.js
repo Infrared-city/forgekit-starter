@@ -1,6 +1,11 @@
 import { requireCore } from "./internal/core.js";
 import { CoreVersionSkewError } from "./internal/errors.js";
-/** A vegetation operation failed in a way the caller must see. */
+/**
+ * Thrown when a vegetation operation fails in a way the caller must see, for
+ * example a malformed feature collection or a failed conversion.
+ *
+ * @category Errors
+ */
 export class VegetationMeshError extends Error {
     name = "VegetationMeshError";
 }
@@ -15,10 +20,18 @@ function referencePoint(collection) {
     return [point[0], point[1]];
 }
 /**
- * Convert tree Point features to dotbim meshes with the initialized core.
+ * Converts tree Point features to dotbim meshes, locally.
  *
- * Errors are typed and never collapse to `[]`: an empty result means the
- * input held no convertible trees, never that the conversion failed.
+ * Errors are typed and never collapse to `[]`: an empty result means the input
+ * held no convertible trees, never that the conversion failed.
+ *
+ * @param featureCollection - A feature collection with `referencePoint: [lon, lat]`
+ *   and `features` (GeoJSON Point features).
+ * @param options - `registryJson` replaces the built-in tree registry.
+ * @returns One mesh per convertible tree.
+ * @throws {VegetationMeshError} when `featureCollection` is not an object, has no
+ *   valid `referencePoint` or no `features` array, or the conversion fails.
+ * @category Vegetation
  */
 export function convertPointsToMeshesLocal(featureCollection, options = {}) {
     if (featureCollection === null ||
@@ -45,7 +58,14 @@ export function convertPointsToMeshesLocal(featureCollection, options = {}) {
     }
     return meshes;
 }
-/** The kernel's baked vegetation registry document (v1.3.0) as JSON. */
+/**
+ * The built-in tree registry document, as JSON text.
+ *
+ * Pass an edited copy as `registryJson` to replace it.
+ *
+ * @returns The registry document.
+ * @category Vegetation
+ */
 export function vegetationRegistryDocument() {
     return requireCore().vegetationRegistryDocument();
 }

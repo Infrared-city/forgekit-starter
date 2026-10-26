@@ -1,5 +1,7 @@
-/** Process-wide admission for large binary encode and upload buffers: two at
- * a time. Measured on the 49-tile site: 1 and 2 are equal, 8 is slower. */
+/** Process-wide admission for the binary ENCODE (CPU work): two at a time.
+ * Measured on the 49-tile site: 1 and 2 are equal, 8 is slower. It never
+ * covers network I/O: the presign, the S3 PUT and the paid POST run outside
+ * it, at the caller's worker count (#816, D277). */
 const limit = 2;
 let active = 0;
 const waiting = [];

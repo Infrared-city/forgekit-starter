@@ -2,7 +2,7 @@
 // and a short plain-language explanation. The pre-compute script and the
 // "Run it yourself" button both build their SDK request here, so the two
 // always send the same thing.
-import type { AnalysesName } from '@infrared-city/infrared-sdk-ts'
+import type { AnalysesName } from '@infrared-city/infrared-sdk'
 import type { DemoScene } from './scene.ts'
 import { DEMO_CENTER } from './scene-layout.ts'
 

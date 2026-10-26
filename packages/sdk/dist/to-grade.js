@@ -3,6 +3,7 @@ import { plainCoordinates } from "./area/site-pack.js";
 import { WIND_ANALYSIS_TYPES } from "./analysis-types.js";
 /** The option value that asks for the drop; the default for the wind family. */
 export const TO_GROUND = "to-ground";
+export const AS_IS = "as-is";
 /** `true` for the two models this option exists on, and no other. */
 export function takesGradeDrop(analysisType) {
     return typeof analysisType === "string" &&
@@ -76,13 +77,13 @@ export function resolveGradeDrop(payload, groups) {
     return dropSiteToGrade(groups, consumeGradeOption(payload));
 }
 /**
- * The option's value, taken OFF the payload: `"to-ground"` (the wind family's
- * default) or `"as-is"`; `undefined` on a model that has no such option.
+ * The option's value, taken OFF the payload: `"as-is"` (the wind family's
+ * default since 0.14.0, D255) or `"to-ground"`; `undefined` on a model that has no such option.
  */
 export function consumeGradeOption(payload) {
     if (!takesGradeDrop(payload["analysis-type"]))
         return undefined;
-    const chosen = payload["terrain-alignment"] ?? TO_GROUND;
+    const chosen = payload["terrain-alignment"] ?? AS_IS;
     delete payload["terrain-alignment"];
     return chosen;
 }

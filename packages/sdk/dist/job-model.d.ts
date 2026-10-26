@@ -1,18 +1,12 @@
-/** The job data model: the shapes a caller sees (`Job`, `JobStatus`,
- * `PreparedSubmission`) and the two pure guards that read them.
- *
- * Split out of `jobs.ts` (rule 8, 400-line cap) by a pure move: that file
- * keeps the service, this one keeps the shapes the service moves around.
- * `jobs.ts` re-exports every public name from here, so the package surface
- * is unchanged.
- *
- * Type-only imports by construction — this module pulls in no runtime
- * dependency, so it adds no edge to the import graph `jobs.ts` sits in.
- */
 import type { PreparedBinary } from "./internal/binary-submission.js";
 import type { ArtifactLimits, TileArtifact } from "./internal/binary-artifact.js";
-import type { TreeBoxSubstitution } from "./internal/tree-boxes.js";
 import type { BinaryAcknowledgement } from "./job-options.js";
+/**
+ * The states a job can be in: `pending`, `running`, `succeeded`, `failed`, or
+ * `unknown` when the service reports a status the SDK does not recognise.
+ *
+ * @category Run an analysis
+ */
 export declare const JobStatus: {
     readonly Pending: "pending";
     readonly Running: "running";
@@ -20,66 +14,78 @@ export declare const JobStatus: {
     readonly Failed: "failed";
     readonly Unknown: "unknown";
 };
+/**
+ * One of the `JobStatus` values: `"pending"`, `"running"`, `"succeeded"`,
+ * `"failed"` or `"unknown"`.
+ *
+ * @category Run an analysis
+ */
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
+/**
+ * A submitted analysis job, as reported by the service.
+ *
+ * @category Run an analysis
+ */
 export interface Job {
+    /** The job's unique id. */
     readonly jobId: string;
+    /** The analysis the job runs; an empty string when the service did not report it. */
     readonly modelName: string;
+    /** Current status of the job. */
     readonly status: JobStatus;
+    /** When the job was requested, as reported by the service; empty when not reported. */
     readonly requestedAt: string;
+    /** When the job started running, when reported. */
     readonly startedAt?: string;
+    /** When the job finished, when reported. */
     readonly finishedAt?: string;
+    /** Link to download the results from, when the service reports one. */
     readonly resultsUrl?: string;
+    /** The failure message, when the job failed. */
     readonly error?: string;
+    /** The service's acknowledgement, when the job was submitted over the binary transport. */
     readonly binary?: BinaryAcknowledgement;
-    /**
-     * What the tree -> box substitution did for THIS job, or absent when it did
-     * nothing (D70). Client-side only: it is filled in from the kernel's own
-     * answer at submission, never parsed from a response and never sent. A
-     * caller reads it to see that a binary wind or PWC run carried boxes where
-     * it asked for trees.
-     */
-    readonly treeBoxes?: TreeBoxSubstitution;
 }
-/** A validated and mesh-packed request body that is ready for transport. */
+/**
+ * A validated, mesh-packed request body that is ready to be submitted.
+ *
+ * @category Run an analysis
+ */
 export interface PreparedSubmission {
+    /** The analysis the body is for, e.g. `"wind-speed"`. */
     readonly analysisType: string;
+    /** The request body that will be sent. */
     readonly body: Readonly<Record<string, unknown>>;
-    /** Stable host scope for compatible geometry history. */
+    /** Scope under which compatible geometry from earlier submissions can be reused. */
     readonly reuseScope?: string;
+    /** How the body is sent: as JSON or as a compact binary upload. */
     readonly transport: "json" | "binary";
     /**
-     * The tile's binary artifact from the prepared site (D101), for a body an
-     * area plan built; a direct submission has none and the kernel encodes the
-     * body itself. `boxTrees` is the live capability's answer for the model.
+     * Builds the tile's binary upload, for a body that an area plan produced. A direct
+     * submission has none.
      */
-    readonly artifact?: (boxTrees: boolean, limits: ArtifactLimits) => TileArtifact;
+    readonly artifact?: (limits: ArtifactLimits) => TileArtifact;
     /**
-     * The exact JSON wire text of `body`, when the kernel wrote it (a
-     * daylight-factor part, `daylightPartBody`, D221), or the text this SDK
-     * already wrote once to plan the parts. The JSON route sends these bytes
-     * instead of writing `body` again; `body` stays for every reader that needs
-     * a value. A direct submission has none.
+     * The exact JSON bytes of `body`, when they were already written once. The JSON
+     * route sends these bytes instead of serializing `body` again. A direct submission
+     * has none.
      */
     readonly json?: () => Uint8Array;
     /**
-     * An interior binary part, already prepared (D228): the scene archive
-     * (shared with every other part of the same run) and this part's own
-     * control, both built by the kernel (`interiorArtifact`, `daylightPartBody`
-     * — `parts/interior-binary.ts`). Set only on a daylight-factor part the
-     * live capability routed to the binary transport; `submitPrepared` sends
-     * it with `resultFormat: "json"` instead of taking the outdoor route's
-     * `artifact`/`body` path. Absent on every other submission.
+     * A prepared binary upload for one part of an interior (daylight-factor) analysis.
+     * Absent on every other submission.
      */
     readonly interiorBinary?: PreparedBinary;
-    /** The result family an interior binary part asks for (D234); unset = `"json"`. */
+    /** The result format an interior binary part asks for; unset means `"json"`. */
     readonly interiorResultFormat?: "irbf" | "json";
 }
-/** Attach the substitution record to a job the binary route just accepted.
+/**
+ * Check that a job id is a non-empty string and return it.
  *
- * Client-side only (D70): the server neither sends nor reads it, so it is
- * merged in here rather than parsed out of the acknowledgement. The record
- * lives on the PREPARED BINARY, because that is the object built after the
- * capability document decided whether to box at all.
+ * @param jobId - The job id to check.
+ * @returns The same `jobId`.
+ * @throws {TypeError} when `jobId` is not a non-empty string.
+ *
+ * @category Run an analysis
  */
-export declare function withTreeBoxes(job: Job, binary: PreparedBinary | undefined): Job;
 export declare function requireJobId(jobId: string): string;

@@ -1,7 +1,11 @@
 // "Run it yourself": send the same demo request to Infrared with the live SDK.
 // Optional. It needs the Worker (`npm run dev`) with your key in
 // apps/base/api/.dev.vars. Nothing runs on page load; the cost check is free.
-import type { RunAreaAndWaitOptions, RunAreaInput } from '@infrared-city/infrared-sdk-ts'
+import {
+  areaGridValuesF32,
+  type RunAreaAndWaitOptions,
+  type RunAreaInput,
+} from '@infrared-city/infrared-sdk'
 import { useState } from 'react'
 import { buildRequest, type DemoAnalysis } from '../demo/analyses'
 import { buildDemoScene, DEMO_POLYGON, type Variant } from '../demo/scene'
@@ -71,7 +75,7 @@ export function RunYourself({ analysis, variant, onResult }: Props) {
           kind: 'grid',
           rows,
           cols,
-          values: Float32Array.from(r.mergedGrid),
+          values: areaGridValuesF32(r),
           legend: r.legend ? [...r.legend] : undefined,
         }
         onResult(perDay(grid, analysis.perDay ?? 1))

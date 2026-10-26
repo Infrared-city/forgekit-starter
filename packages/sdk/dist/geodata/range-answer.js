@@ -19,24 +19,31 @@
 import { GeodataRangeError } from "./errors.js";
 import { cancelBody, declaredLength, readCappedBody } from "../internal/capped-body.js";
 /**
- * Largest body accepted when a server answers a `Range` request with `200`.
+ * Largest body, in bytes (8 MiB), accepted when a server answers a `Range`
+ * request with HTTP 200.
  *
- * A `200` means the server ignored the range and is sending the WHOLE
- * object. On the world FlatGeobufs that is 5.4 GB and 14.4 GB, so buffering
- * it is not a slow path, it is an out-of-memory crash. Anything larger is
- * refused while it arrives.
+ * A 200 means the server ignored the range and is sending the whole object.
+ * Larger bodies are refused while they arrive.
+ *
+ * @category Geodata
  */
+// Maintainer note (not published): on the world FlatGeobufs the whole object is
+// 5.4 GB and 14.4 GB, so buffering it is not a slow path, it is an
+// out-of-memory crash.
 export const MAX_HTTP_200_BYTES = 8 * 1024 * 1024;
 /**
- * Largest body accepted for ONE range answer.
+ * Largest body, in bytes (64 MiB), accepted for one range answer.
  *
- * This is a transport bound, not the planner's bound: it limits what one HTTP
- * answer may deliver, whoever asked for it. `MAX_PLANNED_RANGE_BYTES` in
- * `fgb-kernel.ts` limits what the kernel may ask the host to fetch. The two
- * hold the same number today and are changed by different arguments, so they
- * stay two constants (CLAUDE.md rule 6). The Python host holds the twin of
- * this one at `_internal/geodata/fgb.py::MAX_RANGE_BYTES`.
+ * A longer answer is refused.
+ *
+ * @category Geodata
  */
+// Maintainer note (not published): this is a transport bound, not the planner's
+// bound: it limits what one HTTP answer may deliver, whoever asked for it.
+// `MAX_PLANNED_RANGE_BYTES` in `fgb-kernel.ts` limits what the kernel may ask
+// the host to fetch. The two hold the same number today and are changed by
+// different arguments, so they stay two constants (CLAUDE.md rule 6). The Python
+// host holds the twin of this one at `_internal/geodata/fgb.py::MAX_RANGE_BYTES`.
 export const MAX_RANGE_BYTES = 64 * 1024 * 1024;
 const CONTENT_RANGE = /^bytes (\d+)-(\d+)\/(\d+|\*)$/;
 function etagOf(response) {
@@ -94,13 +101,27 @@ function parseContentRange(url, response) {
     return { start, end, ...(total === undefined ? {} : { total }) };
 }
 /**
- * Accept a 206: the window it names must be the window that was asked for.
+ * Accept an HTTP 206 answer to a range request, checking that it covers exactly
+ * the window that was asked for.
  *
- * A window that runs past the end of the object is SATISFIABLE (RFC 7233
- * section 4.1): the server answers with the last byte it has. A FlatGeobuf
- * shorter than the fixed header prefix is exactly that case, so the expected
- * end is the requested end or the last byte of the object, whichever is first.
+ * A window that runs past the end of the object is satisfiable: the server
+ * answers with the last byte it has, so the expected end is the requested end
+ * or the last byte of the object, whichever comes first.
+ *
+ * @param url - The URL that was requested, used in error messages.
+ * @param response - The 206 response.
+ * @param start - First requested byte offset.
+ * @param endExclusive - End of the requested window (exclusive); `undefined`
+ *   means "to the end of the object".
+ * @returns The bytes, the entity tag and the total object size when known.
+ * @throws {GeodataRangeError} when the `Content-Range` header is missing, names
+ *   more than one range or another window, the answer is encoded or too large,
+ *   or the body length does not match.
+ * @category Geodata
  */
+// Maintainer note (not published): a window past the end of the object is
+// SATISFIABLE (RFC 7233 section 4.1). A FlatGeobuf shorter than the fixed header
+// prefix is exactly that case.
 export async function readPartialAnswer(url, response, start, endExclusive) {
     assertOneUnencodedRange(url, response);
     const range = parseContentRange(url, response);
@@ -137,12 +158,24 @@ export async function readPartialAnswer(url, response, start, endExclusive) {
     };
 }
 /**
- * Accept a 200 answer to a range request, under the whole-object cap.
+ * Accept an HTTP 200 answer to a range request, under the whole-object cap
+ * {@link MAX_HTTP_200_BYTES}.
  *
- * The object must reach the end of the window that was asked for. A shorter
- * one would slice into an empty or short result and hand back wrong bytes
- * without an error.
+ * The server ignored the range and sent the whole object; the requested window
+ * is cut out of it. The object must reach the end of the requested window.
+ *
+ * @param url - The URL that was requested, used in error messages.
+ * @param response - The 200 response.
+ * @param start - First requested byte offset.
+ * @param endExclusive - End of the requested window (exclusive); `undefined`
+ *   means "to the end of the object".
+ * @returns The bytes of the window, the entity tag and the total object size.
+ * @throws {GeodataRangeError} when the object exceeds the cap or is too short to
+ *   reach the requested window.
+ * @category Geodata
  */
+// Maintainer note (not published): a shorter object would slice into an empty
+// or short result and hand back wrong bytes without an error.
 export async function readWholeObjectAnswer(url, response, start, endExclusive) {
     const declared = declaredLength(response);
     if (declared !== undefined && declared > MAX_HTTP_200_BYTES) {

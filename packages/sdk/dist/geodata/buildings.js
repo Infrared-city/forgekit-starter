@@ -4,31 +4,53 @@ import { featureCollectionJson, requireFeatureCollection } from "./json-chain.js
 import { resolveOverlayCity } from "./manifests.js";
 import { readOvertureCollectionJson } from "./overture.js";
 import { requireCore } from "../internal/core.js";
+// Maintainer note (not published): Direct building acquisition, footprints
+// straight from the public hosts.
+//
+// Precedence is the `prod-BUILDINGS` Lambda's
+// (`backend-lambdas/services/buildings/lib/cityOverlay.ts`): fetch
+// `sources.json`, and when the tile's query rectangle intersects a
+// registered city outline that publishes a `buildings` layer, range-read
+// that city FlatGeobuf; otherwise read Overture's building theme through the
+// R2 index, with a small candidate buffer around the rectangle. Height and
+// id normalisation is a kernel call.
 /**
- * Direct building acquisition — footprints straight from the public hosts.
+ * Registry layer key naming a city's building overlay (`"buildings"`).
  *
- * Precedence is the `prod-BUILDINGS` Lambda's
- * (`backend-lambdas/services/buildings/lib/cityOverlay.ts`): fetch
- * `sources.json`, and when the tile's query rectangle intersects a
- * registered city outline that publishes a `buildings` layer, range-read
- * that city FlatGeobuf; otherwise read Overture's building theme through the
- * R2 index, with a small candidate buffer around the rectangle. Height and
- * id normalisation is a kernel call.
+ * @category Geodata
  */
-/** Registry layer key naming a city's building overlay. */
 export const OVERLAY_LAYER_KEY = "buildings";
 /**
- * Candidate buffer around the query rectangle for the Overture leg, in
- * degrees — the Lambda's, so the same edge buildings are considered.
+ * Candidate buffer, in degrees (`0.002`), added around the query rectangle
+ * when choosing which Overture files to read, so footprints that reach into
+ * the rectangle from a neighbouring file are not missed.
+ *
+ * @category Geodata
  */
+// Maintainer note (not published): This is the Lambda's value, so the same
+// edge buildings are considered.
 export const OVERTURE_CANDIDATE_BUFFER_DEG = 0.002;
 /**
- * Read building footprints for an AOI straight from the public hosts, as
- * JSON text.
+ * Read building footprints for an area straight from the public data hosts,
+ * as GeoJSON text.
  *
- * Read → normalise is one chain of kernel-facing strings; the caller decides
- * whether to parse or to pass the text into the extruder (bulk-data rule 1).
+ * A registered city's footprint layer is used when one covers the area,
+ * otherwise Overture's building layer. The text is returned unparsed so it can
+ * be passed straight on; use {@link acquireBuildings} for parsed features.
+ *
+ * @param bbox - The area to read, in WGS84 degrees.
+ * @param options - Read options.
+ * @returns The footprints as FeatureCollection text, the source, any warnings
+ *   and the Overture release.
+ * @throws {OvertureReadTooLargeError} when the planned Overture read exceeds
+ *   the byte limit.
+ * @throws {GeodataDependencyError} when Overture must be read and the optional
+ *   parquet packages are not installed.
+ * @category Buildings
  */
+// Maintainer note (not published): Read -> normalise is one chain of
+// kernel-facing strings; the caller decides whether to parse or to pass the
+// text into the extruder (bulk-data rule 1).
 export async function acquireBuildingsJson(bbox, options = {}) {
     const warnings = [];
     let collectionJson;
@@ -73,7 +95,22 @@ export async function acquireBuildingsJson(bbox, options = {}) {
         overtureRelease,
     };
 }
-/** The same read, parsed once for a caller that wants feature objects. */
+/**
+ * Read building footprints for an area, parsed into feature objects.
+ *
+ * The same read as {@link acquireBuildingsJson}, parsed once for a caller that
+ * wants feature objects.
+ *
+ * @param bbox - The area to read, in WGS84 degrees.
+ * @param options - Read options.
+ * @returns The footprint features, the source, any warnings and the Overture
+ *   release.
+ * @throws {OvertureReadTooLargeError} when the planned Overture read exceeds
+ *   the byte limit.
+ * @throws {GeodataDependencyError} when Overture must be read and the optional
+ *   parquet packages are not installed.
+ * @category Buildings
+ */
 export async function acquireBuildings(bbox, options = {}) {
     const { collectionJson, source, warnings, overtureRelease } = await acquireBuildingsJson(bbox, options);
     const parsed = JSON.parse(collectionJson);

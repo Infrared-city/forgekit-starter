@@ -3,7 +3,6 @@ export { CoreInitializationError, CoreNotReadyError, CoreTerminalError, } from "
 export type { InitializeCoreOptions } from "./internal/options.js";
 export { VERSION } from "./version.js";
 export { consoleLogger, silentLogger } from "./logger.js";
-export type { TreeBoxDecision, TreeBoxSubstitution } from "./internal/tree-boxes.js";
 export type { Logger } from "./logger.js";
 export { AnalysesName, TILING_SUPPORTED_TYPES, WIND_ANALYSIS_TYPES } from "./analysis-types.js";
 export type { AnalysesName as AnalysesNameType } from "./analysis-types.js";
@@ -14,6 +13,8 @@ export { ConfigHashPolicyError } from "./area/planning.js";
 export { FacadeCountContractError } from "./area/count-contract.js";
 export { cleanMesh } from "./mesh-clean.js";
 export type { CleanedMesh, MeshCleanReport } from "./mesh-clean.js";
+export { FacadeLayout, synthesizeFacadeLayout, attachValues } from "./area/facade-layout.js";
+export type { SynthesizeFacadeLayoutInput, FacadeLayoutJobSpec, FacadeLayoutMesh, FacadeLayoutFrame, FacadeLayoutJob, FacadeLayoutSynthParams, } from "./area/facade-layout.js";
 export { GeodataDependencyError, GeodataError, GeodataFetchError, GeodataRangeError, HostNotAllowedError, OvertureFileLimitError, OvertureReadTooLargeError, SiteReadError, } from "./geodata/errors.js";
 export type { SiteChunkFailure } from "./geodata/errors.js";
 export { ReadMarginError, WIDEST_READ_ANALYSIS_TYPE, groundReadDistanceM, readMarginM, requiredMarginM, resolveReadAnalysisType, } from "./geodata/read-margin.js";
@@ -48,6 +49,7 @@ export { SubmissionUncertainError } from "./internal/submission.js";
 export { FacadeArtifactMismatchError } from "./internal/facade-artifact-guard.js";
 export { GeometryReferenceAcknowledgementError, GeometryReferenceSubmissionError, } from "./internal/geometry-reuse/errors.js";
 export type { GeometryReuseProbeEvent, GeometryReuseProbeOutcome, OnGeometryReuseProbe, } from "./internal/geometry-reuse/types.js";
+export type { GeometryUrlEntry, GeometryUrlStore } from "./internal/geometry-url-store.js";
 export { AnalysisService, AreaTimeoutError, InfraredClient } from "./client.js";
 export { AnalysisPartsError } from "./parts/types.js";
 export type { KernelPart, KernelPartsPlan, PartsOptions, PartsPreview, PartsSchedule, PartsWaitOptions, } from "./parts/types.js";
@@ -60,6 +62,21 @@ export { DEFAULT_DAYLIGHT_RESULT_FORMAT } from "./parts/result-format.js";
 export type { DaylightResultFormat } from "./parts/result-format.js";
 export type { InfraredClientConfig, InfraredClientOptions, InfraredEnvBindings, AreaPreview, AreaPreviewWithPricing, RunAreaAndWaitOptions, WireAnalysisRequest, } from "./client.js";
 export { InvalidOptionError } from "./internal/service.js";
+export type { ServiceOptions } from "./internal/service.js";
+export type { GridCell, RenderGridPngOptions } from "./images.js";
+export type { FetchRegistryOptions, RegistryDocument, VisualConfig, VisualConfigurations, } from "./internal/registry-document.js";
+export type { BinaryCapability, BinaryLimits } from "./internal/binary-submission.js";
+export type { StatusSweep } from "./internal/status-batch.js";
+export type { PreparedSubmission } from "./job-model.js";
 export { buildAuthResolver } from "./internal/auth.js";
 export type { AuthHeaders, AuthOptions, AuthResolver, InfraredSurface, } from "./internal/auth.js";
+/**
+ * The version of the computation core bundled with this SDK.
+ *
+ * Call `initializeCore` first.
+ *
+ * @returns The version string.
+ * @throws {CoreNotReadyError} when the core has not been initialised.
+ * @category Client
+ */
 export declare function coreVersion(): string;

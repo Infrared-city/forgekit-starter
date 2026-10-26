@@ -1,5 +1,5 @@
 import type { FacadeOwnership } from "./facade-ownership.js";
-import type { SiteAnswer } from "./site-assign.js";
+import { type SiteAnswer } from "./site-assign.js";
 import type { Slice } from "./cooperative.js";
 import type { AreaJobsService, RunAreaOptions } from "./run-options.js";
 import type { TilePosition } from "./schedule-types.js";
@@ -10,7 +10,10 @@ export interface EntryInputs {
     readonly options: RunAreaOptions;
     readonly analysisType: string;
     readonly base: Readonly<Record<string, unknown>>;
-    /** Every tile's composed groups: a GRID run's; a facade run composes none. */
+    /**
+     * Every tile's composed groups: a JSON GRID run's. A binary grid run and a
+     * facade run compose none (#816, D277).
+     */
     readonly composed?: Readonly<Record<string, Record<string, unknown>>>;
     readonly byId: ReadonlyMap<string, Tile>;
     readonly ownership: FacadeOwnership;

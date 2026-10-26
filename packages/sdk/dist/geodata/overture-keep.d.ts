@@ -8,16 +8,13 @@ import type { RawGeometry } from "./overture-parquet.js";
  * (`boxesMeet`) and this keeps the rows they select.
  */
 /**
- * Overture publishes land_cover at several cartographic generalisation
- * bands. Only the finest (max_zoom >= 8) is real ground cover; the coarse
- * band's polygons can span a whole city.
+ * Smallest `max_zoom` of an Overture `land_cover` feature that is kept (8).
  *
- * The kernel composer drops the coarse band, which is the contract. This
- * reader drops it too, AFTER decoding the row — an optimisation that keeps
- * continent-sized polygons out of the text handed across the WASM boundary,
- * not a second source of truth. (The Python service pushes the same test
- * into the parquet filter, before transfer; `hyparquet` has no predicate
- * pushdown, so here it is post-decode.)
+ * Overture publishes `land_cover` at several generalisation bands. Only the
+ * finest bands (`max_zoom >= 8`) are real ground cover; the coarse bands'
+ * polygons can span a whole city, so the reader drops them.
+ *
+ * @category Geodata
  */
 export declare const LAND_COVER_MIN_MAX_ZOOM = 8;
 /**

@@ -23,10 +23,21 @@ export interface AsyncBuffer {
     byteLength: number;
     slice(start: number, end?: number): Promise<ArrayBuffer>;
 }
+/**
+ * The minimum and maximum value of a Parquet column chunk.
+ *
+ * @category Geodata
+ */
 export interface ColumnStatistics {
     min_value?: number;
     max_value?: number;
 }
+/**
+ * The parts of a Parquet file's metadata that row-group planning reads:
+ * the row groups with their column statistics and sizes, and the schema.
+ *
+ * @category Geodata
+ */
 export interface ParquetMetadata {
     row_groups: Array<{
         num_rows: number | bigint;

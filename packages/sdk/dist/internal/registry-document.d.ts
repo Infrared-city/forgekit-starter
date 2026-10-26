@@ -1,19 +1,27 @@
 /**
- * The public colour registry document: fetch, allow-list, cache.
+ * One colour configuration from the registry: the colours of a result and how to
+ * step through them.
  *
- * Split out of `images.ts` so the rendering module stays inside the 400-line
- * rule. The network rules live in ONE place here: HTTPS on an allow-listed
- * host, no credentials, redirects refused, and a declared body cap.
+ * @category Results and legend
  */
-/** One `visualConfigurations` entry. */
 export interface VisualConfig {
     colors: number[][];
     steps?: Array<number | string> | null;
     colorInterpolation?: string;
     [key: string]: unknown;
 }
-/** The registry's `visualConfigurations` object, variants included. */
+/**
+ * The registry's `visualConfigurations` object, with all variants included, keyed by
+ * configuration name.
+ *
+ * @category Results and legend
+ */
 export type VisualConfigurations = Record<string, unknown>;
+/**
+ * Options for `fetchVisualConfigurations`.
+ *
+ * @category Results and legend
+ */
 export interface FetchRegistryOptions {
     /** Defaults to {@link REGISTRY_URL}. A custom URL bypasses the cache. */
     url?: string;
@@ -26,31 +34,62 @@ export interface FetchRegistryOptions {
     /** Total time for the answer AND its body, in ms. Defaults to 30 seconds. */
     timeoutMs?: number;
 }
+/**
+ * The public colour registry: the colour configurations used to draw results, and the
+ * registry version they came from.
+ *
+ * @category Results and legend
+ */
 export interface RegistryDocument {
+    /** The colour configurations, keyed by name. The object is frozen. */
     configurations: VisualConfigurations;
+    /** The registry version, or `null` when the document does not state one. */
     version: string | null;
 }
-/** The public R2 mirror of the models registry. HTTPS, no credentials. */
+/**
+ * The address of the public registry document that colour configurations are read from.
+ * It is served over HTTPS and needs no credentials.
+ *
+ * @category Results and legend
+ */
 export declare const REGISTRY_URL = "https://registry.infrared.city/models/latest.json";
 /**
- * Largest registry document this module will read.
+ * The largest registry document, in bytes, that the SDK will read (8 MiB). A larger
+ * answer is refused with a `RegistryFetchError`.
  *
- * The live document is under 1 MB. The cap keeps a wrong or hostile answer
- * from buffering an unbounded body in a browser tab.
+ * @category Results and legend
  */
 export declare const MAX_REGISTRY_BYTES: number;
-/** The colour registry could not be fetched or was not usable. */
+/**
+ * Thrown when the colour registry could not be fetched or its answer was not usable:
+ * a URL that is not HTTPS on the registry host, a redirect, an HTTP error, a timeout or
+ * abort, a body that is too large or not JSON, or a document without colour configurations.
+ *
+ * @category Errors
+ */
 export declare class RegistryFetchError extends Error {
     readonly name = "RegistryFetchError";
 }
-/** Drop the cached registry document. For tests and for a known new release. */
+/**
+ * Drop the cached registry document, so the next read fetches it again. Useful in tests,
+ * or when you know a new registry release is out.
+ *
+ * @category Results and legend
+ */
 export declare function clearRegistryCache(): void;
 /**
- * Fetch `visualConfigurations` from the public registry mirror.
+ * Fetch the colour configurations from the public registry.
  *
- * Cached in-module for `ttlMs`. A non-default `url` bypasses the cache
- * entirely, so a staging pin never poisons the shared entry. No credentials are
- * sent: the registry is a public object and this is a bare `fetch`, not the
- * SDK's authenticated transport.
+ * The answer is cached for `ttlMs` (15 minutes by default), and the returned object is
+ * frozen. A custom `url` bypasses the cache, so a pinned document never replaces the
+ * shared entry. No credentials are sent: the registry is public, and the request is a
+ * plain `fetch`, not the SDK's authenticated connection. Redirects are refused.
+ *
+ * @param options - Optional URL, cache lifetime, `fetch` implementation, abort signal and
+ *   timeout (30 seconds by default, covering the answer and its body).
+ * @returns The colour configurations and the registry version.
+ * @throws {RegistryFetchError} If the URL is not HTTPS on the registry host, the read
+ *   fails, times out or is aborted, or the document is not usable.
+ * @category Results and legend
  */
 export declare function fetchVisualConfigurations(options?: FetchRegistryOptions): Promise<RegistryDocument>;

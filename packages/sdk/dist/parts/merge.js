@@ -1,11 +1,9 @@
-/**
- * Join a finished parts run: poll once, download every part, and let the
- * kernel join the part results into the bytes the single request gives:
- * `daylightMergeBinary` (the IRBF frame, D234; it reads JSON and IRBF parts)
- * or `daylightMerge` (the JSON bytes, as before). All or nothing, like the
- * facade merge: a part without a result stops the join with an
- * `AnalysisPartsError` that names it.
- */
+// Maintainer note (not published): Join a finished parts run: poll once, download every
+// part, and let the kernel join the part results into the bytes the single request gives:
+// `daylightMergeBinary` (the IRBF frame, D234; it reads JSON and IRBF parts)
+// or `daylightMerge` (the JSON bytes, as before). All or nothing, like the
+// facade merge: a part without a result stops the join with an
+// `AnalysisPartsError` that names it.
 import { parallel, throwable, workerCount } from "../area/merge-common.js";
 import { checkAreaState, revivePolledOut } from "../area/poll.js";
 import { requireCore } from "../internal/core.js";
@@ -33,7 +31,15 @@ function framesOf(core, parts) {
     }
     return frames;
 }
-/** The format of a join: the caller's, else the schedule's own, else the default. */
+/**
+ * Resolves the result format of a join: the caller's, else the schedule's own, else the
+ * default.
+ *
+ * @param schedule - The parts run being joined.
+ * @param options - Merge options; `resultFormat` wins when set.
+ * @returns `"irbf"` or `"json"`.
+ * @category Run an analysis
+ */
 export function mergeFormat(schedule, options) {
     return resolveResultFormat(options.resultFormat ?? schedule.resultFormat);
 }
@@ -75,7 +81,20 @@ function missingParts(schedule) {
         return job === undefined || !job.jobId;
     });
 }
-/** The joined result document of a parts run: the IRBF frame or the JSON bytes. */
+/**
+ * Joins the finished parts of a run into one result document.
+ *
+ * Polls the run once, downloads every part and joins them. The result is the binary frame or
+ * the JSON bytes, depending on the result format. Nothing is resubmitted or billed.
+ *
+ * @param service - The job service used to poll and download.
+ * @param schedule - The submitted parts run.
+ * @param options - Worker count, abort signal, result format and logger.
+ * @returns The joined result document.
+ * @throws {AnalysisPartsError} When a part has no result, is not finished, or fails to
+ * download. Its `schedule` can be merged again or passed as `retryFrom`.
+ * @category Run an analysis
+ */
 export async function mergePartsDocument(service, schedule, options = {}) {
     // An explicit merge is a retry of the poll: its breaker's victims get one
     // more chance (D115), as in the area merges.

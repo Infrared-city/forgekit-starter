@@ -15,6 +15,17 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // JSON (sorted keys, 6dp half-away rounding, integral collapse). Replaces
     // this package's own `bankersRound6` fold.
     "configHash",
+    // The v2 schedule identity (#679): the kernel picks the fields from the
+    // field registry; the host builds the control body and the group hashes.
+    "configHashV2",
+    "configGroupHash",
+    "energyBalanceYear",
+    // Rules that were host copies: which models may take a terrain hash from a
+    // `SiteTerrain` handle, and the `as-is` default for a supplied scene.
+    "inertKeys",
+    "terrainHandleHashApplies",
+    "resolveTerrainAlignment",
+    "fieldRegistryJson",
     // D91: the wind family's datum — every supplied mesh's own lowest point to
     // z = 0, one pass over the packed site at the plan seam.
     "dropToGrade",
@@ -69,16 +80,18 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // frame origin.
     "tileLocationApplies", "bboxMeetsRows", "terrainTriangleCap",
     "scalarPolygonOriginF64", "projectPolygonToMeters",
-    "mergeAreaGridDense",
-    "mergeAreaGridDenseF64",
-    "mergeAreaGridCompact",
-    "mergeAreaGridCompactWind",
-    // `normalizeAreaCategoricalLabels` is NOT here: D107 moved the JSON route's
-    // categorical decode into the kernel too, so every categorical tile now
-    // carries a `CompactCategory` dictionary and merges through
-    // `normalizeAreaCategoricalCompact` — nothing calls the labels-only form
-    // any more. The kernel still exports it.
-    "normalizeAreaCategoricalCompact",
+    // The tile south-west corner's own (lon, lat) (infrared-core#725): the
+    // same kernel call `scalarSiteToTileAffine` composes internally, reused by
+    // `area/facade-layout-schedule.ts` to derive a saved schedule's per-job
+    // `tileOrigin` without restating that math host-side.
+    "scalarUnproject",
+    // The area GRID merge (D273): one kernel merger per run decodes, places,
+    // blends and clips every tile archive, in the wire dtype. A class appears
+    // as its methods (see the SITE note above).
+    "__wbg_areagridmerger_free",
+    "areagridmerger_new",
+    "areagridmerger_push",
+    "areagridmerger_finish",
     "groundCleanV3",
     "gridToPng",
     "packedIndexCount",
@@ -88,6 +101,13 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // the body from the server. The area merge synthesizes inside the one-call
     // join (`joinSurfaceJobs`, below).
     "synthesizeSurfaces",
+    // Offline facade layout rebuild + compact export (#707, D252/D254). Both
+    // calls return a `FacadeLayoutHandle` that holds the rebuilt/reloaded
+    // layout: `.fields()` reads it (a caller that only wants to SHOW a layout
+    // never pays for compression), `.toBytes()` exports THAT SAME held layout
+    // -- never a second synthesis pass (issue #707 "toBytes() crash", D254).
+    "synthesizeFacadeLayoutHandle",
+    "facadeLayoutFromBytes",
     // The public mesh utility `cleanMesh` (#555, D208).
     "cleanMesh",
     // The exact per-tile re-anchor. It replaced the constant-offset loop the
@@ -108,9 +128,6 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // The same port's tolerance export, called by the public
     // `slabToleranceDeg` measurement helper (`geodata/rect-union-metrics.ts`).
     "rectUnionSlabToleranceDeg",
-    // Trees as boxes on the binary wind routes (D70). Without these the SDK
-    // cannot honour a binary wind/PWC body that carries vegetation at all.
-    "vegetationTreeBoxDecision",
     // The default transport (D196); the send budget (#556); the poll schedule (D213).
     "defaultTransport", "sendBudgetSeconds", "sendStallSeconds", "pollIntervalSeconds",
     "pollErrorDelaySeconds", "pollDefaultTimeoutSeconds", "pollFirstDelaySeconds",
@@ -182,15 +199,22 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "decodeBinaryResult",
     "inspectBinaryResult",
     "decodeGridDocument",
-    // The area grid merge's tile decode (D107): inflate a downloaded result
-    // archive and flatten a JSON grid in one crossing, or hand back an IRBF
-    // document for `decodeBinaryResult`/`inspectBinaryResult` to decode.
-    "decodeResultArchive",
     // The area SURFACE merge: each download decoded as it arrives (WP4), then
     // the whole run joined into columns in one call, triangles included (D197).
     "decodeSurfaceArchive",
     "decodeSurfaceArchives",
     "joinSurfaceJobs",
+    // The captures of the run, shared by its analyses (a class: its methods).
+    "__wbg_capturestore_free",
+    "capturestore_new",
+    "capturestore_remember",
+    // The one batch widen of surface values (D272): `surfaceValuesF32`.
+    "surfaceValuesF32",
+    // The render buffers of a surface result (D271, #753): `surfaceRenderBuffers`.
+    "surfaceRenderBuffers",
+    // The values-only blob of one result (D271, #753): `surfaceColumnsToBytes`, `surfaceColumnsFromBytes`.
+    "surfaceColumnsToBytes",
+    "surfaceColumnsFromBytes",
     // Brief J (D106): the deterministic `payload.json` ZIP writer every json
     // submit body and geometry-reference document uses. Replaces
     // `internal/zip.ts` (`fflate`), deleted in the same PR.
@@ -206,12 +230,8 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "__wbg_griddocumentdecode_free",
     "griddocumentdecode_route",
     "griddocumentdecode_finiteNumbersValidated",
-    "__wbg_areagridmerge_free",
     "__wbg_categoricalareadense_free",
     "__wbg_surfacearchive_free",
-    "areagridmerge_values",
-    "areagridmerge_shape",
-    "areagridmerge_bounds",
     "categoricalareadense_values",
     "categoricalareadense_legend",
     "surfacearchive_route",

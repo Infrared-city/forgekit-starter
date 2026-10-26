@@ -9,9 +9,15 @@ const entries = new Map();
 export class BinaryUrlCache {
     enabled;
     now;
-    constructor(enabled, now = Date.now) {
+    store;
+    /** The uploads that run now, one per URL key, for this client only (T4).
+     * Used also when reuse is off: it only joins an upload that runs now. */
+    inFlight = new Map();
+    /** The caller's `geometryUrlStore`, read once per key before an upload. */
+    constructor(enabled, now = Date.now, store) {
         this.enabled = enabled;
         this.now = now;
+        this.store = store;
     }
     get(key) {
         if (!this.enabled)
@@ -27,10 +33,17 @@ export class BinaryUrlCache {
         entries.set(key, entry);
         return entry.url;
     }
-    set(key, url) {
+    /** Forget `key` when its URL is `url` (the server refused it). */
+    drop(key, url) {
+        if (entries.get(key)?.url === url)
+            entries.delete(key);
+    }
+    /** Keep `url`; `limit` is a known end of validity (from the caller's store). */
+    set(key, url, limit = Infinity) {
         if (!this.enabled || url.length > MAX_URL_LENGTH)
             return;
-        const expiresAt = reusableUntil(url, this.now());
+        const until = reusableUntil(url, this.now());
+        const expiresAt = until === undefined ? undefined : Math.min(until, limit);
         if (expiresAt === undefined || expiresAt <= this.now())
             return;
         entries.delete(key);

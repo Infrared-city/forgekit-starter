@@ -1,9 +1,13 @@
-import { CONFIG_HASH_FOLD_CONTRACT_VERSION, foldHashFields, kernelConfigHash, kernelFacadeConfigHash, } from "./config-hash.js";
+import { CONFIG_HASH_V2_CONTRACT_VERSION, scheduleConfigHash, kernelConfigHash, } from "./config-hash.js";
+import { suppliedSceneAlignment } from "../internal/scene-alignment.js";
+import { areaTransport } from "../internal/transport-choice.js";
+import { consoleLogger } from "../logger.js";
 import { checkFacadeCountContract } from "./count-contract.js";
 import { Slice } from "./cooperative.js";
 import { prepareAreaPayload } from "./payload.js";
+import { dropUnknownRequestKeys } from "./unknown-request-keys.js";
 import { buildEntries } from "./plan-entries.js";
-import { foldTileBuildings, GROUP_KEYS, indexed } from "./plan-layers.js";
+import { GROUP_KEYS, indexed } from "./plan-layers.js";
 import { liveTerrain, siteTerrain, terrainDigest } from "./site-terrain.js";
 import { buildPreparedSite, preparedSiteKey, preparedSites, } from "./prepared-site.js";
 import { checkPaidRetrySiteIdentity } from "./site-identity-guard.js";
@@ -25,29 +29,47 @@ import { checkResumeWeather, isWeatherBearing, preparedWeatherIdentity, } from "
  * schedule was made from. The legacy key covers a superset of today's
  * content, so this accepts nothing today's key would refuse for new content.
  *
- * Gated on `retryContext.resubmitKeys` (D224 review), never
- * `prior.failedSubmissions.length > 0`: a compute-failed job or an uncertain
- * key with no failed SUBMIT also needs this fallback checked, because the
- * plan resubmits it.
+ * Not gated on a resubmit: a complete schedule is checked too, so a
+ * legacy-key schedule must get the same fallback.
  */
-async function retrySiteIdentity(current, inputs, prior, retryContext) {
+async function retrySiteIdentity(current, inputs, prior) {
     const recorded = prior?.siteIdentity;
     if (current === undefined || recorded === undefined || recorded === current ||
-        prior === undefined || (retryContext?.resubmitKeys.size ?? 0) === 0)
+        prior === undefined)
         return current;
     const legacyKey = await preparedSiteKey(inputs, undefined, true);
     return legacyKey !== undefined && `sha256:${kernelConfigHash({ siteKey: legacyKey })}` === recorded
         ? recorded : current;
 }
 /**
- * Complete and validate the whole grid plan before the first POST.
+ * Build and validate the whole submission plan for an area run, before any job is submitted.
  *
- * COOPERATIVE since WP-3 (`infrared-core#237`, `docs/DEVIATIONS.md` D78):
- * every stage hands the thread back on a time slice and reads
- * `options.signal` at each boundary, so a host around this SDK stays
- * responsive and a stop is honoured during the plan rather than 24 s later.
- * The work, the order and the answer are unchanged.
+ * It makes no billed request. The plan lists every job to submit, the tile grid, the
+ * configuration hash and, for a facade run, the planned batches. The work yields the thread
+ * regularly and checks `options.signal` at each stage, so a stop is honoured during planning.
+ *
+ * @param service - The jobs service the plan is prepared against, for example `client.jobs`.
+ * @param input - The analysis request fields.
+ * @param polygonInput - The area to analyse.
+ * @param options - Run options such as `retryFrom`, `signal` and `maxTilesOverride`.
+ * @returns The validated submission plan.
+ * @throws {TypeError} when the input carries `vegetation-instances` or `sensor-points`,
+ * which area runs do not support.
+ * @throws {ConfigHashPolicyError} when `retryFrom` was saved by an older SDK whose
+ * configuration hash cannot be compared.
+ * @throws {FacadeCountContractError} when `retryFrom` is a facade schedule counted under
+ * an older sensor-counting rule.
+ * @throws {WeatherIdentityError} when the weather of a retry cannot be shown to be the
+ * weather of the schedule it resumes.
+ * @throws {Error} when `retryFrom` does not match this input (polygon, analysis type,
+ * grid shape, tile positions or configuration hash).
+ * @category Run an analysis
  */
+// Maintainer note (not published): COOPERATIVE since WP-3 (`infrared-core#237`,
+// `docs/DEVIATIONS.md` D78): every stage hands the thread back on a time slice and reads
+// `options.signal` at each boundary, so a host around this SDK stays responsive and a stop is
+// honoured during the plan rather than 24 s later. The work, the order and the answer are
+// unchanged.
 export async function planAreaSubmission(service, input, polygonInput, options = {}) {
     const slice = new Slice(options);
     slice.check();
@@ -55,6 +77,16 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         throw new TypeError("vegetation-instances have no area tiling policy");
     }
     const payload = prepareAreaPayload(input);
+    // A caller-spread RUN OPTION (e.g. `strategy`, `windDirectionDeg` — both
+    // `mergeAreaJobs` options, no request field) is dropped here, with one
+    // warning, BEFORE the hash below and the wire body `base` further down
+    // read the same object (infrared-core #679 follow-up: the kernel field
+    // registry now refuses an unknown key instead of ignoring it).
+    // The wind grade option (D91/D255) is a HOST-only key, never on the wire
+    // and not a registry field: take it OFF the payload before the unknown-key
+    // drop, or `"to-ground"` would be dropped with a warning and ignored.
+    const grade = consumeGradeOption(payload);
+    dropUnknownRequestKeys(payload, options.logger ?? consoleLogger);
     if (payload["vegetation-instances"] != null) {
         throw new TypeError("vegetation-instances have no area tiling policy");
     }
@@ -80,6 +112,12 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         checkFacadeCountContract(options.retryFrom);
     if (surfaceFields)
         checkFacadeSensorCap(options);
+    // Before the first request of any kind (the retry context below asks the
+    // service): an older schedule is refused by name. The weather refusal
+    // comes first, it names the specific hazard of a weather schedule.
+    checkResumeWeather(options.retryFrom, weatherIdentity);
+    if (options.retryFrom !== undefined)
+        requireCurrentConfigHash(options.retryFrom);
     const polygon = validatePolygon(polygonInput);
     const grid = generateTilesForPolygon(polygon, {
         analysisType,
@@ -103,7 +141,7 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     // rather than carried onto a wire that has no such key. The choice is part
     // of the site's identity; the drop itself runs when the site is BUILT.
     const inputs = {
-        payload, options, polygon, config, terrainContextMarginM, grade: consumeGradeOption(payload),
+        payload, options, polygon, config, terrainContextMarginM, grade,
     };
     // The site stage — layers, compose, frame — once per (site content, tiling
     // family), shared by every run in this realm (D96). Four concurrent runs of
@@ -120,7 +158,7 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     const retryContext = options.retryFrom === undefined
         ? undefined
         : await buildRetryContext(service, options.retryFrom, options);
-    const currentSiteIdentity = await retrySiteIdentity(siteKey === undefined ? undefined : `sha256:${kernelConfigHash({ siteKey })}`, inputs, options.retryFrom, retryContext);
+    const currentSiteIdentity = await retrySiteIdentity(siteKey === undefined ? undefined : `sha256:${kernelConfigHash({ siteKey })}`, inputs, options.retryFrom);
     // A no-POST carry-forward cannot attest legacy jobs to newly supplied inputs.
     const siteIdentity = options.retryFrom === undefined ? currentSiteIdentity : options.retryFrom.siteIdentity;
     // The terrain, read into the kernel once per content (D200): the site
@@ -129,8 +167,10 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     const site = await preparedSites().get(siteKey, () => buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain), options.signal);
     texts.clear();
     slice.check();
-    // A facade run's bodies are the kernel's: it composes no tile payload.
-    const composed = surfaceFields ? undefined : await composedTiles(site, slice, options.signal);
+    // A facade run's bodies are the kernel's, and a binary grid run sends the
+    // kernel's artifact: neither composes a tile payload (#816, D277).
+    const composed = surfaceFields || areaTransport(options, analysisType) === "binary"
+        ? undefined : await composedTiles(site, slice, options.signal);
     const ownership = new FacadeOwnership(site.answers.unowned);
     ownership.seedFromSchedule(options.retryFrom?.batchMembership);
     // SHALLOW. `base` is copied once per tile below and nothing on the tile
@@ -143,51 +183,27 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     const base = { ...payload };
     for (const key of GROUP_KEYS)
         delete base[key];
-    const hashFields = { ...payload };
-    if (Object.hasOwn(hashFields, "geometries"))
-        hashFields.geometries = {};
-    delete hashFields["ground-materials"];
-    // "auto" is the default (#555): hashed as nothing, as it is sent, so a retry
-    // with or without an explicit "auto" has the same identity.
-    if (hashFields["mesh-cleaning"] === "auto")
-        delete hashFields["mesh-cleaning"];
-    // The geometry documents are replaced by the KERNEL's group hash before
-    // the kernel's `configHash` ever sees them (D51). `foldHashFields` does
-    // not mutate its input, so the shallow copies above are safe to hand it.
-    //
     // `liveTerrain`, not `terrain` directly: `terrain` was read BEFORE the
     // `await preparedSites().get(...)` above, and the realm's terrain cache
     // is shared by every concurrent plan. A third, different terrain read by
     // ANOTHER plan while this one was suspended on that await evicts and
     // FREES the oldest handle (`site-terrain.ts`'s `MAX_TERRAINS`), which can
     // be this plan's. Reading a freed wasm handle's `groupHash` throws; a
-    // plan that took its terrain before such an eviction must fall back to
-    // folding the document text instead, exactly as `buildPreparedSite`
-    // already does via the same guard (`site-kernel.ts`).
-    const foldedFields = foldHashFields(hashFields, liveTerrain(terrain));
-    const hashInput = Object.hasOwn(foldedFields, "ground-geometry")
-        ? { ...foldedFields, terrain_slicing: { v: 1 } }
-        : foldedFields;
-    // Old SVF tiles used the area centre. Never mix them with corrected retries.
-    if (analysisType === "sky-view-factors")
-        hashInput.tile_location_policy = { v: 1 };
-    // ONLY on a facade run — `tests/area/config-hash-fold.wasm.test.ts` asserts
-    // the fold does not happen on a grid run and does happen on a facade run.
-    const configHash = surfaceFields
-        ? kernelFacadeConfigHash(hashInput, site.tileBuildingFolds ??= await foldTileBuildings(tiles, slice, site.answers))
-        : kernelConfigHash(hashInput);
-    // `configHash` DOES cover the weather arrays in this SDK — the hash input
-    // above is the whole prepared payload minus the geometry groups (their
-    // kernel group hashes stand in for them, D51). Both hosts compute the
-    // value through the SAME kernel primitive (audit M8, D81), but the FIELD
-    // SET stays host-owned, so it still does not agree with the Python SDK,
-    // which hashes only the fields that gate resume/retry. It raises BEFORE
-    // any submission (`docs/DEVIATIONS.md` D45 §4).
-    checkResumeWeather(options.retryFrom, weatherIdentity);
+    // plan that took its terrain before such an eviction must hash the
+    // document text instead, exactly as `buildPreparedSite` already does via
+    // the same guard (`site-kernel.ts`).
+    //
+    // The schedule hash is the kernel's `configHashV2` (`area/config-hash.ts`):
+    // the registry picks the fields, the groups enter as group hashes, an unset
+    // field as its server default. The prepared payload is the PRE-TILE body.
+    // An unset alignment on a supplied scene is "as-is" on the wire, so it is
+    // "as-is" in the hash (the same function the submit path uses).
+    const alignment = suppliedSceneAlignment(analysisType, payload);
+    const gridHash = scheduleConfigHash(analysisType, alignment === undefined ? payload : { ...payload, "terrain-alignment": alignment }, liveTerrain(terrain));
+    // As Python: the same hash for a grid and a facade run. The buildings are
+    // `exclude` in v2; the batch membership and the site identity guard them.
+    const configHash = gridHash;
     if (options.retryFrom !== undefined) {
-        // AFTER the weather guard: both refusals are correct for an old weather
-        // schedule, and the weather one names the specific hazard.
-        requireFoldedSchedule(options.retryFrom);
         if (options.retryFrom.configHash !== configHash) {
             throw new Error("retryFrom schedule configHash mismatch");
         }
@@ -288,37 +304,39 @@ function validateRetryGrid(retry, polygon, analysisType, tiles, grid) {
         throw new Error("retryFrom tilePositions mismatch");
 }
 /**
- * A saved schedule this SDK's `configHash` can be compared with (D51, D81).
+ * A saved schedule whose `configHash` this SDK can compare (D242).
  *
- * SDK 0.13 folds the terrain, context and vegetation documents into the
- * kernel's own group hash before the schedule hash is taken, so the same
- * inputs produce a DIFFERENT `configHash` than 0.12 did; the current SDK
- * additionally takes that hash through the kernel's `configHash` primitive
- * instead of this package's own rounding fold (audit M8b, D81) — a second,
- * independent reason an old value cannot be compared. Comparing either
- * generation's hash against this one would refuse every older resume with
- * "configHash mismatch", which reads as "you changed your inputs" and is not
- * something a caller can act on. The version discriminator is checked first
- * so the refusal says what actually happened and what to do about it — the
- * shape D45's weather refusals use.
+ * `configHash` is the kernel `configHashV2`: the field registry picks the
+ * fields and an unset field is hashed as its server default. A schedule
+ * written by SDK 0.13 or older holds a v1 hash (the host's own field list,
+ * group folds and markers); the same inputs give another value, and a
+ * comparison would report "configHash mismatch", which reads as "you changed
+ * your inputs" and is not something a caller can act on. The contract version
+ * is read first so the refusal says what happened and what to do. It runs
+ * before any request.
  */
-function requireFoldedSchedule(retryFrom) {
+function requireCurrentConfigHash(retryFrom) {
     const version = retryFrom.scheduleContractVersion ?? 1;
-    if (version >= CONFIG_HASH_FOLD_CONTRACT_VERSION)
+    if (version >= CONFIG_HASH_V2_CONTRACT_VERSION)
         return;
     throw new ConfigHashPolicyError(`retryFrom schedule predates this SDK's configHash (schedule contract ` +
         `version ${String(version)}, this SDK writes ` +
-        `${CONFIG_HASH_FOLD_CONTRACT_VERSION}). An older SDK either hashed the ` +
-        "whole terrain, context-geometry and vegetation documents instead of the " +
-        "kernel's group hash of each (D51), or took the hash itself through this " +
-        "package's own rounding fold instead of the kernel's configHash primitive " +
-        "(D81) — either way the two identities cannot be compared and a mismatch " +
-        "here would say nothing about your inputs. Start a fresh run with the " +
-        "same inputs: the tiles that already succeeded are unaffected on the " +
-        "server, and this SDK will not resume a schedule whose identity it " +
-        "cannot verify.");
+        `${CONFIG_HASH_V2_CONTRACT_VERSION}). configHash now takes its fields ` +
+        "from the kernel field registry and hashes an unset field as the " +
+        "server default, so the hash of an older SDK can never equal the one " +
+        "of the same inputs and a mismatch would say nothing about your " +
+        "inputs. Start a fresh run with the same inputs: the tiles that " +
+        "already succeeded are unaffected on the server, and this SDK will " +
+        "not resume a schedule whose identity it cannot verify.");
 }
-/** A resume refused because the saved identity was computed by an older SDK. */
+/**
+ * Thrown when a resume is refused because the saved schedule's configuration hash was
+ * computed by an older SDK and cannot be compared with this one.
+ *
+ * Start a fresh run with the same inputs; tiles that already succeeded are unaffected.
+ *
+ * @category Errors
+ */
 export class ConfigHashPolicyError extends Error {
     constructor(message) {
         super(message);

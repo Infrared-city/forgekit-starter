@@ -4,98 +4,113 @@ import type { RunAreaOptions } from "./run-options.js";
 import type { SiteAnswer } from "./site-assign.js";
 import type { IndexedTile, Polygon, TilingConfig } from "./types.js";
 /**
- * The site, prepared ONCE per (site content, tiling family) and reused by
- * every `runArea` call in this realm (`docs/DEVIATIONS.md` D96).
+ * The site of an area run, prepared once for each site content and tiling family and reused by
+ * every `runArea` call in the same process.
  *
- * Six analyses of one site used to mean six plans: six site passes, six
- * kernel composes, six re-anchors of every tile's occluders, six terrain
- * slices. Four of the six were the solar family on one tiling, the other two
- * the wind family on another — two distinct answers, computed six times, on
- * the one JavaScript thread the four concurrent runs share. What differs
- * between the runs of a family is the analysis config and the weather, and
- * neither reaches this stage.
+ * Analyses of one site that share a tiling family (wind, or solar and thermal) share one
+ * preparation: the composed tile groups and the site pass's answers. What differs between those
+ * runs, the analysis settings and the weather, does not enter this stage. A few sites are kept,
+ * the least recently used is evicted first, and `freePreparedSites` releases them all. The key
+ * is the content of the inputs, so a changed input is a different site.
  *
- * The prepared site is what the plan reads after that stage: the composed
- * tile groups, finished into each tile's frame, and the site pass's answers.
- * Nothing on the submit path writes into a composed group (`buildEntries`
- * spreads shallow copies, the facade split and the reuse controller build new
- * maps), so the same objects serve every run — which is also what lets the
- * geometry-reuse identity of a tile's group be memoised on the object itself
- * (`internal/geometry-reuse/identity.ts`).
- *
- * The cache is MODULE-level, not per client: the platform builds a fresh
- * client per request in some modes, and a client-attached cache is silently
- * defeated there (forge-kit #977). It holds a few sites, evicts the least
- * recently used, and single-flights a build: the first caller builds, the
- * others await the same promise. There is no TTL and no invalidation — a
- * changed input is a different key, and a key is content.
+ * @category Run an analysis
  */
 export interface PreparedSite {
     /**
-     * Every tile's groups, finished into the tile's frame, keyed by tile id,
-     * parsed on the first ask and kept. A GRID run asks; a facade run's bodies
-     * are the kernel's (`area/site-facade.ts`) and it never does.
+     * Every tile's groups, finished into the tile's own frame, keyed by tile id. Parsed on the
+     * first call and kept. Grid runs use it; facade runs do not.
      */
     readonly composed: (slice: Slice) => Promise<Readonly<Record<string, Record<string, unknown>>>>;
-    /** Membership, ownership and the shrink band, per tile, in tile order. */
-    /** The site: the tile answers, and the binary transport's artifacts on ask. */
+    /**
+     * The site pass's answers: membership, ownership and the shrink band per tile, in tile
+     * order, and on request the artifacts of the binary transport.
+     */
     readonly answers: SiteAnswer;
-    /** The facade fold of every tile's buildings, memoised on the first facade run. */
-    tileBuildingFolds?: Record<string, unknown>;
 }
-/** What the site stage reads, and therefore what names a prepared site. */
+/**
+ * What the site stage reads, and therefore what names a prepared site.
+ *
+ * @category Run an analysis
+ */
 export interface SiteInputs {
+    /** The analysis payload, including any geometry groups given in it. */
     readonly payload: Readonly<Record<string, unknown>>;
+    /** The options of the run; its buildings, vegetation, ground materials and tile cap are read. */
     readonly options: RunAreaOptions;
+    /** The area polygon. */
     readonly polygon: Polygon;
+    /** The tiling parameters of the analysis family. */
     readonly config: TilingConfig;
+    /** How far past each tile terrain and geometry are read, in metres. */
     readonly terrainContextMarginM: number;
-    /** The wind family's consumed `terrain-alignment` choice (D91). */
+    /** The `terrain-alignment` choice the wind analyses read. */
     readonly grade: unknown;
 }
 /**
- * The JSON text of each group document the key wrote, by object, for the
- * kernel `Site` constructor of the same plan (`site-assign.ts`). The key
- * and the constructor both need that text; this map lets them write it
- * once. It lives for one plan: nothing keeps it after the site is built.
+ * The JSON text of each group document written while keying a site, by object, so that building
+ * the site does not write it again. It lives for one plan: nothing keeps it after the site is
+ * built.
+ *
+ * @category Run an analysis
  */
 export type SiteTexts = Map<object, string>;
 /**
- * The content key of a site: the digest of every geometry source, plus the
- * tiling family.
+ * Computes the content key of a site: the digest of every geometry source, plus the tiling
+ * family.
  *
- * Each source — a payload group, or an acquired `buildings` / `vegetation` /
- * `groundMaterials` object — is hashed from its JSON text, exactly as it will
- * be read, so two runs handed the same content share a site, while a NEW
- * input map with different content does not, and neither does a map the
- * caller changed in place (the memo checks a content fingerprint). An
- * acquisition result contributes its site content only
- * ({@link acquisitionContent}), so a second fetch of the same site gives the
- * same key and the same `siteIdentity` (D187). The
- * family is the polygon, the preset's three metre scalars, the terrain
- * margin, the tile cap and the wind datum: everything `composeTiles` and the drop to grade read. `undefined` when the
- * realm has no SHA-256 (the same runtimes that get no geometry reuse), in
- * which case the site is built uncached.
+ * Each source (a payload group, or an acquired `buildings`, `vegetation` or `groundMaterials`
+ * object) is hashed from its JSON text as it will be read. Two runs given the same content share
+ * a site; a new input map with different content does not, and neither does a map changed in
+ * place. An acquisition result contributes its site content only, so a second fetch of the same
+ * site gives the same key and the same `siteIdentity`. The tiling family is the polygon, the
+ * preset's three metre sizes, the terrain margin, the tile cap and the wind datum.
  *
- * `legacy` gives the key of 0.12.13-next.17 and older, which hashed each
- * acquisition result WHOLE, per-fetch fields included. Only a retry of a
- * schedule those versions saved asks for it (`planning.ts`).
+ * @param inputs - What the site stage reads.
+ * @param texts - Collects the JSON text of each group written for the key, to reuse it when
+ *   the site is built.
+ * @param legacy - Computes the key of earlier SDK versions (see the note below).
+ * @returns The key, or `undefined` when the runtime has no SHA-256, in which case the site is
+ *   built uncached.
+ * @category Run an analysis
  */
 export declare function preparedSiteKey(inputs: SiteInputs, texts?: SiteTexts, legacy?: boolean): Promise<string | undefined>;
-/** The site stage of `planAreaSubmission`: layers, compose, checks. */
+/**
+ * Builds the prepared site: assembles the geometry layers, composes every tile and checks that
+ * no analysis target is dropped entirely.
+ *
+ * @param inputs - What the site stage reads.
+ * @param analysisType - The analysis type, which selects the tiling parameters.
+ * @param tiles - The tiles of the grid.
+ * @param slice - Lets the work yield the thread between tiles.
+ * @param texts - Group texts already written for the site key.
+ * @param terrain - The terrain, read once.
+ * @returns The prepared site.
+ * @category Run an analysis
+ */
 export declare function buildPreparedSite(inputs: SiteInputs, analysisType: string, tiles: readonly IndexedTile[], slice: Slice, texts?: SiteTexts, terrain?: KernelTerrain): Promise<PreparedSite>;
-/** Bounded, realm-local, single-flight. */
+/**
+ * The cache of prepared sites: bounded (least recently used out first), local to the process,
+ * and single-flight (concurrent requests for one key share one build).
+ *
+ * @category Run an analysis
+ */
 export declare class PreparedSiteCache {
     private readonly maxSites;
     private readonly sites;
+    /** @param maxSites - How many sites to keep; default 4. */
     constructor(maxSites?: number);
     /**
-     * The site under `key`, built by `build` when no caller has built it yet.
+     * Returns the site under `key`, built by `build` when no caller has built it yet.
      *
-     * A caller that arrives while a build is in flight awaits that build. If the
-     * build fails, the failure is the builder's own — its stop signal, or an
-     * input it alone reported — so a waiter that was not itself stopped builds
-     * for itself rather than inherit it.
+     * With an undefined `key` the site is built every time and not kept. A caller that arrives
+     * while a build is in flight awaits that build. If the build fails, the failure is the
+     * builder's own (its stop signal, or an input it alone reported), so a waiter that was not
+     * itself stopped builds for itself rather than inherit it.
+     *
+     * @param key - The content key (see `preparedSiteKey`), or `undefined` to build without caching.
+     * @param build - Builds the site.
+     * @param signal - Cancels a caller that is waiting on another caller's build.
+     * @returns The prepared site.
      */
     get(key: string | undefined, build: () => Promise<PreparedSite>, signal?: AbortSignal): Promise<PreparedSite>;
     /** How many sites are held. */
@@ -104,7 +119,11 @@ export declare class PreparedSiteCache {
     clear(): number;
     private build;
 }
-/** The realm's prepared sites. */
+/**
+ * Returns the cache of prepared sites that `runArea` uses in this process.
+ *
+ * @category Run an analysis
+ */
 export declare function preparedSites(): PreparedSiteCache;
 /**
  * Release every prepared site this realm holds; returns how many it held.
@@ -112,5 +131,8 @@ export declare function preparedSites(): PreparedSiteCache;
  * A long-lived process that has finished with a site can drop tens of
  * megabytes here instead of waiting for the byte bound to evict them. The
  * next `runArea` on that site prepares it again.
+ *
+ * @returns The number of sites that were held.
+ * @category Run an analysis
  */
 export declare function freePreparedSites(): number;

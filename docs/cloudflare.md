@@ -7,7 +7,7 @@
 
 This repo is a trimmed fork of Infrared's internal app template: a React +
 Vite client, a Hono Cloudflare Worker that hides your Infrared API key, and
-a vendored `@infrared-city/infrared-sdk-ts` for calling Infrared's urban
+a vendored `@infrared-city/infrared-sdk` for calling Infrared's urban
 microclimate simulations (wind comfort, thermal comfort/UTCI, solar,
 daylight, sky view factor, ground materials, vegetation).
 
@@ -29,7 +29,7 @@ apps/base/api  (Cloudflare Worker: adds INFRARED_API_KEY, relays S3)
 api.infrared.city/v2 + Infrared's S3 buckets
 ```
 
-The SDK (`@infrared-city/infrared-sdk-ts`) runs in the browser, but the
+The SDK (`@infrared-city/infrared-sdk`) runs in the browser, but the
 browser never holds `INFRARED_API_KEY` — only the Worker does. The browser
 client uses `baseUrl = <worker>/infrared` and a placeholder key; the Worker
 replaces it. Public open data (buildings, trees, ground, weather) is read by

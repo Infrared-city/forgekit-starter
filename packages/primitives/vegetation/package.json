@@ -46,7 +46,7 @@
     "@turf/boolean-valid": "^7.3.4",
     "@turf/kinks": "^7.3.4",
     "zod": "^4.3.6",
-    "@infrared-city/infrared-sdk-ts": "*"
+    "@infrared-city/infrared-sdk": "*"
   },
   "peerDependencies": {
     "react": ">=18",

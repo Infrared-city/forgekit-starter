@@ -2,8 +2,8 @@ import {
   InfraredClient,
   type InfraredClientConfig,
   initializeCore,
-} from '@infrared-city/infrared-sdk-ts'
-import coreWasmUrl from '@infrared-city/infrared-sdk-ts/core.wasm?url'
+} from '@infrared-city/infrared-sdk'
+import coreWasmUrl from '@infrared-city/infrared-sdk/core.wasm?url'
 
 // Every SDK call goes through the Worker in apps/base/api (`/infrared/*`),
 // which adds INFRARED_API_KEY server-side. Dev: `/api` is forwarded by Vite.

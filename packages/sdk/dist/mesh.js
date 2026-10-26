@@ -13,6 +13,19 @@ function validateIndices(indices) {
         }
     }
 }
+/**
+ * Pack a triangle mesh into the compact form used for request bodies.
+ *
+ * `initializeCore()` must have completed. Check the result for a
+ * `not_representable` field before using it as a `PackedMesh`.
+ *
+ * @param coordinates - Flat vertex coordinates (`x, y, z, x, y, z, ...`).
+ * @param indices - Flat triangle vertex indices, three per triangle.
+ * @returns The packed mesh, or a verdict saying why the mesh cannot be packed.
+ * @throws {TypeError} when `coordinates` or `indices` contains a non-finite number.
+ *
+ * @category Buildings
+ */
 export function packMesh(coordinates, indices) {
     validateCoordinates(coordinates);
     validateIndices(indices);

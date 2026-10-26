@@ -1,5 +1,4 @@
 import { beginCompose } from "./composition.js";
-import { foldGeometryGroup } from "./config-hash.js";
 import { checkReadMargin } from "../geodata/read-margin.js";
 import { siteFrameBuildings } from "./reanchor.js";
 import { validateGroundMaterials } from "../request-validation.js";
@@ -112,39 +111,6 @@ export async function composeTiles(groups, tiles, polygon, options, slice) {
         throw error;
     });
     return { composed, site: run.site };
-}
-/**
- * The facade fold of every tile's building map, one slice at a time.
- *
- * ONLY a facade run computes this, for a value a grid run throws away. Each
- * entry is `{"group-hash": geometryGroupHash("geometries", <the tile's map>)}`.
- * The site arena already holds that hash for every tile: the kernel computed
- * it from the same meshes when it wrote the tile's bytes (D98), and the
- * group hash does not depend on key order. So the arena's hash is used, and
- * the map is written and hashed again only where the arena has none (an
- * empty map, a mesh with no hash leaf, or a site answer without an arena).
- * Before, this stage stringified and hashed about four copies of every
- * building on F3 (about 3 s).
- */
-export async function foldTileBuildings(tiles, slice, site) {
-    const folded = {};
-    // `Site.identity` answers every tile's `geometries` hash without writing a
-    // body: the same kernel group hash the arena carries (D98).
-    const hashes = site.identity?.().meshGroupHashes;
-    for (const [index, tile] of tiles.entries()) {
-        await slice.tick();
-        const hash = hashes === undefined ? site.group?.(index, "geometries")?.hash : hashes[index * 2];
-        if (hash) {
-            folded[tile.tileId] = { "group-hash": hash };
-            continue;
-        }
-        // No kernel hash: an empty map, or a mesh with no hash leaf. The fold is
-        // the group's own JSON, as the kernel wrote it.
-        const written = site.tiles[index]?.members.length === 0 ? undefined : site.group?.(index, "geometries");
-        folded[tile.tileId] = foldGeometryGroup("geometries", written === undefined
-            ? {} : JSON.parse(new TextDecoder().decode(written.bytes)));
-    }
-    return folded;
 }
 export function rejectFullyDroppedTargets(groups, site) {
     const requested = groups.geometries;

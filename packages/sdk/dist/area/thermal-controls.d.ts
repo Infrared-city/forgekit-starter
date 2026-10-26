@@ -8,91 +8,87 @@
  */
 import type { AnyRecord } from "./payload-types.js";
 /**
- * The six GLOBAL thermal controls, valid ONLY on `thermal-comfort-index` and
- * `thermal-comfort-statistics`.
+ * The six global thermal controls: `physics`, `wallAlbedo`, `wallAbsorptivity`,
+ * `canopyTransmissivity`, `groundAlbedo` and `groundDtMax`.
  *
- * They are top-level request fields — the same tier as `subtype` and
- * `analysis-type`, not nested under any sub-object — because the models read
- * them straight off the request map: `physics` at
- * `lambda-models rust/solar-models/src/tci.rs:117` (and `tcs.rs:187`/`:201`),
- * the five material overrides at
- * `rust/solar-models/src/material_overrides_prepared.rs` :70 / :72 / :41 /
- * :103 / :105.
+ * They are valid only on `thermal-comfort-index` and `thermal-comfort-statistics`, and are
+ * top-level request fields, at the same level as `subtype` and `analysis-type`, not nested
+ * under any sub-object. Passing one to any other analysis is refused.
  *
- * NOT added to `SURFACE` or to the solar branches: `solar-radiation`,
- * `direct-sun-hours` and `daylight-availability` never read them, and those
- * branches `pick` a fixed list, so a control passed there is dropped exactly
- * as any other unknown key on that branch is. See `docs/DEVIATIONS.md` D53.
+ * @category Requests
  */
 export declare const THERMAL_CONTROLS: readonly ["physics", "wallAlbedo", "wallAbsorptivity", "canopyTransmissivity", "groundAlbedo", "groundDtMax"];
 /**
- * Each control as BOTH spellings a caller may reach for: the camelCase name
- * the conversion documents, and the kebab wire name.
+ * Each thermal control as a pair of its two spellings: the camelCase name and the kebab-case
+ * wire name (`[ "wallAlbedo", "wall-albedo" ]`).
  *
- * The guards read both. `normalizeTopLevel` copies an unaliased key straight
- * through, and nothing on the camelCase path forbids mixing the two forms, so a
- * caller who writes `{ analysisType: "solar-radiation", "wall-albedo": 0.3 }`
- * would otherwise slip past a camelCase-only check and have the control dropped
- * by `pick` — exactly the silent loss this guard exists to stop. Python accepts
- * either spelling too (`populate_by_name`) and refuses the unknown one.
+ * @category Requests
  */
 export declare const THERMAL_CONTROL_SPELLINGS: readonly (readonly [string, string])[];
 /**
- * Both spellings, flat — what the thermal branches `pick` with.
+ * Every thermal control key in both spellings, flat: the camelCase names and the kebab-case
+ * wire names.
  *
- * The pick lists are camelCase because that is the input form they convert,
- * but a caller may mix the two, and a `pick` that names only camelCase DROPS a
- * kebab-spelt control on the very models that read it. Keeping both means the
- * conversion carries whichever the caller wrote; `normalizeTopLevel` maps the
- * camelCase one onto its wire name, passes the wire one through unchanged, and
- * raises `conflicting aliases` if both are given at once.
+ * @category Requests
  */
 export declare const THERMAL_CONTROL_KEYS: readonly string[];
-/** The models that read {@link THERMAL_CONTROLS}. Every other one refuses them. */
+/**
+ * The analysis types that read the thermal controls: `thermal-comfort-index` and
+ * `thermal-comfort-statistics`. Every other analysis refuses them.
+ *
+ * @category Requests
+ */
 export declare const THERMAL_MODELS: ReadonlySet<string>;
 /**
- * The sky/MRT formulation a thermal run selects — a CLOSED set.
+ * The accepted values of `physics`, the sky and mean-radiant-temperature formulation of a
+ * thermal run. The set is closed: any other value is refused before the request is sent.
  *
- * The two thermal models disagree about what an unknown value means, and only
- * one of them refuses it. `tci.rs:117` matches the string EXACTLY and answers
- * 422 for a value it does not know, so a typo on `thermal-comfort-index` costs
- * nothing. `tcs.rs:187`/`:201` only ask whether the value IS `"v1"`: on
- * `thermal-comfort-statistics` a misspelt `"advnaced"` therefore selects the
- * advanced engine, returns 200 and is FULLY BILLED while the caller believes
- * they picked a tier. The conversion refuses the typo rather than letting one
- * model's leniency hide it. An ABSENT value is not a member — it means the
- * model's own default, `advanced-moist` on both.
+ * Leave `physics` unset to get the model's own default, `advanced-moist`. On
+ * `thermal-comfort-index`, `"v1"` and `"detail"` are deprecated: they still run, with one
+ * warning per value per process. On `thermal-comfort-statistics`, `"detail"` is rejected before
+ * submit. New code should leave `physics` unset or use `"advanced"` or `"advanced-moist"`. A
+ * later release will remove `"v1"` and `"detail"`.
  *
- * `"v1"` is deprecated. It stays in this set and keeps running — removing it
- * here would turn a silent default into a hard error — but new callers
- * should leave `physics` unset or pick `"detail"`, `"advanced"`, or
- * `"advanced-moist"`. A later release will remove `"v1"`.
+ * @category Requests
  */
 export declare const PHYSICS_TIERS: readonly ["v1", "detail", "advanced", "advanced-moist"];
-/** One of {@link PHYSICS_TIERS}. */
+/**
+ * One of the values in `PHYSICS_TIERS`.
+ *
+ * @category Requests
+ */
 export type PhysicsTier = (typeof PHYSICS_TIERS)[number];
 /**
- * Refuse a thermal-only control on a model that does not read it.
+ * Refuses a thermal-only control on an analysis that does not read it.
  *
- * `solar-radiation`, `direct-sun-hours` and `daylight-availability` read none
- * of the six (no `material_overrides_prepared` call, no `"physics"` read
- * outside `tci.rs`/`tcs.rs`). Their branches `pick` a fixed list, so before
- * this guard a control passed there was DROPPED in silence and the run billed
- * at the model's defaults — the same silent loss WP15 exists to end, and the
- * one answer Python already gives (`extra="forbid"`). Named per field, so the
- * message says which one to remove. `docs/DEVIATIONS.md` D53.
+ * Without this check, such a control would be dropped silently and the run billed at the
+ * model's defaults. The error names the field to remove.
+ *
+ * @param input - The analysis input to check.
+ * @param type - The analysis type of the input.
+ * @throws {TypeError} when `input` sets one of the six thermal controls (either spelling).
+ * @category Requests
  */
 export declare function rejectThermalControls(input: AnyRecord, type: string): void;
 /**
- * `physics` is a CLOSED set, checked here rather than left to the server.
+ * Checks that `physics` is one of the accepted tiers, before any request is sent.
  *
- * `tci.rs:117` answers 422 for an unknown tier, so a typo on
- * `thermal-comfort-index` costs nothing — but `tcs.rs:187`/`:201` only ask
- * whether the value IS `"v1"`, so on `thermal-comfort-statistics` a misspelt
- * tier silently takes the advanced engine, returns 200 and is fully billed.
+ * An unset or `null` value passes. `"v1"` and `"detail"` are deprecated on
+ * `thermal-comfort-index` (one warning per value per process), and `"detail"` is rejected on
+ * `thermal-comfort-statistics`. Leave `physics` unset, or use `"advanced"` or `"advanced-moist"`.
  *
- * @deprecated `"v1"` is deprecated. Use the default tier (leave `physics`
- * unset) or pick `"detail"`, `"advanced"`, or `"advanced-moist"`. A later
- * release will remove `"v1"`.
+ * @param input - The analysis input to check.
+ * @throws {TypeError} when `physics` is set to anything other than an accepted tier.
+ * @category Requests
  */
 export declare function validatePhysics(input: AnyRecord): void;
+/**
+ * Applies the `physics` policy of an analysis type: refuses a rejected value and warns once
+ * about a deprecated one. A model without a `physics` field, or an unset value, is left alone.
+ *
+ * @param input - The analysis input to check.
+ * @param type - The analysis type of the input.
+ * @throws {TypeError} when `physics` holds a value that `type` does not accept.
+ * @category Requests
+ */
+export declare function enforcePhysicsPolicy(input: AnyRecord, type: string): void;

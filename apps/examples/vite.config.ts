@@ -19,6 +19,6 @@ export default defineConfig({
     },
   },
   // The SDK loads its WebAssembly file with `?url`; keep it out of pre-bundling.
-  optimizeDeps: { exclude: ['@infrared-city/infrared-sdk-ts'] },
+  optimizeDeps: { exclude: ['@infrared-city/infrared-sdk'] },
   build: { target: 'es2022' },
 })

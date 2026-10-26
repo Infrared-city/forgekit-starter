@@ -1,54 +1,52 @@
-/**
- * The static weather catalog reader: the replacement for the deleted
- * utilities-service routes `GET /utils/weather/location`,
- * `POST /utils/weather/{id}/data` and `POST /utils/weather/{id}/data/filter`.
- *
- * Layout, export runbook and the catalog contract:
- * `docs/plans/2026-09-06-weather-static-catalog.md`. Known differences from
- * the deleted routes: `docs/DEVIATIONS.md` D40. The Python twin is
- * `public/python/src/infrared_sdk/layers/weather_static.py`; the constants,
- * the error semantics and the kernel calls below are the same on both hosts.
- *
- * The reader owns HTTP, the catalog cache, and nothing else. Ranking the
- * stations by distance and filtering the hours are LOGIC, so both run in the
- * bundled kernel — `weatherNearestStations` and `weatherFilterHours` — and
- * neither is re-implemented here.
- *
- * Reads go to a public, unauthenticated host through the geodata transport,
- * so they carry the allow-list check, `redirect: "error"`, the SDK
- * User-Agent, ONE deadline over the headers and the body, and a cap kept by
- * the streamed total rather than by a header. No API key ever reaches this
- * host.
- *
- * Private (custom-EPW) weather files are NOT in this catalog and never will
- * be: they are ownership-gated per request and carry no public identity, so
- * a static, cacheable object cannot enforce the check. There is no
- * by-identifier lookup for them any more. A historic private identifier is a
- * typed 404 that says so and points at the replacement workflow — bring the
- * EPW file itself (BYO weather); see MIGRATION.md. No station is ever
- * substituted for one.
- */
+/** Public weather catalog reader: nearest stations, station data and period filtering. */
+// Maintainer note (not published): replaces the deleted utilities-service routes
+// `GET /utils/weather/location`, `POST /utils/weather/{id}/data` and
+// `POST /utils/weather/{id}/data/filter`. Layout, export runbook and catalog contract:
+// `docs/plans/2026-09-06-weather-static-catalog.md`; differences from the routes:
+// `docs/DEVIATIONS.md` D40. The Python twin is
+// `public/python/src/infrared_sdk/layers/weather_static.py`; the constants, error semantics
+// and kernel calls are the same on both hosts.
+//
+// The reader owns HTTP and the catalog cache, nothing else. Ranking stations by distance and
+// filtering hours are LOGIC and run in the bundled kernel (`weatherNearestStations`,
+// `weatherFilterHours`). Reads go to a public, unauthenticated host through the geodata
+// transport: allow-list check, `redirect: "error"`, the SDK User-Agent, ONE deadline over
+// headers and body, and a cap kept by the streamed total rather than by a header.
+//
+// Private (custom-EPW) weather files are NOT in this catalog and never will be: they are
+// ownership-gated per request and carry no public identity, so a static, cacheable object
+// cannot enforce the check. A historic private identifier is a typed 404 that points at the
+// replacement workflow - bring the EPW file itself (BYO weather); see MIGRATION.md. No
+// station is ever substituted for one. `DEFAULT_STATIC_BASE_URL` mirrors the Python constant.
 import { decodeJsonObject, decodeUtf8, failWeather, gunzipIfNeeded, indexStations, parseJsonObject, projectRankedStations, } from "./internal/weather-static-decode.js";
 import { BoundedCache, CATALOG_CACHE_LIMIT, POINTER_CACHE_LIMIT, STATION_CACHE_LIMIT, } from "./internal/weather-static-cache.js";
 import { requireCore } from "./internal/core.js";
 import { fetchPublicBytes, GeodataError, } from "./geodata/index.js";
 import { trimTrailingSlashes } from "./internal/url-trim.js";
 export { WeatherServiceError, } from "./internal/weather-static-decode.js";
-/** Where the catalog lives. Mirrors the Python `DEFAULT_STATIC_BASE_URL`. */
+/**
+ * Root URL of the public weather catalog (`https://geo.infrared.city/weather`).
+ *
+ * @category Weather
+ */
 export const DEFAULT_STATIC_BASE_URL = "https://geo.infrared.city/weather";
 /**
- * Largest single static object this reader holds in memory.
+ * Largest single catalog object the reader will download, in bytes (64 MiB).
  *
- * The catalog is ~7.5 MB (16,757 stations, 2026-09-08 generation) and one
- * station file is under 1 MB compressed.
- * Twin of the Python `MAX_STATIC_BYTES`.
+ * @category Weather
  */
+// Maintainer note (not published): catalog ~7.5 MB (16,757 stations, 2026-09-08); a station < 1 MB gz.
 export const MAX_STATIC_BYTES = 64 * 1024 * 1024;
 /** `FindWeatherRequest.radius`'s default in the deleted route. */
 const DEFAULT_RADIUS_KM = 100;
 /** The `$geoNear` pipeline's `limit: 10`. */
 const STATION_LIMIT = 10;
-/** The pointer's refresh interval; the same 5 minutes the manifests use. */
+/**
+ * How long, in milliseconds, the catalog's "latest" pointer is trusted (5 minutes).
+ *
+ * @category Weather
+ */
+// Maintainer note (not published): the same 5 minutes the manifests use.
 export const CATALOG_TTL_MS = 300_000;
 /**
  * Parsed catalogs, keyed by the generation folder URL. A generation folder is
@@ -104,7 +102,11 @@ function loadOnce(pendingCache, limit, readyCache, key, load) {
     }
     return pending;
 }
-/** Drop every cached pointer, catalog and station in this realm (tests, workers). */
+/**
+ * Forget all cached catalog data in this page, Worker or Node process.
+ *
+ * @category Weather
+ */
 export function clearWeatherCatalogCache() {
     catalogCache.clear();
     catalogPending.clear();
@@ -129,16 +131,19 @@ async function staticBytes(url, operation, request) {
     }
 }
 /**
- * Reads the static catalog for one `WeatherService`.
+ * Reads the public weather catalog, caching what it downloads per page, Worker or
+ * Node process. `WeatherService` uses it for you.
  *
- * Worker rule: the caches above are module state in the realm that loads
- * this module. A Worker initialises its own SDK and gets its own reader and
- * its own caches; nothing falls back to the render thread.
+ * @category Weather
  */
+// Maintainer note (not published): Worker rule: the caches above are module state in the realm
+// that loads this module. A Worker initialises its own SDK, reader and caches; nothing falls
+// back to the render thread.
 export class StaticWeatherReader {
     baseUrl;
     request;
     ttlMs;
+    /** Create a reader; every option is optional. */
     constructor(options = {}) {
         this.baseUrl = trimTrailingSlashes(options.baseUrl ?? DEFAULT_STATIC_BASE_URL);
         this.ttlMs = options.catalogTtlMs ?? CATALOG_TTL_MS;
@@ -215,7 +220,12 @@ export class StaticWeatherReader {
             return decodeUtf8(gunzipIfNeeded(bytes, uuid, operation), subject, operation);
         });
     }
-    /** The nearest stations, ranked by the kernel. */
+    /**
+     * The nearest stations to a point (`lat`, `lon` in degrees), nearest first, at most
+     * ten. `radiusKm` defaults to 100.
+     *
+     * @throws {WeatherServiceError} when the catalog cannot be read or ranked.
+     */
     async nearestStations(lat, lon, radiusKm) {
         const operation = "getWeatherFileFromLocation";
         const { entry } = await this.catalog(operation);
@@ -231,7 +241,11 @@ export class StaticWeatherReader {
         // same order.
         return projectRankedStations(JSON.parse(out), entry, operation);
     }
-    /** One station's full document, as the deleted route returned it. */
+    /**
+     * One station's full document, found by `uuid` or `fileName`.
+     *
+     * @throws {WeatherServiceError} when the station is unknown (404) or the catalog is unreadable.
+     */
     async stationByIdentifier(identifier) {
         const operation = "getWeatherFileFromIdentifier";
         const { folderUrl, entry } = await this.catalog(operation);
@@ -239,7 +253,13 @@ export class StaticWeatherReader {
         const text = await this.stationText(folderUrl, station.uuid, operation);
         return parseJsonObject(text, `Weather station ${JSON.stringify(station.uuid)}`, operation);
     }
-    /** The station's hourly arrays, filtered by the kernel. */
+    /**
+     * A station's hourly arrays (under `weatherData`), filtered to a period given as JSON
+     * text built from `TimeFilters`.
+     *
+     * @throws {WeatherServiceError} when the station is unknown, the catalog is unreadable or the
+     * period is rejected.
+     */
     async filterHours(identifier, timePeriodJson) {
         const operation = "filterWeatherData";
         const { folderUrl, entry } = await this.catalog(operation);

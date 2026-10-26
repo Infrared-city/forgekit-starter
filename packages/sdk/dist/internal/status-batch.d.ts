@@ -8,37 +8,23 @@ import type { Job } from "../job-model.js";
  * call with room for its UnprocessedKeys retry.
  */
 export declare const STATUS_BATCH_LIMIT = 50;
-/** One batched sweep's answer. */
+/**
+ * The answer to one batched status request for many jobs.
+ *
+ * @category Run an analysis
+ */
 export interface StatusSweep {
-    /** What the gateway said, keyed by job id. */
+    /** The status of each answered job, keyed by job id. */
     readonly statuses: Map<string, Job>;
-    /**
-     * Ids this sweep did not settle — no row, or a chunk that failed. The
-     * caller asks about these per job, which gives them exactly the treatment
-     * `GET /jobs/{id}` has always given them (including the 404 that retires a
-     * tile after five consecutive failures).
-     */
+    /** Ids this request did not settle; read each of these with a single-job status call. */
     readonly unanswered: string[];
-    /**
-     * At least one chunk came back in the batched SHAPE. That shape IS the
-     * proof, not whether any job matched: a sweep of ids the gateway has no
-     * row for is a perfectly good batched answer, and treating it as unproven
-     * would leave a working client on the 15 s ladder for its first interval.
-     */
+    /** Whether the service answered in the batched form. */
     readonly batched: boolean;
-    /**
-     * At least one chunk PROVED the gateway does not have the route — it
-     * rejected the form, or answered with the whole-account listing. Distinct
-     * from `!batched`, which a purely transient sweep also produces: a timeout
-     * says nothing about whether the route exists, and must not condemn it.
-     */
+    /** Whether the service showed that it does not offer batched status. */
     readonly lacking: boolean;
-    /** Ids of chunks deferred to the next sweep (D213): the server answered
-     * 429 or a 5xx, or the route is proven and the request failed at the
-     * network level. They are NOT in `unanswered` (no per-job GET in the same
-     * sweep), and the poll engine backs off. */
+    /** Ids deferred to the next sweep because the service answered 429 or a 5xx. */
     readonly failedIds?: readonly string[];
-    /** The longest `Retry-After` those failures carried, seconds. */
+    /** The longest `Retry-After` those failures carried, in seconds. */
     readonly retryAfterS?: number;
 }
 /**

@@ -24,9 +24,10 @@ export declare class KernelGroup {
     #private;
     /**
      * `empty`: the group holds no mesh, known from the plan without writing it
-     * (its text is `{}`). `ids`: a batch's `geometries`, the targets it counted.
+     * (its text is `{}`); a function is asked on the first read only.
+     * `ids`: a batch's `geometries`, the targets it counted.
      */
-    constructor(load: () => KernelText, empty: boolean, ids?: readonly string[]);
+    constructor(load: () => KernelText, empty: boolean | (() => boolean), ids?: readonly string[]);
     /** True when the group holds no mesh. */
     get empty(): boolean;
     /** The target ids of a batch's `geometries`, or `undefined` for other groups. */

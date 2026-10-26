@@ -1,8 +1,13 @@
 import { KernelGroup } from "./kernel-group.js";
 /**
- * The binary artifact of a facade body would make the server synthesize
- * sensors on buildings the plan did not count. Raised before any upload or
- * paid POST; nothing was billed.
+ * Thrown when the binary artifact of a facade batch would make the server place
+ * sensors on buildings that the run plan did not count.
+ *
+ * It is raised before any upload or paid request, so nothing has been billed.
+ * `missing` lists planned target ids the artifact does not carry as targets, and
+ * `unplanned` lists artifact target ids that the plan did not count.
+ *
+ * @category Errors
  */
 export class FacadeArtifactMismatchError extends Error {
     analysisType;
@@ -22,15 +27,15 @@ export class FacadeArtifactMismatchError extends Error {
         this.unplanned = unplanned;
     }
 }
-/** True when a wire body asks the server to synthesize surface sensors. */
+// Maintainer note (not published): true when a wire body asks the server to
+// synthesize surface sensors.
 export function isSurfaceBody(body) {
     return typeof body["analysis-surfaces"] === "string";
 }
-/**
- * Refuse a surface body whose area artifact does not carry EXACTLY the body's
- * planned targets. A direct `submit` encodes its own body (`bodyArtifact`) and
- * is correct by construction, so it has no `artifact` here and is not checked.
- */
+// Maintainer note (not published): refuse a surface body whose area artifact does
+// not carry EXACTLY the body's planned targets. A direct `submit` encodes its own
+// body (`bodyArtifact`) and is correct by construction, so it has no `artifact`
+// here and is not checked.
 export function checkFacadeArtifact(analysisType, body, artifact) {
     const geometries = body.geometries;
     const planned = geometries instanceof KernelGroup

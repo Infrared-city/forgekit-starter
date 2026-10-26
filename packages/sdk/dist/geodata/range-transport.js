@@ -16,7 +16,17 @@ import { withRequest } from "./http.js";
 import { readPartialAnswer, readWholeObjectAnswer } from "./range-answer.js";
 import { RangeRetry } from "./retry.js";
 import { cancelBody } from "../internal/capped-body.js";
-/** HTTP `Range` reader with a per-instance object-size cache. */
+/**
+ * Create a {@link RangeTransport} that reads objects over HTTP `Range` requests,
+ * with a per-instance object-size cache.
+ *
+ * Requests go only to allowed public hosts, carry no credentials and are
+ * retried on transient failures.
+ *
+ * @param options - Fetch, abort signal, timeout, logger and stall timeout.
+ * @returns A transport; reuse it for all reads of one area.
+ * @category Geodata
+ */
 export function httpRangeTransport(options = {}) {
     const sizes = new Map();
     async function ranged(url, start, endExclusive, read) {
@@ -86,7 +96,17 @@ export function httpRangeTransport(options = {}) {
         read: (url, start, endExclusive, read) => ranged(url, start, endExclusive, read),
     };
 }
-/** Serve one in-memory object as a range transport (tests, cached buffers). */
+/**
+ * Create a {@link RangeTransport} that serves one in-memory object, for tests or
+ * already-downloaded buffers.
+ *
+ * @param bytes - The object's bytes.
+ * @param url - The URL the object answers to; defaults to
+ *   `https://geo.infrared.city/in-memory.fgb`. Reads of any other URL are
+ *   rejected with a `GeodataFetchError`.
+ * @returns A transport over the bytes.
+ * @category Geodata
+ */
 export function bytesRangeTransport(bytes, url = "https://geo.infrared.city/in-memory.fgb") {
     const etag = `"in-memory-${bytes.byteLength}"`;
     return {

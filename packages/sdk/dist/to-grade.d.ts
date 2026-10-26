@@ -1,6 +1,7 @@
 import type { AreaGeometryGroups } from "./area/types.js";
 /** The option value that asks for the drop; the default for the wind family. */
 export declare const TO_GROUND = "to-ground";
+export declare const AS_IS = "as-is";
 /** `true` for the two models this option exists on, and no other. */
 export declare function takesGradeDrop(analysisType: unknown): boolean;
 /**
@@ -28,8 +29,8 @@ export declare function dropMeshesToGrade<Mesh>(meshes: Readonly<Record<string, 
  */
 export declare function resolveGradeDrop(payload: Record<string, unknown>, groups: AreaGeometryGroups): AreaGeometryGroups;
 /**
- * The option's value, taken OFF the payload: `"to-ground"` (the wind family's
- * default) or `"as-is"`; `undefined` on a model that has no such option.
+ * The option's value, taken OFF the payload: `"as-is"` (the wind family's
+ * default since 0.14.0, D255) or `"to-ground"`; `undefined` on a model that has no such option.
  */
 export declare function consumeGradeOption(payload: Record<string, unknown>): unknown;
 /** The site with every building at grade when `chosen` asks for it. */

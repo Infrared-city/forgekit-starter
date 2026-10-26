@@ -1,46 +1,54 @@
 /**
- * Local grid-image rendering: the WASM replacement for
- * `POST /utils/analysis/generate-image`.
+ * Local grid-image rendering: turn a result grid into a PNG in the browser, a Worker
+ * or Node, without a network call to an image service.
  *
- * The route normalises the grid, looks a colour scheme up in the models
- * registry, and renders it with matplotlib. This module does the same three
- * things in the browser or a Worker: it reproduces the normalisation, resolves
- * the config against the PUBLIC colour registry, and hands numbers plus one
- * config object to the kernel's `renderGridRegistry`.
- *
- * Two inherited behaviours are deliberate:
- *
- * - **Row order.** The route reverses the caller's grid and then draws it with
- *   `imshow(origin="lower")`; the two flips cancel, so the top image row is the
- *   caller's row 0. `reverseRows` therefore defaults to `false`. The reversal
- *   is still observable in one place — whether the grid is read as wind
- *   CLASSES is decided by the caller's LAST row — and that is reproduced here.
- * - **The fallback.** With no `analysisType`, or one the registry has no config
- *   for, the route falls back to matplotlib's `magma_r` over the grid's own
- *   finite range, no-data white and opaque. `gridToPng`'s default is that same
- *   ramp.
- *
- * Differences from the route are `docs/DEVIATIONS.md` D9 (1:1 cell to pixel up
- * to a 960 px long axis, where the route capped at ~480 px) and D37 (the
- * colour port itself). Nothing fails open: an image
- * in the wrong colours is indistinguishable from a correct one at the call
- * site.
+ * Colours come from the public colour registry for the analysis type you name.
+ * Without a registry entry the image uses a default `magma_r` ramp over the grid's
+ * own finite range, with no-data cells white and opaque.
  */
+// Maintainer note (not published): replaces `POST /utils/analysis/generate-image`.
+// The route normalises the grid, looks a colour scheme up in the models registry, and
+// renders it with matplotlib. This module reproduces the normalisation, resolves the
+// config against the PUBLIC colour registry, and hands numbers plus one config object
+// to the kernel's `renderGridRegistry`.
+//
+// Two inherited behaviours are deliberate:
+// - Row order. The route reverses the caller's grid and then draws it with
+//   `imshow(origin="lower")`; the two flips cancel, so the top image row is the
+//   caller's row 0. `reverseRows` therefore defaults to `false`. The reversal is
+//   still observable in one place - whether the grid is read as wind CLASSES is
+//   decided by the caller's LAST row - and that is reproduced here.
+// - The fallback. With no `analysisType`, or one the registry has no config for, the
+//   route falls back to matplotlib's `magma_r` over the grid's own finite range,
+//   no-data white and opaque. `gridToPng`'s default is that same ramp.
+//
+// Differences from the route: `docs/DEVIATIONS.md` D9 (1:1 cell to pixel up to a
+// 960 px long axis, where the route capped at ~480 px) and D37 (the colour port).
+// Nothing fails open: an image in the wrong colours is indistinguishable from a
+// correct one at the call site.
 import { fetchVisualConfigurations, } from "./internal/registry-document.js";
 import { requireCore } from "./internal/core.js";
 export { clearRegistryCache, fetchVisualConfigurations, MAX_REGISTRY_BYTES, REGISTRY_URL, RegistryFetchError, } from "./internal/registry-document.js";
 /**
- * The default cap on the LONG axis of a rendered image, in pixels.
+ * The default cap on the long axis of a rendered image, in pixels (960).
  *
- * This MIRRORS `ir_raster::DEFAULT_MAX_LONG_AXIS_PX`, which is what the
- * bindings apply; neither binding exports the constant, so the copy here is
- * named so a caller can read it and is held to the kernel's value by the tests
- * that render with the default and assert a 960 px output. A grid at or
- * below the cap renders 1:1, cell for pixel; a larger one is sampled
- * nearest-neighbour on the VALUES, aspect ratio and no-data cells kept (D9).
+ * A grid at or below the cap renders 1:1, one pixel per cell. A larger grid is
+ * sampled nearest-neighbour on its values, so the aspect ratio and no-data cells
+ * are kept.
+ *
+ * @category Results and legend
  */
+// Maintainer note (not published): this MIRRORS `ir_raster::DEFAULT_MAX_LONG_AXIS_PX`,
+// which is what the bindings apply; neither binding exports the constant, so the copy
+// here is named so a caller can read it and is held to the kernel's value by the tests
+// that render with the default and assert a 960 px output (D9).
 export const DEFAULT_MAX_LONG_AXIS_PX = 960;
-/** A grid could not be rendered locally. */
+/**
+ * Thrown when a grid cannot be rendered locally, for example because it is empty,
+ * ragged or mixes text into a numeric result.
+ *
+ * @category Errors
+ */
 export class GridImageError extends Error {
     name = "GridImageError";
 }
@@ -49,9 +57,14 @@ function isDirectConfig(value) {
     return typeof value === "object" && value !== null && "colors" in value;
 }
 /**
- * Flatten `visualConfigurations` to the reference's lookup keys: a simple type
- * keeps its process id, a multi-variant one contributes `process:variant` per
+ * Flatten `visualConfigurations` to a flat lookup table: a simple type keeps its
+ * process id, and a multi-variant one contributes `process:variant` for each
  * variant that carries `colors`.
+ *
+ * @param configurations - The registry's `visualConfigurations` document.
+ * @returns Lookup key to colour configuration.
+ *
+ * @category Results and legend
  */
 export function flattenVisualConfigs(configurations) {
     const flat = {};
@@ -69,11 +82,19 @@ export function flattenVisualConfigs(configurations) {
     return flat;
 }
 /**
- * The config for one analysis type, or `undefined` when the registry has none.
+ * The colour configuration for one analysis type, or `undefined` when the registry
+ * has none.
  *
  * The bare `analysisType` wins; only if it is absent does `criteria` (then
- * `subtype`) select a variant. `undefined` is not an error — the route falls
- * back to its magma_r ramp there, and so does this renderer.
+ * `subtype`) select a variant. `undefined` is not an error: the renderer falls
+ * back to its default `magma_r` ramp.
+ *
+ * @param configurations - The registry's `visualConfigurations` document.
+ * @param analysisType - Analysis process id, e.g. `"pedestrian-wind-comfort"`.
+ * @param selectors - Optional variant selectors; `criteria` wins over `subtype`.
+ * @returns The matching configuration, or `undefined`.
+ *
+ * @category Results and legend
  */
 export function resolveVisualConfig(configurations, analysisType, selectors = {}) {
     const flat = flattenVisualConfigs(configurations);
@@ -88,11 +109,18 @@ export function resolveVisualConfig(configurations, analysisType, selectors = {}
     return undefined;
 }
 /**
- * The kernel's wind-comfort class table, e.g. `{A: 0, .., S: 5, S15: 5, S20: 6}`.
+ * The wind-comfort class table, mapping a class label to its ordinal, e.g.
+ * `{A: 0, .., S: 5, S15: 5, S20: 6}`.
  *
- * Read from the core so the host and the kernel cannot drift. A label outside
- * it is no-data, never a clamped class.
+ * A label outside the table is treated as no-data, never as a clamped class.
+ * `initializeCore()` must have completed.
+ *
+ * @returns Class label to ordinal.
+ *
+ * @category Results and legend
  */
+// Maintainer note (not published): read from the core so the host and the kernel
+// cannot drift.
 export function windClassOrdinals() {
     if (windOrdinals === undefined) {
         const raw = requireCore().windClassOrdinals();
@@ -101,13 +129,21 @@ export function windClassOrdinals() {
     return windOrdinals;
 }
 /**
- * Grid as returned by the API to the flat `Float32Array` the kernel takes.
+ * Convert a grid as returned by the API into a flat `Float32Array` plus its size.
  *
- * `null` / `undefined` is no-data, and when the LAST row holds any string the
- * whole grid is read as wind CLASSES (an unknown label is no-data, a number
- * stays a number). The last row decides because the route decides on the
- * already-reversed grid.
+ * `null` / `undefined` cells become no-data (`NaN`). When the last row holds any
+ * string, the whole grid is read as wind-comfort classes: an unknown label is
+ * no-data and a number stays a number.
+ *
+ * @param grid - Rows of cells: numbers, class labels, `null` or `undefined`.
+ * @returns The row-major values and the grid `width` and `height`.
+ * @throws {GridImageError} when the grid is empty, ragged, holds a non-numeric cell
+ * or mixes text into a numeric result.
+ *
+ * @category Results and legend
  */
+// Maintainer note (not published): the last row decides because the route decides on
+// the already-reversed grid.
 export function normalizeGrid(grid) {
     if (!Array.isArray(grid) || grid.length === 0) {
         throw new GridImageError("grid is empty");
@@ -152,18 +188,28 @@ export function normalizeGrid(grid) {
     return { values, width, height };
 }
 /**
- * Render a result grid to PNG bytes with the initialized Infrared WASM core.
+ * Render a result grid to PNG bytes with the initialized Infrared core.
  *
- * The image is **1:1 — one pixel per grid cell** up to a 960 px long axis (D9),
- * not the route's ~480 px matplotlib figure; `maxLongAxisPx` moves that cap
- * and `0` removes it. Colours come from the registry `visualConfigurations`
- * entry the options resolve to; without one, the magma_r fallback the route
- * uses applies. Read the result size with {@link gridImageSize}.
+ * The image is 1:1, one pixel per grid cell, up to a 960 px long axis;
+ * `maxLongAxisPx` moves that cap and `0` removes it. Colours come from the registry
+ * `visualConfigurations` entry the options resolve to; without one, a default
+ * `magma_r` ramp applies. Read the result size with `gridImageSize`.
  * `initializeCore()` must have completed.
  *
  * The promise only awaits the registry: pass `visualConfigurations` (or omit
- * `analysisType`) and it resolves without any I/O at all.
+ * `analysisType`) and it resolves without any network request.
+ *
+ * @param grid - Rows of cells: numbers, class labels, `null` or `undefined`.
+ * @param options - Analysis type, variant selectors, row order and size cap.
+ * @returns PNG file bytes.
+ * @throws {GridImageError} when the grid is invalid or local rendering fails.
+ * @throws {RegistryFetchError} when the colour registry has to be fetched and the
+ * fetch fails.
+ *
+ * @category Results and legend
  */
+// Maintainer note (not published): the image is 1:1 up to a 960 px long axis (D9), not
+// the route's ~480 px matplotlib figure.
 export async function renderGridPng(grid, options = {}) {
     const { values, width, height } = normalizeGrid(grid);
     const reverseRows = options.reverseRows ?? false;
@@ -182,7 +228,7 @@ export async function renderGridPng(grid, options = {}) {
     }
     try {
         if (config !== undefined) {
-            return requireCore().renderGridRegistry(values, width, height, JSON.stringify(config), reverseRows, maxLongAxisPx);
+            return requireCore("renderGridPng").renderGridRegistry(values, width, height, JSON.stringify(config), reverseRows, maxLongAxisPx);
         }
         // The magma_r fallback takes the SAME row-order argument as the registry
         // path, so both flip the OUTPUT rows after the cap has sampled the grid.
@@ -190,7 +236,7 @@ export async function renderGridPng(grid, options = {}) {
         // a row up to one grid row away from the registry path, because a
         // nearest-neighbour map is not symmetric for every size pair. It also
         // copied the whole grid on exactly the biggest inputs.
-        return requireCore().gridToPng(values, width, height, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, maxLongAxisPx, reverseRows);
+        return requireCore("renderGridPng").gridToPng(values, width, height, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, maxLongAxisPx, reverseRows);
     }
     catch (error) {
         if (error instanceof GridImageError)
@@ -199,17 +245,25 @@ export async function renderGridPng(grid, options = {}) {
     }
 }
 /**
- * The rendered size and the scale factor, for aligning an overlay.
+ * The rendered size and the scale factor of a PNG from `renderGridPng`, for
+ * aligning an overlay.
  *
- * The dimensions are READ FROM THE PNG the kernel wrote, never recomputed
- * from the cap: the cap rule has ONE home, in the kernel, and a second
- * implementation here could only disagree with it. `gridWidth` / `gridHeight`
- * are the dimensions of the grid that was rendered.
+ * The dimensions are read from the PNG itself. A capped image maps output pixel
+ * `(x, y)` to grid cell
+ * `(floor((x + 0.5) * gridWidth / width), floor((y + 0.5) * gridHeight / height))`,
+ * the nearest-neighbour rule.
  *
- * A capped image maps output pixel `(x, y)` to grid cell
- * `(floor((x + 0.5) * gridWidth / width), floor((y + 0.5) * gridHeight /
- * height))` — the nearest-neighbour rule of D9.
+ * @param png - PNG bytes from `renderGridPng`.
+ * @param gridWidth - Width of the rendered grid, in cells.
+ * @param gridHeight - Height of the rendered grid, in cells.
+ * @returns The image `width` and `height` in pixels and the pixels per cell.
+ * @throws {GridImageError} when `png` is not a PNG or a grid dimension is not positive.
+ *
+ * @category Results and legend
  */
+// Maintainer note (not published): the dimensions are READ FROM THE PNG the kernel
+// wrote, never recomputed from the cap: the cap rule has ONE home, in the kernel, and
+// a second implementation here could only disagree with it (D9).
 export function gridImageSize(png, gridWidth, gridHeight) {
     if (png.length < 24)
         throw new GridImageError("not a PNG");

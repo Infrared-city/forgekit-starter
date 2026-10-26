@@ -1,14 +1,12 @@
-/**
- * The page half of the SDK worker helper: one SDK client in ONE dedicated
- * worker. The helper has no pool, no worker count, no retry and no
- * persistence; the application owns those. It never sends a call again.
- */
+// Maintainer note (not published): The page half of the SDK worker helper: one SDK client
+// in ONE dedicated worker. The helper has no pool, no worker count, no retry and no
+// persistence; the application owns those. It never sends a call again.
 import { areaScheduleFromJSON, areaScheduleToJSON } from "../area/schedule.js";
 import { restoreError, } from "./protocol.js";
 /** Workers that already serve a client: one client per worker, never two. */
 const bound = new WeakSet();
 /**
- * The worker ended while calls were open.
+ * Thrown by every open call when the worker ends.
  *
  * - `load`: the worker failed before it was ready. No call started work,
  *   so nothing was sent.
@@ -16,14 +14,25 @@ const bound = new WeakSet();
  *   in `acceptedJobIds` were accepted (the ids that `onAccepted` reported
  *   for this call and the page received before the loss; an id still in
  *   flight can be missing). Every other tile of a `runArea` call is
- *   UNCERTAIN: its POST may have reached the server. Do not send them again
+ *   uncertain: its request may have reached the server. Do not send them again
  *   automatically.
+ *
+ * @category Worker
  */
 export class WorkerLostError extends Error {
     reason;
     acceptedJobIds;
     name = "WorkerLostError";
-    constructor(reason, acceptedJobIds, message = reason === "load" ? "the SDK worker failed to load" : "the SDK worker ended during a call") {
+    /**
+     * @param reason - `"load"` or `"lost"`, as described above.
+     * @param acceptedJobIds - Ids of the jobs the server accepted before the worker ended.
+     * @param message - The error message; a default is given for each reason.
+     */
+    constructor(
+    /** Why the worker ended: `"load"` or `"lost"`. */
+    reason, 
+    /** Ids of the jobs accepted before the worker ended. */
+    acceptedJobIds, message = reason === "load" ? "the SDK worker failed to load" : "the SDK worker ended during a call") {
         super(message);
         this.reason = reason;
         this.acceptedJobIds = acceptedJobIds;
@@ -41,7 +50,42 @@ function abortReason(signal) {
     const reason = signal.reason;
     return typeof reason?.message === "string" ? reason.message : "aborted";
 }
-/** Serve one SDK client from a dedicated worker. See `docs/sdk-execution.md`. */
+/**
+ * Creates an SDK client that runs in one dedicated worker.
+ *
+ * One worker serves one client; the helper has no pool, no retry and no persistence, and it
+ * never sends a call again. The worker file must call `serveSdkWorker()`. Errors cross the
+ * worker boundary as plain `Error` objects: check `error.name`, not `instanceof`.
+ * `getToken` is called per request with no session binding, so use one worker per signed-in
+ * session and dispose the client on sign-out.
+ *
+ * @example
+ * ```ts
+ * // sdk.worker.ts
+ * import { serveSdkWorker } from "@infrared-city/infrared-sdk/worker";
+ * serveSdkWorker();
+ *
+ * // page
+ * import { createWorkerClient } from "@infrared-city/infrared-sdk/worker";
+ * const sdk = createWorkerClient({
+ *   worker: new Worker(new URL("./sdk.worker.ts", import.meta.url), { type: "module" }),
+ *   module, // a WebAssembly.Module compiled once on the page
+ *   getToken,
+ * });
+ * const schedule = await sdk.runArea(input, polygon, {
+ *   onAccepted: (jobId, tileKey) => saveJobId(jobId, tileKey),
+ * });
+ * const result = await sdk.mergeAreaJobs(schedule);
+ * sdk.dispose();
+ * ```
+ *
+ * @param options - The worker, the compiled SDK core, the cloneable client config and an
+ * optional token callback.
+ * @returns The worker client.
+ * @throws {TypeError} When the worker already serves a client.
+ * @category Worker
+ */
+// Maintainer note (not published): See `docs/sdk-execution.md`.
 export function createWorkerClient(options) {
     const { worker, getToken } = options;
     // A second client would answer the first one's token requests with its

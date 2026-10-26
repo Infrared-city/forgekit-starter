@@ -399,7 +399,7 @@ describe('createAreaDrawLayer', () => {
 // ─── No tiling imports assertion (task-3 new files) ────────────────────────
 
 describe('no tiling imports (task-3 files)', () => {
-  it('none of the new task-3 files import from @infrared-city/infrared-sdk-ts/tiling', () => {
+  it('none of the new task-3 files import from @infrared-city/infrared-sdk/tiling', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const paths = [
       resolve(here, '../react/analysis.area-draw-layer.ts'),
@@ -407,8 +407,8 @@ describe('no tiling imports (task-3 files)', () => {
     ]
     for (const p of paths) {
       const source = readFileSync(p, 'utf8')
-      expect(source, `${p} must not import @infrared-city/infrared-sdk-ts/tiling`).not.toContain(
-        '@infrared-city/infrared-sdk-ts/tiling',
+      expect(source, `${p} must not import @infrared-city/infrared-sdk/tiling`).not.toContain(
+        '@infrared-city/infrared-sdk/tiling',
       )
     }
   })

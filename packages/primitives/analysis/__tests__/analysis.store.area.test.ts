@@ -325,13 +325,13 @@ describe('useAnalysisStore — area slice', () => {
   })
 
   describe('no tiling imports', () => {
-    it('analysis.store.ts does not import from @infrared-city/infrared-sdk-ts/tiling', () => {
+    it('analysis.store.ts does not import from @infrared-city/infrared-sdk/tiling', () => {
       // The client never imports from the SDK's tiling subpath — the server
       // owns all SDK tile types.
       const here = dirname(fileURLToPath(import.meta.url))
       const storePath = resolve(here, '../react/analysis.store.ts')
       const source = readFileSync(storePath, 'utf8')
-      expect(source).not.toContain('@infrared-city/infrared-sdk-ts/tiling')
+      expect(source).not.toContain('@infrared-city/infrared-sdk/tiling')
     })
   })
 })

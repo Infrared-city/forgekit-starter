@@ -8,7 +8,25 @@ import { eachChunk, siteChunks } from "./site-chunks.js";
 import { requireCore } from "../internal/core.js";
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
-/** Compose, merge and clean the ground materials of one site. */
+/**
+ * Read, compose, merge and clean the ground materials of a whole site.
+ *
+ * The site is read in chunks of about 2 x 2 km (one rectangle below 4 km2), each
+ * with its own road read and a shared Overture read of the site. The chunks are
+ * then composed, merged and cleaned in a single step, so no per-tile documents
+ * exist. If any chunk fails to read the whole call fails.
+ *
+ * @param site - The site's bounding box in WGS84 degrees.
+ * @param options - Cleaning extent, optional tile rectangles and read options.
+ * @returns The merged layers as JSON text, the Overture release and the chunks.
+ * @throws {SiteReadError} when one or more chunks cannot be read; it names every
+ *   failed chunk.
+ * @throws {GeodataDependencyError} when the optional parquet reader packages are
+ *   not installed.
+ * @category Ground materials
+ */
+// Maintainer note (not published): the compose list is built from
+// `chunk ∩ union(tile rectangles)` (D57), see the note on the options above.
 export async function acquireGroundMaterialsArea(site, options) {
     // FIRST, before any planning. Every ground read reads Overture — the three
     // GROUND_COLLECTIONS are Overture themes — so a realm without the parquet

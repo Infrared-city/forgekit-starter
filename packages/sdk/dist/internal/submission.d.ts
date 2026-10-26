@@ -11,16 +11,24 @@ export interface SubmitArchiveOptions<T> {
     readonly timeoutMs: number;
     readonly signal?: AbortSignal;
     readonly parseAccepted: (value: unknown) => T;
-    /** The area retry `Idempotency-Key` for this submit (D224). Unset for a
-     * direct, non-area submit: that path keeps today's single-attempt D59
-     * behaviour. */
+    /** The `Idempotency-Key` sent with this submission so an area retry cannot create a duplicate job. */
     readonly idempotencyKey?: string;
 }
+/**
+ * Thrown when a job submission was sent but it is not certain whether the API created a
+ * job, so repeating it could be billed twice.
+ *
+ * `acceptedJobIds` lists any job ids the API reported, so they can be checked or
+ * reconciled against billing. The SDK does not retry such a submission by itself.
+ *
+ * @category Errors
+ */
 export declare class SubmissionUncertainError extends Error {
     readonly acceptedJobIds: readonly string[];
     readonly name = "SubmissionUncertainError";
+    /** Always `"unknown-acceptance"`. */
     readonly phase = "unknown-acceptance";
-    /** Set when a sent POST got a 3xx or 5xx answer instead of an accept. */
+    /** The HTTP status when the answer was a redirect (3xx) or a server error (5xx), otherwise `undefined`. */
     readonly status: number | undefined;
     constructor(acceptedJobIds: readonly string[], status?: number);
 }

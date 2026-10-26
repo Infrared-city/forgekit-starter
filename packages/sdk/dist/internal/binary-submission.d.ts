@@ -1,8 +1,12 @@
 import type { Job, PreparedSubmission } from "../jobs.js";
 import { type UploadArtifact } from "./binary-artifact.js";
 import { GatewayTransport, type FetchLike } from "./transport.js";
-import { type TreeBoxSubstitution } from "./tree-boxes.js";
 type JsonObject = Record<string, unknown>;
+/**
+ * The size limits the service sets for a binary request and its result.
+ *
+ * @category Requests
+ */
 export interface BinaryLimits {
     maxGeometryBytes: number;
     maxMetadataBytes: number;
@@ -12,6 +16,11 @@ export interface BinaryLimits {
     maxResultCells: number;
     maxTriangleValues: number;
 }
+/**
+ * What the service accepts on its binary route: formats, models and limits.
+ *
+ * @category Requests
+ */
 export interface BinaryCapability {
     inputFormat: "irbf";
     resultFormat: "irbf";
@@ -21,17 +30,15 @@ export interface BinaryCapability {
         resultFamilies: string[];
     }>;
     limits: BinaryLimits;
-    /** The geometry document schemas the server reads (D206); absent = `[1]`. */
+    /** The geometry document versions the service reads; when absent, only `1`. */
     geometrySchemas?: readonly number[];
-    /** The server reads a job's `targets` range (#602); absent = per-job frames. */
+    /** Present when the service reads a job's `targets` range; when absent, each job has its own frame. */
     facadeTargets?: number;
 }
 export interface PreparedBinary {
     readonly artifact: UploadArtifact;
     readonly control: JsonObject;
     readonly limits: BinaryLimits;
-    /** Set when this model's live capability made the SDK box the body's trees. */
-    readonly treeBoxes?: TreeBoxSubstitution;
 }
 export interface BinarySubmission {
     readonly geometry: JsonObject;
@@ -53,6 +60,12 @@ export interface BinarySubmission {
     readonly resultFormat: "irbf" | "json";
 }
 export declare function capability(gateway: GatewayTransport, signal?: AbortSignal): Promise<BinaryCapability>;
+/**
+ * The checks of a binary route that hold for every job of a run: the geometry
+ * schema and the model's binary route. An area run makes them once, before
+ * its first paid POST (#816, D277); each job makes them again here.
+ */
+export declare function checkBinaryRoute(analysisType: string, supported: BinaryCapability): BinaryCapability["models"][string];
 export declare function prepareBinary(prepared: PreparedSubmission, supported: BinaryCapability): Promise<PreparedBinary>;
 export declare function uploadGeometry(uploadGateway: GatewayTransport, fetch: FetchLike, prepared: PreparedBinary, timeoutMs: number, signal?: AbortSignal): Promise<string>;
 export declare function binarySubmission(binary: PreparedBinary, geometryUrl: string, resultFormat?: "irbf" | "json"): BinarySubmission;

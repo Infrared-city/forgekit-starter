@@ -5,7 +5,14 @@ import { DaylightFactorResult, isDaylightFrame } from "../parts/daylight-result.
 import { decompressResultArchive } from "./archive.js";
 import { parseSurfaceRecord, parseValidatedIrBfSurfaceRecord } from "./surface-record.js";
 const IRBF_MAGIC = [73, 82, 66, 70, 13, 10, 26, 10];
-/** The strict IRBF result limits every result decode in this package applies. */
+/**
+ * The size limits applied to every binary result: total bytes, metadata bytes, cells and
+ * triangle values.
+ *
+ * @category Results and legend
+ */
+// Maintainer note (not published): The strict IRBF result limits every result decode in
+// this package applies.
 export const RESULT_DECODE_LIMITS = {
     maxTotalBytes: 268_435_456, maxMetadataBytes: 4_194_304,
     maxCells: 16_777_216, maxTriangleValues: 67_108_864,
@@ -54,7 +61,17 @@ function jsonRoute(document, options) {
     }
     return { route: "json", value };
 }
-/** Route one already decompressed JSON or strict IRBF document. */
+/**
+ * Parses one already expanded result document (JSON or binary) and routes it by kind.
+ *
+ * @param document - The expanded result bytes.
+ * @param options - Expected grid kind and surface options.
+ * @returns The parsed result, tagged by `route`.
+ * @throws {TypeError} When the result is a grid of a kind other than `expectedGridKind`.
+ * @throws {Error} When the document is not a valid result.
+ * @category Results and legend
+ */
+// Maintainer note (not published): JSON or strict IRBF document.
 export function parseResultDocument(document, options = {}) {
     const irbf = document.length >= IRBF_MAGIC.length
         && IRBF_MAGIC.every((value, index) => document[index] === value);
@@ -76,7 +93,15 @@ export function parseResultDocument(document, options = {}) {
     }
     return { route: "json", value: decoded.value };
 }
-/** Decompress one supported JSON or strict IRBF result. */
+/**
+ * Expands a downloaded result archive and parses the document inside it.
+ *
+ * @param content - The downloaded archive bytes.
+ * @param options - Archive limits, expected grid kind and surface options.
+ * @returns The parsed result, tagged by `route`.
+ * @throws {Error} When the archive cannot be expanded or the result is not valid.
+ * @category Results and legend
+ */
 export function parseResultArchive(content, options = {}) {
     return parseResultDocument(decompressResultArchive(content, options.archive), options);
 }

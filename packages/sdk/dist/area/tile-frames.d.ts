@@ -1,5 +1,9 @@
 import type { Polygon } from "./types.js";
-/** A frame origin in WGS84 degrees. */
+/**
+ * A frame origin as longitude and latitude in WGS84 degrees.
+ *
+ * @category Tiling
+ */
 export interface FrameOrigin {
     readonly lon: number;
     readonly lat: number;

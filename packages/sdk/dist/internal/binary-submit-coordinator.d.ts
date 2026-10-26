@@ -3,6 +3,18 @@ import { type AuthResolver } from "./auth.js";
 import { type PreparedBinary } from "./binary-submission.js";
 import { BinaryUrlCache } from "./binary-url-cache.js";
 import { GatewayTransport, type FetchLike } from "./transport.js";
+/**
+ * The two stages of one area run (T4). The upload (presign + PUT) holds an
+ * upload slot; the paid POST holds a POST slot. A submit that waits for an
+ * upload another submit started holds no upload slot, so the run can upload
+ * its next tile in the meantime.
+ */
+export interface SubmitStages {
+    /** This submit needs no upload slot any more. Called at most once. */
+    readonly uploaded: () => void;
+    /** Send the paid POST in one of the run's POST slots. */
+    readonly post: <T>(send: () => Promise<T>) => Promise<T>;
+}
 interface BinarySubmitOptions {
     readonly prepared: PreparedSubmission;
     readonly prepare: (fresh: boolean) => Promise<PreparedBinary>;
@@ -15,18 +27,8 @@ interface BinarySubmitOptions {
     readonly timeoutMs: number;
     readonly urlCache: BinaryUrlCache;
     readonly reuseEnabled: boolean;
-    /**
-     * In-flight uploads of a shared archive, one per encoding+digest (#602):
-     * an area submission's jobs race to upload one shared archive, and this
-     * makes a later job await the first upload instead of starting its own.
-     * ONE map per area run, made by the caller and passed here — a direct,
-     * single submit passes none, so it never shares an upload with anything.
-     * Applies whether or not URL reuse is on; reuse only decides whether the
-     * finished URL is also KEPT in `urlCache` for a later, separate
-     * submission. The entry comes out of the map the moment its upload
-     * settles.
-     */
-    readonly uploads?: Map<string, Promise<string>>;
+    /** The two stages of an area run (T4); unset for a direct, single submit. */
+    readonly stages?: SubmitStages;
     readonly signal?: AbortSignal;
     readonly beforeDispatch?: () => void;
     /** The area retry `Idempotency-Key` for this submit (D224); unset for a

@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { InfraredClient } from '@infrared-city/infrared-sdk-ts'
+import { type InfraredClient, initializeCore } from '@infrared-city/infrared-sdk'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { Polygon as GeoJSONPolygon } from 'geojson'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnalysesName } from '../core/analysis.sdk-types'
 import {
   AREA_RUN_TIMEOUT_MS,
@@ -47,8 +48,12 @@ const baseInput: RunAreaInput = {
   buildings: { b1: { id: 'b1' } },
 }
 
+// The SDK 1.0 shape: `mergedGrid` keeps the server's type. Here f16 bits:
+// 0x3800 = 0.5, 0x3c00 = 1, 0x4000 = 2, 0x7e00 = NaN (no value).
 const mockAreaResult = {
-  mergedGrid: Float64Array.from([0.1, NaN, 0.3, NaN, 0.5, NaN]),
+  mergedGrid: Uint16Array.from([0x3800, 0x7e00, 0x3c00, 0x7e00, 0x4000, 0x7e00]),
+  valueDtype: 'f16' as const,
+  valueDivisor: 1,
   gridShape: [2, 3] as [number, number],
   failedJobs: [] as Array<{ tileId: string; error?: string }>,
   skippedJobs: [] as string[],
@@ -90,6 +95,12 @@ function resetStore() {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('createUseRunArea', () => {
+  // `areaGridValuesF32` runs in the WASM core: load the vendored core once.
+  beforeAll(async () => {
+    const wasm = createRequire(import.meta.url).resolve('@infrared-city/infrared-sdk/core.wasm')
+    await initializeCore({ bytes: readFileSync(wasm) })
+  })
+
   beforeEach(() => {
     vi.restoreAllMocks()
     vi.clearAllMocks()
@@ -158,8 +169,11 @@ describe('createUseRunArea', () => {
     expect(state.areaError).toBeNull()
     expect(state.areaResult).toBeDefined()
     expect(state.areaResult?.gridShape).toEqual([2, 3])
-    // NaN values should be null
-    expect(state.areaResult?.mergedGrid[0][1]).toBeNull()
+    // f16 bits are decoded to physical values; NaN values should be null
+    expect(state.areaResult?.mergedGrid).toEqual([
+      [0.5, null, 1],
+      [null, 2, null],
+    ])
   })
 
   it('emits a success toast when the run completes', async () => {
@@ -285,7 +299,7 @@ describe('createUseRunArea', () => {
 // ─── No tiling subpath imports assertion ────────────────────────────────────
 
 describe('no tiling imports', () => {
-  it('downstream files do not deep-import @infrared-city/infrared-sdk-ts/tiling', () => {
+  it('downstream files do not deep-import @infrared-city/infrared-sdk/tiling', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const paths = [
       resolve(here, '../react/analysis.area-run-api.ts'),
@@ -294,8 +308,8 @@ describe('no tiling imports', () => {
     ]
     for (const p of paths) {
       const source = readFileSync(p, 'utf8')
-      expect(source, `${p} must not import @infrared-city/infrared-sdk-ts/tiling`).not.toContain(
-        '@infrared-city/infrared-sdk-ts/tiling',
+      expect(source, `${p} must not import @infrared-city/infrared-sdk/tiling`).not.toContain(
+        '@infrared-city/infrared-sdk/tiling',
       )
     }
   })

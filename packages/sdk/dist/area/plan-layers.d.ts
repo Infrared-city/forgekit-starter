@@ -45,18 +45,4 @@ export declare function composeTiles(groups: AreaGeometryGroups, tiles: readonly
     composed: (slice: Slice) => Promise<Record<string, Record<string, unknown>>>;
     site: SiteAssignment;
 }>;
-/**
- * The facade fold of every tile's building map, one slice at a time.
- *
- * ONLY a facade run computes this, for a value a grid run throws away. Each
- * entry is `{"group-hash": geometryGroupHash("geometries", <the tile's map>)}`.
- * The site arena already holds that hash for every tile: the kernel computed
- * it from the same meshes when it wrote the tile's bytes (D98), and the
- * group hash does not depend on key order. So the arena's hash is used, and
- * the map is written and hashed again only where the arena has none (an
- * empty map, a mesh with no hash leaf, or a site answer without an arena).
- * Before, this stage stringified and hashed about four copies of every
- * building on F3 (about 3 s).
- */
-export declare function foldTileBuildings(tiles: readonly IndexedTile[], slice: Slice, site: SiteAnswer): Promise<Record<string, unknown>>;
 export declare function rejectFullyDroppedTargets(groups: AreaGeometryGroups, site: SiteAnswer): void;

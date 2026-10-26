@@ -10,6 +10,7 @@ import { bodyWithReference, prepareGeometryGroups, selectedDocumentParts, } from
 import { notifyCapability, safeLog } from "./observer.js";
 import { bound, submitBody, uploadGeometry } from "./submit.js";
 import { expiryFromUrl } from "./expiry.js";
+import { storeKey } from "../geometry-url-store.js";
 const DIRECT_SCOPE = "direct-v1";
 const DEAD_REF_CODES = new Set(["REF_EXPIRED", "REF_NOT_FOUND"]);
 const INTERIOR_ANALYSES = new Set([
@@ -84,8 +85,9 @@ function unsafeCandidate(error) {
     }
     throw error;
 }
-async function executePlan(prepared, analysisType, partitionKey, scopeKey, transport, recover, logger) {
+async function executePlan(prepared, analysisType, partitionKey, scopeKey, transport, recover, options) {
     const cache = getGeometryReuseCache();
+    const logger = options.logger;
     try {
         return await cache.withScope(partitionKey, scopeKey, async () => {
             const snapshot = cache.snapshot(partitionKey, scopeKey);
@@ -104,9 +106,23 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
             // The document is named by its content (D201): the partition uploads it
             // once for every job that sends it. A URL this call did not PUT is
             // `cached`, so a dead-reference answer refreshes it.
-            const shared = async (planned) => {
-                const { url, fresh } = await cache.sharedUpload(partitionKey, planned.key, () => uploadGeometry(joinParts(planned.parts), transport), transport.signal);
-                return { ...planned, url, cached: !fresh };
+            // The caller's `geometryUrlStore` is read inside the shared PUT, so once
+            // per document. A stored URL counts as `cached`, like a URL from memory.
+            // A dead-reference refresh skips the store and overwrites its entry.
+            const shared = async (planned, refresh = false) => {
+                let stored = false;
+                const tagged = storeKey("json", `${partitionKey}\n${planned.key}`);
+                const { url, fresh } = await cache.sharedUpload(partitionKey, planned.key, async () => {
+                    const entry = refresh ? undefined : await options.urlStore?.get(tagged);
+                    if (entry !== undefined) {
+                        stored = true;
+                        return entry.url;
+                    }
+                    const uploaded = await uploadGeometry(joinParts(planned.parts), transport);
+                    options.urlStore?.set(tagged, uploaded);
+                    return uploaded;
+                }, transport.signal);
+                return { ...planned, url, cached: !fresh || stored };
             };
             if (reference.url === undefined) {
                 try {
@@ -150,7 +166,7 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
                         cache.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
                         await cache.dropUpload(partitionKey, reference.key, referenceUrl);
                         try {
-                            reference = await shared(reference);
+                            reference = await shared(reference, true);
                             referenceUrl = reference.url;
                             refreshed = true;
                             continue;
@@ -222,7 +238,7 @@ async function submitInPartition(preparedSubmission, prepared, partitionKey, tra
 async function establish(preparedSubmission, prepared, partitionKey, transport, options) {
     const cache = getGeometryReuseCache();
     try {
-        const outcome = await executePlan(prepared, preparedSubmission.analysisType, partitionKey, preparedSubmission.reuseScope ?? DIRECT_SCOPE, transport, true, options.logger);
+        const outcome = await executePlan(prepared, preparedSubmission.analysisType, partitionKey, preparedSubmission.reuseScope ?? DIRECT_SCOPE, transport, true, options);
         if (outcome.kind === "job") {
             cache.setCapability(partitionKey, "supported");
             notifyCapability(options, "supported", [outcome.job.jobId]);
@@ -256,7 +272,7 @@ async function establish(preparedSubmission, prepared, partitionKey, transport, 
 async function referenced(preparedSubmission, prepared, partitionKey, transport, options) {
     const cache = getGeometryReuseCache();
     try {
-        const outcome = await executePlan(prepared, preparedSubmission.analysisType, partitionKey, preparedSubmission.reuseScope ?? DIRECT_SCOPE, transport, true, options.logger);
+        const outcome = await executePlan(prepared, preparedSubmission.analysisType, partitionKey, preparedSubmission.reuseScope ?? DIRECT_SCOPE, transport, true, options);
         if (outcome.kind === "job")
             return outcome.job;
         return submitBody(preparedSubmission.analysisType, prepared.body, transport);

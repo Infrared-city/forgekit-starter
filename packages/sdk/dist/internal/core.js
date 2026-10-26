@@ -1,4 +1,4 @@
-import { CoreInitializationError, CoreNotReadyError, CoreTerminalError } from "./errors.js";
+import { CoreInitializationError, CoreNotReadyError, CoreTerminalError, coreNotStartedMessage, detectCoreRealm, } from "./errors.js";
 // The required-export list lives in `core-exports.ts` now (D224 CUT 6, the
 // 400-line cap); imported for `requireCapabilities()` below and re-exported
 // so `tests/required-exports.wasm.test.ts` and every other caller that
@@ -6,6 +6,7 @@ import { CoreInitializationError, CoreNotReadyError, CoreTerminalError } from ".
 import { REQUIRED_FUNCTION_EXPORTS } from "./core-exports.js";
 export { REQUIRED_FUNCTION_EXPORTS } from "./core-exports.js";
 let core;
+let coreMemory;
 let pending;
 let sourceIdentity;
 let terminalFailure;
@@ -68,6 +69,12 @@ async function loadCore(source) {
     if (source.threaded !== undefined)
         await startPool(module, source.threaded.threads);
     core = module;
+    // `output.memory` already passed `requireCapabilities` above; kept past
+    // `loadCore()` so a caller holding a zero-copy typed-array VIEW onto the
+    // core's buffers (`area/facade-layout-raw.ts` `rawFieldsStale`) can check
+    // it against the view's own `.buffer` to detect a wasm memory GROW, which
+    // detaches the old `ArrayBuffer` the view was built against.
+    coreMemory = output.memory;
 }
 /** Start the threaded core's worker pool; nothing may call the core before. */
 async function startPool(module, threads) {
@@ -140,8 +147,46 @@ export function initializeCoreSource(source) {
     });
     return pending;
 }
-export function requireCore() {
+export function requireCore(method) {
     if (core === undefined)
-        throw new CoreNotReadyError();
+        throw new CoreNotReadyError(method);
     return core;
+}
+/** The core's own `WebAssembly.Memory` (perf/ts-facade-layout-views): lets a
+ * caller holding a zero-copy typed-array view onto the core's buffers detect
+ * a wasm memory GROW (`view.buffer !== requireCoreMemory().buffer`) and
+ * re-fetch a fresh view instead of reading a detached `ArrayBuffer`. */
+export function requireCoreMemory() {
+    if (coreMemory === undefined)
+        throw new CoreNotReadyError();
+    return coreMemory;
+}
+/**
+ * The packaged-core loader of the Node entry point (`src/node.ts` registers
+ * it when it loads). Shared code never imports the Node entry itself: a
+ * browser bundler would pull `node:` modules into the page, and inside the
+ * bundled `dist/node-runtime.cjs` a relative path to it does not resolve.
+ */
+let packagedCoreLoader;
+/** Called once by the Node entry point; see {@link ensureCore}. */
+export function registerPackagedCoreLoader(load) {
+    packagedCoreLoader = load;
+}
+/**
+ * Loads the core for a caller that does not already hold one ready, so a
+ * geodata read works without a prior `initializeCore()` call in Node, the
+ * one realm with a packaged core to fall back to.
+ *
+ * A browser or worker realm has no packaged core, so this throws a clear
+ * instruction instead: a page cannot guess its own core's URL, and a worker
+ * does not share the main thread's core.
+ */
+export async function ensureCore(method) {
+    if (core !== undefined)
+        return;
+    if (packagedCoreLoader !== undefined) {
+        await packagedCoreLoader();
+        return;
+    }
+    throw new CoreInitializationError(coreNotStartedMessage(detectCoreRealm(), method));
 }

@@ -16,51 +16,6 @@ export function decodeBinaryResultDocument(document, limits) {
         }) };
     return projectDecoded(decoded);
 }
-/** Decode a validated IRBF grid without creating nested public result arrays. */
-export function decodeCompactGridDocument(document, limits) {
-    checkLimits(limits);
-    const source = typeof SharedArrayBuffer !== "undefined"
-        && document.buffer instanceof SharedArrayBuffer ? document.slice() : document;
-    const decoded = callCore("inspectBinaryResult", source, limits);
-    if (decoded.family !== "numeric-grid" && decoded.family !== "categorical-grid")
-        return undefined;
-    const metadata = object(JSON.parse(decoded.metadataJson), "binary result metadata");
-    const sections = new Map(decoded.sections.map((section) => {
-        const [offset, length] = section.byteRange;
-        return [section.role, { ...section, bytes: source.subarray(offset, offset + length) }];
-    }));
-    const data = requireSection(sections, 1), validity = requireSection(sections, 2);
-    const shape = metadata.shape;
-    if (!Array.isArray(shape) || shape.length !== 2)
-        throw new TypeError("grid shape is invalid");
-    const rows = shape[0], columns = shape[1];
-    if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(columns)) {
-        throw new TypeError("grid shape is invalid");
-    }
-    const bits = validity.bytes.slice();
-    if (decoded.family === "categorical-grid") {
-        if (data.dtype !== "u32")
-            throw new TypeError("categorical grid data must use u32 codes");
-        const raw = metadata.dictionary;
-        if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
-            throw new TypeError("categorical dictionary is missing");
-        }
-        return { route: "compact-grid", kind: "categorical", shape: [rows, columns],
-            values: typed(data).slice(), validity: bits,
-            dictionary: Object.freeze(Array.from(raw)) };
-    }
-    if (data.dtype === "f64") {
-        return { route: "compact-grid", kind: "numeric", shape: [rows, columns],
-            values: typed(data).slice(), validity: bits };
-    }
-    const sourceValues = numericSource(data), divisor = valueDivisor(metadata, data);
-    const values = new Float32Array(Number(data.elementCount));
-    for (let index = 0; index < values.length; index += 1) {
-        values[index] = sourceValues.at(index) / divisor;
-    }
-    return { route: "compact-grid", kind: "numeric", shape: [rows, columns],
-        values, validity: bits };
-}
 function callCore(method, document, limits) {
     return requireCore()[method](document, BigInt(limits.maxTotalBytes), limits.maxMetadataBytes, 64, BigInt(Math.max(limits.maxCells + 1, limits.maxTriangleValues)), 32, BigInt(limits.maxCells), BigInt(limits.maxTriangleValues));
 }

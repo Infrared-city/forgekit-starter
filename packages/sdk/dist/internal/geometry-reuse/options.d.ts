@@ -2,6 +2,7 @@ import type { AuthResolver } from "../auth.js";
 import type { FetchLike } from "../transport.js";
 import { type Logger } from "../../logger.js";
 import type { OnGeometryReuseProbe } from "./types.js";
+import type { GeometryUrlStoreGate } from "../geometry-url-store.js";
 export interface GeometryReuseOptions {
     readonly baseUrl: string;
     readonly gatewayBaseUrl: string;
@@ -11,6 +12,8 @@ export interface GeometryReuseOptions {
     readonly timeoutMs: number;
     readonly logger: Logger;
     readonly onProbe?: OnGeometryReuseProbe;
+    /** The caller's `geometryUrlStore`, read once per document before an upload. */
+    readonly urlStore?: GeometryUrlStoreGate;
 }
 export interface GeometryReuseHostOptions {
     readonly baseUrl: string | URL;
@@ -19,4 +22,4 @@ export interface GeometryReuseHostOptions {
     readonly logger?: Logger;
     readonly onGeometryReuseProbe?: OnGeometryReuseProbe;
 }
-export declare function buildGeometryReuseOptions(options: GeometryReuseHostOptions, fetch: FetchLike, thresholdBytes: number, timeoutMs: number): GeometryReuseOptions;
+export declare function buildGeometryReuseOptions(options: GeometryReuseHostOptions, fetch: FetchLike, thresholdBytes: number, timeoutMs: number, urlStore?: GeometryUrlStoreGate): GeometryReuseOptions;

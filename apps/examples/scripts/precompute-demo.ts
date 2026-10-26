@@ -14,7 +14,12 @@ import { availableParallelism } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
-import { InfraredClient, initializeCore, VERSION } from '@infrared-city/infrared-sdk-ts'
+import {
+  areaGridValuesF32,
+  InfraredClient,
+  initializeCore,
+  VERSION,
+} from '@infrared-city/infrared-sdk'
 import { ANALYSES, buildRequest, type DemoAnalysis } from '../src/demo/analyses.ts'
 import { buildDemoScene, DEMO_POLYGON, VARIANTS, type Variant } from '../src/demo/scene.ts'
 import { DEMO_CENTER } from '../src/demo/scene-layout.ts'
@@ -226,7 +231,7 @@ async function main() {
         })
       } else {
         if (result.failedJobs.length) throw new Error(`${result.failedJobs.length} tile(s) failed`)
-        const enc = encodeGrid(result.mergedGrid, result.legend)
+        const enc = encodeGrid(areaGridValuesF32(result), result.legend)
         writeFileSync(resolve(OUT, file), gzipSync(enc.bytes, { level: 9 }))
         const { bytes: _b, ...encoding } = enc
         save({

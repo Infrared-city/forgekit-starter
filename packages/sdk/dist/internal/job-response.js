@@ -25,6 +25,15 @@ function binaryAcknowledgement(value) {
         artifactDigest: requiredString(raw.artifactDigest),
         contentDigest: requiredString(raw.contentDigest) };
 }
+/**
+ * Convert the status text of a job response into a {@link JobStatus}.
+ *
+ * Matching ignores case. Any text that is not a known status gives `"unknown"`.
+ *
+ * @param value - The status text from the API.
+ * @returns The matching status.
+ * @category Requests
+ */
 export function parseJobStatus(value) {
     switch (value.toLowerCase()) {
         case "pending": return "pending";
@@ -35,6 +44,15 @@ export function parseJobStatus(value) {
         default: return "unknown";
     }
 }
+/**
+ * Convert a job object returned by the API into a {@link Job}.
+ *
+ * @param input - The parsed JSON of one job response.
+ * @returns The job, with optional fields present only when the API sent them.
+ * @throws {TypeError} If `input` is not an object, has no `jobId`, or carries an invalid
+ *   binary acknowledgement.
+ * @category Requests
+ */
 export function jobFromResponse(input) {
     if (input === null || typeof input !== "object" || Array.isArray(input)) {
         throw new TypeError("invalid job response");

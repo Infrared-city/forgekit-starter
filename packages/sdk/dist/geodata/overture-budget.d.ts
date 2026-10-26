@@ -27,6 +27,8 @@ export interface SelectedGroup {
  * An area read of the three ground themes shares ONE of these, because it is
  * one process that holds all three at once; a lone read makes its own. The
  * refusal names the collection whose plan took the total over the limit.
+ *
+ * @category Geodata
  */
 export interface PlannedBudget {
     readonly limitBytes: number;

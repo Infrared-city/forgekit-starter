@@ -189,29 +189,29 @@ class TileFrames {
      * target range. Without it (an old server, no `facadeTargets`), one
      * artifact per batch, as before.
      */
-    artifact(index, boxTrees, limits) {
+    artifact(index, limits) {
         if ((limits.facadeTargets ?? 0) >= 1)
-            return this.sceneArtifact(index, boxTrees, limits);
-        const key = ["artifact", boxTrees, limits.maxGeometryBytes, limits.maxMetadataBytes,
+            return this.sceneArtifact(index, limits);
+        const key = ["artifact", limits.maxGeometryBytes, limits.maxMetadataBytes,
             limits.maxMeshes, limits.maxInstances].join("\n");
-        return this.once(index, key, { artifact: { boxTrees, limits } }).artifact;
+        return this.once(index, key, { artifact: { limits } }).artifact;
     }
     /** Batch `index`'s facade-scene artifact (#602); the cache logic is
      * {@link pickSceneArtifact} (`site-facade-scene-frames.ts`). */
-    sceneArtifact(index, boxTrees, limits) {
-        const key = ["scene", boxTrees, limits.maxGeometryBytes, limits.maxMetadataBytes,
+    sceneArtifact(index, limits) {
+        const key = ["scene", limits.maxGeometryBytes, limits.maxMetadataBytes,
             limits.maxMeshes, limits.maxInstances].join("\n");
-        return pickSceneArtifact(this.scenes, this.scenesFetched, key, this.wanted, index, (indices) => this.scenesFor(indices, boxTrees, limits));
+        return pickSceneArtifact(this.scenes, this.scenesFetched, key, this.wanted, index, (indices) => this.scenesFor(indices, limits));
     }
     /** One `facadeScenes` call over `indices`, mapped to this batch's artifact.
      * A tile answer is uniform (D218): every job `targets` (scene), every job
-     * `artifact` (boxed trees, D70), or every job `error` (a refusal). The
-     * first job's shape decides which of the three this answer is. */
-    scenesFor(indices, boxTrees, limits) {
+     * `artifact`, or every job `error` (a refusal). The first job's shape
+     * decides which of the three this answer is. */
+    scenesFor(indices, limits) {
         if (this.site.facadeScenes === undefined)
             throw new Error("facade scenes need the kernel site");
         const active = indices.map((at) => this.records[at].active_ids);
-        const answer = this.site.facadeScenes(this.tile, active, boxTrees, limits);
+        const answer = this.site.facadeScenes(this.tile, active, limits);
         const out = new Map();
         if (answer.jobs[0]?.error !== undefined) {
             indices.forEach((at, position) => out.set(at, new Error(answer.jobs[position].error)));
@@ -225,7 +225,6 @@ class TileFrames {
                     archive: scene.archive, artifactDigest: scene.artifactDigest,
                     geometryContentDigest: scene.geometryContentDigest, encoding: scene.encoding,
                     targetIds: job.targetIds ?? [], targets: { start: job.targets.start, count: job.targets.count },
-                    ...(scene.treeBoxes === undefined ? {} : { treeBoxes: scene.treeBoxes }),
                 });
             });
             return out;
@@ -318,7 +317,7 @@ submits = () => true) {
             buildingIds: [...record.active_ids], sensorCount: count, payload,
             capture: (alignment) => bodies.capture(index, alignment),
             ...(site.facadeFrames === undefined ? {} : {
-                artifact: (boxTrees, limits) => bodies.artifact(index, boxTrees, limits),
+                artifact: (limits) => bodies.artifact(index, limits),
             }),
         };
     });

@@ -11,11 +11,32 @@
  */
 import { consoleLogger } from "../logger.js";
 import { coreThreads, requireCore } from "../internal/core.js";
+import { FacadeCaptures } from "./facade-captures.js";
 import { emptySurfaceColumns, surfaceColumnsFromJoin, } from "../results/surface-columns.js";
 import { checkAreaState, revivePolledOut } from "./poll.js";
 import { parallel, throwable, workerCount } from "./merge-common.js";
 import { checkSurfaceBatch, decodeSurfaceChunk, decodeSurfaceHandle, } from "./merge-surface-decode.js";
-/** Poll once, then strictly download and join all surface jobs. */
+/**
+ * Polls a surface schedule once, downloads the results of all its jobs and joins them into
+ * one set of surface columns.
+ *
+ * Every job must have completed: any failed or missing submission, or any job still pending or
+ * running, makes the merge fail instead of returning a partial result. Calling it again after
+ * a failure gives tiles that were retired by repeated status errors one more chance. A schedule
+ * with no jobs gives empty columns.
+ *
+ * @param jobsService - Reads job status and downloads results, for example `client.jobs`.
+ * @param schedule - The schedule returned by `runArea` for a surface analysis.
+ * @param options - `maxWorkers` (concurrent downloads), `signal` (cancellation) and `logger`.
+ * @returns The merged surface columns.
+ * @throws {Error} when the schedule is not a surface schedule, contains an uncertain or invalid
+ *   geometry reference, has failed or uncertain submissions, has jobs that did not succeed, or a
+ *   download or decode failed (the cause is attached).
+ * @throws when `options.signal` is aborted: the abort reason.
+ * @category Run an analysis
+ */
+// Maintainer note (not published): an explicit merge is a retry, so the poll breaker's victims
+// get one more chance (D115). The join is one kernel call for the whole run (D197).
 export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) {
     if (schedule.surfaceFields !== true)
         throw new Error("Surface merge requires a surface schedule");
@@ -112,8 +133,10 @@ export async function mergeSurfaceAreaJobs(jobsService, schedule, options = {}) 
 function join(jobsService, schedule, scheduled, decoded, logger) {
     const started = performance.now();
     const positions = new Map(schedule.tilePositions.map((position) => [position.tileId, position]));
-    const core = requireCore();
-    const store = jobsService.facadeSynthesis;
+    const core = requireCore("mergeSurfaceAreaJobs");
+    const captures = jobsService.captures;
+    // A service without captures gets an empty store for this call (every surface then has no outline).
+    const store = captures ?? new FacadeCaptures();
     try {
         const anchors = new Float64Array(scheduled.length * 2);
         scheduled.forEach(([entryId], index) => {
@@ -124,27 +147,33 @@ function join(jobsService, schedule, scheduled, decoded, logger) {
             anchors[index * 2] = swX;
             anchors[index * 2 + 1] = swY;
         });
-        // A capture is kept only when this client asked for triangles; the
-        // merge consumes it. Nothing captured means nothing to draw, and says
-        // nothing.
-        const captures = scheduled.map(([, job]) => job.jobId === undefined ? undefined : store?.take(job.jobId)?.capture);
+        // Every surface run of this client keeps its capture in the kernel store: the join rebuilds
+        // the layout from it and gives each surface its outline, and releases the jobs it consumed.
+        // The per-cell triangles are built only when the caller asked for them (`emitCellTris`). No
+        // capture means no outline, and `surfaceRenderBuffers` then refuses the surface.
+        const jobIds = scheduled.map(([, job]) => job.jobId);
+        // #835: a job accepted while its capture could not be kept. Name each one; the join still
+        // runs, and those surfaces have no outline.
+        for (const [entryId, job] of scheduled) {
+            if (job.jobId !== undefined && captures?.lostCapture(job.jobId) === true) {
+                logger.warn({ event: "facade_capture_missing", tileId: entryId, jobId: job.jobId,
+                    reason: "the capture was not kept after the job was accepted; its surfaces have no " +
+                        "outline, and surfaceRenderBuffers refuses them" });
+            }
+        }
+        const emitCellTris = captures?.wantsCellTris(jobIds) ?? false;
         const handles = decoded.map((handle) => handle);
         // `joinSurfaceJobs` owns the handles from here, also when it throws.
         decoded.fill(undefined);
-        const joined = core.joinSurfaceJobs(handles, scheduled.map(([entryId]) => entryId), anchors, captures);
-        report(joined, scheduled, captures, logger, started);
+        const joined = core.joinSurfaceJobs(handles, scheduled.map(([entryId]) => entryId), anchors, store.store, jobIds, emitCellTris);
+        store.forgetSchedule(schedule); // the join released its jobs on success; this drops the flags
+        report(joined, scheduled, logger, started);
         return surfaceColumnsFromJoin(joined);
     }
     finally {
-        // Every job here is terminal and downloaded, so this schedule is done
-        // whether the join finished or threw partway: release the captures it
-        // did not take, which would otherwise be held for the life of the client.
-        if (store !== undefined) {
-            for (const entry of schedule.jobs.values()) {
-                if (entry.jobId !== undefined)
-                    store.forget(entry.jobId);
-            }
-        }
+        // A failed join keeps its jobs for a retry of the merge; `runAreaAndWait` releases them.
+        if (captures === undefined)
+            store.free();
     }
 }
 /**
@@ -152,10 +181,10 @@ function join(jobsService, schedule, scheduled, decoded, logger) {
  * `warn` must see degraded output), one `info` per job that got them. A run
  * that never asked says nothing.
  */
-function report(joined, scheduled, captures, logger, started) {
+function report(joined, scheduled, logger, started) {
     const elapsedMs = Math.round(performance.now() - started);
     // Job indices of the join are in its canonical order (#579); `scheduled`
-    // and `captures` are in argument order.
+    // is in argument order.
     const host = (job) => joined.jobOrder[job];
     const fell = new Set();
     for (const { job, reason, detail } of joined.fallbacks) {
@@ -166,8 +195,8 @@ function report(joined, scheduled, captures, logger, started) {
     const table = joined.triangles;
     if (table === undefined)
         return;
-    for (let job = 0; job < captures.length; job += 1) {
-        if (captures[host(job)] === undefined || fell.has(job) || table.groupEngaged[job] !== 1)
+    for (let job = 0; job < scheduled.length; job += 1) {
+        if (fell.has(job) || table.groupEngaged[job] !== 1)
             continue;
         logger.info({ event: "facade_synthesis", outcome: "engaged", jobId: scheduled[host(job)]?.[1].jobId,
             surfaces: table.groupSurfaces[job + 1] - table.groupSurfaces[job], elapsedMs });

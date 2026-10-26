@@ -1,5 +1,5 @@
 /**
- * Vegetation SDK types inlined from `@infrared-city/infrared-sdk-ts`.
+ * Vegetation SDK types inlined from `@infrared-city/infrared-sdk`.
  *
  * Re-declared locally so the primitive stays headless-publish-friendly and
  * the `./core` subpath has no SDK runtime dependency.

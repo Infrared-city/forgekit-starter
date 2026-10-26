@@ -1,11 +1,12 @@
 // Shared page for every "result on the ground" example:
 // pick a place -> check the cost -> run -> show the grid on the map.
-import type {
-  AnalysesName,
-  InfraredClient,
-  RunAreaAndWaitOptions,
-  RunAreaInput,
-} from '@infrared-city/infrared-sdk-ts'
+import {
+  type AnalysesName,
+  areaGridValuesF32,
+  type InfraredClient,
+  type RunAreaAndWaitOptions,
+  type RunAreaInput,
+} from '@infrared-city/infrared-sdk'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { gridToDataUrl, meanOf, type Scale } from '../lib/colors'
 import { type LatLon, type Polygon, squareAround } from '../lib/geo'
@@ -94,17 +95,20 @@ export function GridExample(props: GridExampleProps) {
       })
       if (!('mergedGrid' in result)) throw new Error('Expected a ground grid result')
       const [rows, cols] = result.gridShape
+      // Physical values, NaN = no value. Never read `mergedGrid` directly: it
+      // keeps the server's type (half-float bits, or integers with a divisor).
+      const values = areaGridValuesF32(result)
       if (!result.bounds) throw new Error('The result has no bounds')
       // Categorical results (wind comfort) carry `legend`: cell value i means legend[i].
       const scale = result.legend
         ? { min: 0, max: Math.max(1, result.legend.length - 1), unit: props.scale.unit }
         : props.scale
       setOverlay({
-        url: gridToDataUrl(result.mergedGrid, rows, cols, scale),
+        url: gridToDataUrl(values, rows, cols, scale),
         bounds: result.bounds,
       })
       setClasses(result.legend ?? null)
-      setMean(result.legend ? null : meanOf(result.mergedGrid))
+      setMean(result.legend ? null : meanOf(values))
       const failed = result.failedJobs.length
       setStatus(failed ? `Done, but ${failed} tile(s) failed.` : 'Done.')
     } catch (err) {

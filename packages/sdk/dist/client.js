@@ -1,7 +1,7 @@
-import { buildAuthResolver, } from "./internal/auth.js";
+import { buildAuthResolver } from "./internal/auth.js";
 import { rejectRemovedOption } from "./internal/service.js";
 import { trimTrailingSlashes } from "./internal/url-trim.js";
-import { JobsService, } from "./jobs.js";
+import { JobsService } from "./jobs.js";
 import { prepareAnalysisPayload } from "./area/payload.js";
 import { checkAreaState as pollAreaState } from "./area/poll.js";
 import { runAreaAndWaitRounds } from "./area/run-and-wait-retry.js";
@@ -17,67 +17,55 @@ import { GroundMaterialsService } from "./ground-materials-service.js";
 import { VegetationService } from "./vegetation.js";
 import { WeatherService } from "./weather.js";
 import { consoleLogger } from "./logger.js";
-export class AreaTimeoutError extends Error {
-    areaState;
-    constructor(message, areaState) {
-        super(message);
-        this.name = "AreaTimeoutError";
-        this.areaState = areaState;
-    }
-}
-const DEFAULT_BASE_URL = "https://api.infrared.city/v2";
+import { AreaTimeoutError, } from "./client-types.js";
+import { AnalysisService } from "./analysis-service.js";
+import { DEFAULT_BASE_URL, envValue, jobsServiceOptions } from "./client-setup.js";
+export { AnalysisService, AreaTimeoutError };
 const DEFAULT_AREA_TIMEOUT_S = 3_600;
-function envValue(env, name) {
-    if (env?.[name] !== undefined)
-        return env[name];
-    return globalThis.process?.env?.[name];
-}
-function geometryReuseSetting(env) {
-    const value = envValue(env, "INFRARED_GEOMETRY_REF_ENABLED");
-    if (value === undefined || value === "")
-        return true;
-    if (/^(1|true|yes|on)$/i.test(value))
-        return true;
-    if (/^(0|false|no|off)$/i.test(value))
-        return false;
-    throw new TypeError("INFRARED_GEOMETRY_REF_ENABLED must be a Boolean string");
-}
-export class AnalysisService {
-    jobs;
-    constructor(jobs) {
-        this.jobs = jobs;
-    }
-    /** Submit an already wire-keyed request. */
-    execute(payload, options = {}) {
-        if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-            return Promise.reject(new TypeError("analysis payload must be an object"));
-        }
-        const analysisType = payload["analysis-type"];
-        if (typeof analysisType !== "string" || analysisType.length === 0) {
-            return Promise.reject(new TypeError("analysis payload requires analysis-type"));
-        }
-        return this.jobs.submit(analysisType, payload, options);
-    }
-}
-/** Public client for direct and tiled analyses and site-context services. */
+/**
+ * The entry point of the SDK: runs analyses on one site or over a polygon
+ * area (split into tiles), and exposes the weather, buildings, vegetation,
+ * ground-material and billing services.
+ *
+ * @category Client
+ */
 export class InfraredClient {
+    /** The API base URL in use, without trailing slashes. */
     baseUrl;
+    /** The API key the client was created with, if any. */
     apiKey;
+    /** Where the SDK's warnings go. */
     logger;
+    /** Submits jobs, reads their status and downloads results. */
     jobs;
+    /** Submits requests that already use the API's own keys. */
     analyses;
+    /** Weather stations and data. */
     weather;
+    /** Buildings around a site. */
     buildings;
+    /** Trees around a site. */
     vegetation;
+    /** Ground materials around a site. */
     groundMaterials;
+    /** The public price list. */
     billing;
+    /**
+     * Creates a client; give a credential (`apiKey`, `token`, `getToken` or
+     * `auth`) here or through the environment.
+     *
+     * @param options - See `InfraredClientConfig`.
+     * @throws {TypeError} when `auth` is combined with another credential, or
+     * `INFRARED_GEOMETRY_REF_ENABLED` is not a Boolean string.
+     * @throws {InvalidOptionError} when a removed option such as `acquisition` is passed.
+     * @throws {Error} when no credential is given.
+     */
     constructor(options = {}) {
-        // The client-level twin of the guards on the three site-context calls.
-        // The field is gone from `InfraredClientConfig`, so a TypeScript object
-        // literal already fails to compile — but a JavaScript caller, or a
-        // TypeScript caller passing a config it built elsewhere, would otherwise
-        // get the public-data path with no word said. MIGRATION.md and D42 both
-        // promise a TypeError here.
+        // The client-level twin of the guards on the three site-context calls. The
+        // field is gone from `InfraredClientConfig`, so a TypeScript literal fails
+        // to compile, but a JavaScript caller (or a config built elsewhere) would
+        // otherwise get the public-data path silently. MIGRATION.md and D42 promise
+        // a TypeError here.
         rejectRemovedOption(options, "acquisition", "the public-data path is the only path; remove the option");
         const apiKey = options.apiKey ?? envValue(options.env, "INFRARED_API_KEY");
         const baseUrl = options.baseUrl ?? envValue(options.env, "INFRARED_BASE_URL") ?? DEFAULT_BASE_URL;
@@ -95,25 +83,7 @@ export class InfraredClient {
             ...(options.surface === undefined ? {} : { surface: options.surface }),
         });
         const timeoutMs = options.timeoutMs ?? options.timeout;
-        const downloadTimeoutMs = options.downloadTimeoutMs ?? options.downloadTimeout;
-        const geometryReuseEnabled = geometryReuseSetting(options.env);
-        const jobsOptions = {
-            baseUrl: this.baseUrl,
-            auth,
-            ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-            ...(timeoutMs === undefined ? {} : { timeoutMs }),
-            ...(downloadTimeoutMs === undefined ? {} : { downloadTimeoutMs }),
-            ...(options.gatewayBaseUrl === undefined ? {} : { gatewayBaseUrl: options.gatewayBaseUrl }),
-            ...(options.bigPayloadThresholdBytes === undefined ? {} : {
-                bigPayloadThresholdBytes: options.bigPayloadThresholdBytes,
-            }),
-            geometryReuseEnabled,
-            logger: this.logger,
-            ...(options.onGeometryReuseProbe === undefined ? {} : {
-                onGeometryReuseProbe: options.onGeometryReuseProbe,
-            }),
-        };
-        this.jobs = new JobsService(jobsOptions);
+        this.jobs = new JobsService(jobsServiceOptions(options, this.baseUrl, auth, this.logger, timeoutMs));
         this.analyses = new AnalysisService(this.jobs);
         const serviceOptions = {
             baseUrl: this.baseUrl,
@@ -128,31 +98,50 @@ export class InfraredClient {
         this.groundMaterials = new GroundMaterialsService(serviceOptions);
         this.billing = new BillingService(serviceOptions);
     }
+    /**
+     * Submits one analysis request and returns the accepted `Job` without
+     * waiting; follow with `jobs.waitForCompletion`, or use `runAndWait`.
+     * Throws a `TypeError` straight away, before a promise is returned, when the request is not
+     * valid; later failures reject the returned promise.
+     *
+     * @example
+     * ```ts
+     * const job = await client.run({ analysisType: AnalysesName.WindSpeed, ...parameters });
+     * ```
+     */
     run(input, options = {}) {
         const payload = prepareAnalysisPayload(input);
         return this.analyses.execute(payload, options);
     }
     /**
-     * Submit, wait and return the decoded result. A `daylight-factor` request
-     * whose floors the kernel packs into more than one part is sent as parts,
-     * in parallel, and joined into the result the single request gives, byte
-     * for byte (D221); `maxParts: 1` sends one job. Any other request, and a
-     * request of one part, is one job, sent as `run` sends it. A
-     * `daylight-factor` result is a `DaylightFactorResult` by default, or the
-     * JSON value with `resultFormat: "json"` (D234).
+     * Submits a request, waits for it and returns the decoded result. A
+     * `daylight-factor` request whose floors do not fit one job is sent as
+     * parts in parallel and joined into the result a single request would give
+     * (`maxParts: 1` sends one job); any other request is one job. A
+     * `daylight-factor` result is a `DaylightFactorResult`, or the JSON value
+     * with `resultFormat: "json"`.
+     *
+     * Rejects when a job fails or the wait times out.
+     *
+     * @example
+     * ```ts
+     * const result = await client.runAndWait({ analysisType: AnalysesName.WindSpeed, ...parameters });
+     * ```
      */
+    // Maintainer note (not published): the parts are the kernel's plan (D221);
+    // the `daylight-factor` result format default is D234.
     runAndWait(input, options = {}) {
         return runAndWaitParts(this.jobs, this.logger, input, options);
     }
-    /** Submit a request as its kernel parts (D221); returns the durable schedule. */
+    /** Submits a request as its parts without waiting; returns the saved `PartsSchedule`. */
     runParts(input, options = {}) {
         return runPartsImpl(this.jobs, this.logger, input, options);
     }
-    /** Poll every open part once. */
+    /** Reads the status of every open part once; returns the run's counts. */
     checkPartsState(schedule, options = {}) {
         return pollAreaState(this.jobs, schedule, options);
     }
-    /** Download and join a finished parts run; throws `AnalysisPartsError` naming a failed part. */
+    /** Downloads and joins a finished parts run; throws `AnalysisPartsError` naming a failed part. */
     mergeParts(schedule, options = {}) {
         return mergePartsValue(this.jobs, this.logger, schedule, options);
     }
@@ -160,19 +149,65 @@ export class InfraredClient {
     previewParts(input, options = {}) {
         return previewPartsImpl(this.jobs, this.logger, input, options);
     }
+    /**
+     * Plans an area run over `polygon`, submits one job per non-empty tile and
+     * returns the saved `AreaSchedule` without waiting; finish it with
+     * `checkAreaState` and `mergeAreaJobs`.
+     *
+     * A tile that fails does not stop the run. The tiles that went out before it
+     * may be billed. List the failed tiles in `schedule.failedSubmissions` and
+     * pass the schedule as `retryFrom` to send only those.
+     *
+     * @param input - the analysis request, as for `runAndWait`, plus the area settings.
+     * @param polygon - the area to analyse.
+     * @param options - `maxWorkers` (requests in flight at once), `maxTilesOverride`,
+     * `retryFrom`, `onAccepted`, `signal` and `logger`.
+     * @returns the saved `AreaSchedule` with one entry for each submitted tile.
+     * @throws {Error} when the polygon needs more non-empty tiles than the
+     * limit; the message gives the `maxTilesOverride` to pass.
+     * @throws {ReadMarginError} when an acquired layer was read with a narrower
+     * margin than the analysis needs.
+     *
+     * @example
+     * ```ts
+     * const schedule = await client.runArea(input, polygon, { maxTilesOverride: 400 });
+     * ```
+     */
     async runArea(input, polygon, options = {}) {
-        return submitArea(this.jobs, input, polygon, options);
+        // The client's logger, never `console` (D48); an explicit one still wins.
+        return submitArea(this.jobs, input, polygon, { logger: this.logger, ...options });
     }
+    /** Reads the status of the schedule's jobs once, updates it and returns the run's counts. */
     checkAreaState(schedule, options = {}) {
         return pollAreaState(this.jobs, schedule, options);
     }
+    /**
+     * Downloads the finished grid jobs of an area run and merges them into an
+     * `AreaResult`. Throws when a tile did not contribute; calling it again
+     * with the same schedule completes a run whose results could not be fetched.
+     */
     mergeAreaJobs(schedule, options = {}) {
         // The client's logger, never `console` (D48); an explicit one still wins.
         return mergeGridAreaJobs(this.jobs, schedule, { logger: this.logger, ...options });
     }
+    /** Downloads the finished surface jobs of an area run and joins them into `SurfaceColumns`. */
     mergeSurfaceAreaJobs(schedule, options = {}) {
         return mergeSurfaceJobs(this.jobs, schedule, { logger: this.logger, ...options }); // D48
     }
+    /**
+     * Runs an analysis over a polygon area and returns the merged result: it
+     * submits the tiles, waits, retries what failed (`retries`) and merges. A
+     * surface run returns `SurfaceColumns`, any other run an `AreaResult`.
+     * `areaTimeout` is in seconds, default 3600.
+     *
+     * @throws {AreaTimeoutError} when the run does not finish within `areaTimeout`.
+     * @throws {TypeError} when `areaTimeout` is not a positive finite number.
+     *
+     * @example
+     * ```ts
+     * const result = await client.runAreaAndWait(input, polygon, { areaTimeout: 1800 });
+     * ```
+     */
     async runAreaAndWait(input, polygon, options = {}) {
         const areaTimeout = options.areaTimeout ?? DEFAULT_AREA_TIMEOUT_S;
         if (typeof areaTimeout !== "number" || !Number.isFinite(areaTimeout) || areaTimeout <= 0) {
@@ -188,10 +223,14 @@ export class InfraredClient {
                 `${last.runningCount} running`, last),
         }, schedule0);
         if (schedule.surfaceFields === true) {
-            return this.mergeSurfaceAreaJobs(schedule, {
-                ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-            });
+            const merge = { ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
+                ...(options.signal === undefined ? {} : { signal: options.signal }) };
+            try {
+                return await this.mergeSurfaceAreaJobs(schedule, merge);
+            }
+            finally {
+                this.jobs.captures.forgetSchedule(schedule);
+            } // no schedule reaches the caller
         }
         return this.mergeAreaJobs(schedule, {
             ...(options.strategy === undefined ? {} : { strategy: options.strategy }),
@@ -201,9 +240,21 @@ export class InfraredClient {
             ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
     }
+    /** Builds the tile grid covering a polygon, south to north; sends no request. */
     generateTiles(polygon, options = {}) {
         return generateTilesForPolygon(polygon, options);
     }
+    /**
+     * Estimates an area run from its tile count; submits nothing. The cost uses
+     * a default price per job (`previewAreaWithPricing` uses the live price);
+     * for a facade run use `previewAreaBatches`. Throws when the polygon needs
+     * more non-empty tiles than the limit.
+     *
+     * @example
+     * ```ts
+     * const preview = client.previewArea(polygon, { analysisType: "wind-speed" });
+     * ```
+     */
     previewArea(polygon, options = {}) {
         const tiles = this.generateTiles(polygon, options);
         const tileCount = tiles.flat().filter((tile) => !tile.empty).length;
@@ -213,13 +264,20 @@ export class InfraredClient {
             estimatedCostTokens: tileCount * DEFAULT_TOKENS_PER_JOB,
         };
     }
-    /** Facade-aware preview (WP-6): the same offline plan `runArea` builds,
-     * read for its job count instead of submitted. Pass the SAME `input` a
-     * `runArea` call would -- `previewArea` alone under-reports a facade
-     * (`analysisSurfaces`) request's real job count. See `area/preview.ts`. */
+    /**
+     * Previews a facade run: builds the plan `runArea` would and reports its job
+     * count instead of submitting it. Pass the same `input` a `runArea` call
+     * would, because `previewArea` under-reports a facade (`analysisSurfaces`) run.
+     */
+    // Maintainer note (not published): added by WP-6; see area/preview.ts.
     previewAreaBatches(input, polygon, options = {}) {
-        return previewAreaBatchesImpl(this.jobs, input, polygon, options);
+        return previewAreaBatchesImpl(this.jobs, input, polygon, { logger: this.logger, ...options }); // D48
     }
+    /**
+     * Like `previewArea`, but priced with the API's current price for the
+     * analysis. When the price list cannot be fetched a warning is logged and
+     * the default price is used (`pricingSource` is `"fallback"`).
+     */
     async previewAreaWithPricing(polygon, options) {
         const preview = this.previewArea(polygon, options);
         try {
@@ -246,7 +304,9 @@ export class InfraredClient {
             };
         }
     }
-    /** Explicit legacy adapter. `jobs.decompress` remains route-aware. */
+    /** Decodes an already downloaded result archive; prefer `jobs.decompress`, which returns a typed result. */
+    // Maintainer note (not published): explicit legacy adapter; `jobs.decompress`
+    // remains route-aware.
     decompressResult(content) {
         return decompressResultValue(this.jobs, content);
     }
