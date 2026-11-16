@@ -14,7 +14,7 @@ import type { Env } from '../../config.js'
  *   /infrared/s3-proxy/<host>/<key>  presigned S3 uploads (PUT) and result
  *                                    downloads (GET). Only Infrared buckets.
  *   /infrared/billing/*              price list, balance, usage: sent to
- *                                    the API root (INFRARED_AUTH_BASE_URL).
+ *                                    the API root (INFRARED_BASE_URL minus /v2).
  *   /infrared/*                      everything else (presign, submit,
  *                                    status, results link): INFRARED_BASE_URL.
  */
@@ -76,10 +76,12 @@ app.all('/s3-proxy/*', async (c) => {
 app.all('/*', async (c) => {
   const path = c.req.path.replace(/^\/infrared/, '')
   // `/billing/*` (price list, balance, usage) lives at the API root, not
-  // under `/v2`: sent to INFRARED_BASE_URL it answers 404 and the SDK's cost
-  // check fails.
-  const base = path.startsWith('/billing/') ? c.env.INFRARED_AUTH_BASE_URL : c.env.INFRARED_BASE_URL
-  const target = new URL(`${base.replace(/\/+$/, '')}${path}`)
+  // under `/v2`: sent there it answers 404 and the SDK's cost check fails.
+  // The root is derived from INFRARED_BASE_URL, so billing always follows the
+  // same environment as the jobs.
+  const apiBase = c.env.INFRARED_BASE_URL.replace(/\/+$/, '')
+  const base = path.startsWith('/billing/') ? apiBase.replace(/\/v2$/, '') : apiBase
+  const target = new URL(`${base}${path}`)
   target.search = new URL(c.req.url).search
 
   const headers = new Headers(c.req.raw.headers)
