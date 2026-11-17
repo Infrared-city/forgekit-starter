@@ -1,8 +1,10 @@
 import type { JobsService } from "../jobs.js";
 import { type Logger } from "../logger.js";
-import { type AreaResult, type AreaSchedule } from "./schedule-types.js";
+import type { AreaResult, AreaSchedule, TileJobStatus } from "./schedule-types.js";
 import type { FacadeCaptures } from "./facade-captures.js";
-export { mergeSurfaceAreaJobs } from "./merge-surface.js";
+import { mergeSurfaceAreaJobs } from "./merge-surface.js";
+import type { SurfaceColumns } from "../results/surface-columns.js";
+export { mergeSurfaceAreaJobs };
 /**
  * The jobs service `mergeAreaJobs` needs: it reads job status and downloads job results.
  * `InfraredClient.jobs` satisfies it.
@@ -34,9 +36,14 @@ export interface AreaMergeOptions {
      * It trades speed against memory only: the result is the same for any value. Default 928.
      */
     readonly block?: number;
-    /** Maximum parallel requests, a positive whole number. Default 5 for status checks and 8 for
-     * downloads. */
+    /** @deprecated No effect: the engine sets the widths. Removed in 2.0. */
     readonly maxWorkers?: number;
+    /**
+     * Job id to status, from your own earlier status checks. A job recorded as
+     * `"completed"` or `"failed"` is not asked about again, so a poll loop that ends with a merge
+     * sends no second round of status requests.
+     */
+    readonly known?: Readonly<Record<string, TileJobStatus>>;
     /** Aborts the merge when signalled. */
     readonly signal?: AbortSignal;
     /** Logger that a tile dropped from the merge is warned through. `InfraredClient` passes its own. */
@@ -46,8 +53,7 @@ export interface AreaMergeOptions {
  * Poll a grid schedule once, download the results of its completed tiles and merge them into
  * one grid.
  *
- * Calling it again after a failure gives tiles that were retired by repeated status errors one
- * more chance, since their jobs usually finished.
+ * Calling it again after a failure asks every unfinished job again.
  *
  * @param jobsService - Reads job status and downloads results, for example `client.jobs`.
  * @param schedule - The schedule returned by `runArea`.
@@ -59,4 +65,13 @@ export interface AreaMergeOptions {
  * @throws {Error} when any tile failed, was skipped or could not be downloaded.
  * @category Run an analysis
  */
-export declare function mergeAreaJobs(jobsService: AreaMergeJobsService, schedule: AreaSchedule, options?: AreaMergeOptions): Promise<AreaResult>;
+export declare function mergeAreaJobs(jobsService: AreaMergeJobsService, schedule: AreaSchedule, options?: AreaMergeOptions, 
+/** @internal `runAreaAndWait` with `retryFrom`: wait up to this many seconds for every job. */
+waitS?: number): Promise<AreaResult>;
+/**
+ * @internal `runAreaAndWait` with `retryFrom` (as in 1.0.0): wait up to `areaTimeout` (default
+ * 3600 s) for every job of the schedule `runArea` returned, then merge it.
+ */
+export declare function waitAndMerge(jobsService: AreaMergeJobsService, schedule: AreaSchedule, options: AreaMergeOptions & {
+    readonly areaTimeout?: number;
+}): Promise<AreaResult | SurfaceColumns>;

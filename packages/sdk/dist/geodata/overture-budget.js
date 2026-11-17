@@ -1,3 +1,4 @@
+import { requireCore } from "../internal/core.js";
 import { OvertureReadTooLargeError } from "./errors.js";
 /**
  * What one Overture CALL is allowed to move, and how much of it at once.
@@ -10,23 +11,15 @@ import { OvertureReadTooLargeError } from "./errors.js";
  * per host, so a wave that starts nine row-group reads at one bucket queues
  * three of them anyway while holding three more decoded buffers alive.
  */
-/**
- * Compressed bytes ONE CALL may plan, across every type it reads.
- *
- * Node gets 512 MiB and a browser 256 MiB — a browser tab shares a ~4 GB
- * heap with the page it is embedded in, and the decoded rows are several
- * times their compressed size. Measured for scale: a 5 km2 Vienna box plans
- * about 96 MiB across the three ground themes together.
- */
-const OVERTURE_PLANNED_BYTES_LIMIT = plannedBytesLimitFor(isNode());
 /** Row-group reads in flight at the Overture bucket, across every type. */
 export const OVERTURE_HOST_CONCURRENCY = hostConcurrencyFor(isNode());
 /**
- * The byte limit for a runtime. A parameter, so BOTH arms can be tested in
- * whichever realm the tests happen to run in.
+ * The compressed bytes ONE CALL may plan in a runtime: the kernel's number
+ * (a browser tab shares a ~4 GB heap with its page, so it gets less). A
+ * parameter, so BOTH arms can be tested in whichever realm the tests run in.
  */
 export function plannedBytesLimitFor(node) {
-    return node ? 512 * 1024 * 1024 : 256 * 1024 * 1024;
+    return requireCore().overturePlannedBytesLimit(node ? "node" : "browser");
 }
 /**
  * The per-host ceiling for a runtime.
@@ -43,7 +36,7 @@ function isNode() {
     return typeof runtime?.versions?.node === "string";
 }
 /** A budget for one call; `limit` defaults to this runtime's ceiling. */
-export function plannedBudget(limit = OVERTURE_PLANNED_BYTES_LIMIT) {
+export function plannedBudget(limit = plannedBytesLimitFor(isNode())) {
     let planned = 0;
     return {
         limitBytes: limit,

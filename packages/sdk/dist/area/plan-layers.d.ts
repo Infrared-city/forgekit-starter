@@ -36,6 +36,10 @@ export declare function composeTiles(groups: AreaGeometryGroups, tiles: readonly
     analysisType: string;
     terrainContextMarginM: number;
     keepKernelSite?: boolean;
+    /** See `RunAreaOptions.contextReachM`. */
+    contextReachM?: number | null | undefined;
+    /** See `RunAreaOptions.contextBufferM`. */
+    contextBufferM?: number | undefined;
     /** Group texts the site key already wrote (`prepared-site.ts`). */
     texts?: ReadonlyMap<object, string>;
     /** The terrain read once for this plan (D200). */

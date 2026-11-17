@@ -33,5 +33,8 @@ export function jobsServiceOptions(options, baseUrl, auth, logger, timeoutMs) {
             onGeometryReuseProbe: options.onGeometryReuseProbe,
         }),
         ...(options.geometryUrlStore === undefined ? {} : { geometryUrlStore: options.geometryUrlStore }),
+        // A batch item carries a geometry URL of the credential it was prepared
+        // with; only fixed credentials keep one partition for the whole run.
+        batchSubmit: options.batchSubmit !== false && options.getToken === undefined && options.auth === undefined,
     };
 }

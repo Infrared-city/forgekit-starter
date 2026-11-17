@@ -1,5 +1,6 @@
 import type { AreaJobsService, RunAreaOptions } from "./run-options.js";
 import type { Polygon } from "./types.js";
+import { type PriceQuote, type PricingSource } from "../price-list.js";
 /**
  * The jobs, estimated time and estimated cost of an area run, from `previewAreaBatches`.
  *
@@ -14,6 +15,12 @@ export interface AreaBatchPreview {
     readonly estimatedTimeS: number;
     /** Estimated cost in tokens. */
     readonly estimatedCostTokens: number;
+    /** The tokens charged for one job. */
+    readonly tokensPerJob: number;
+    /** The version of the price list used, when the list has one. */
+    readonly pricingVersion?: string;
+    /** Where the price came from: `"live"`, `"cached"` or `"stale"`. */
+    readonly pricingSource: PricingSource;
     /** Total sensors across the planned facade batches, or `undefined` for a grid preview. */
     readonly sensorCount?: number;
 }
@@ -24,9 +31,10 @@ export interface AreaBatchPreview {
  * It reports the real number of jobs, which on a facade (`analysisSurfaces`) request can exceed
  * the tile count because a tile may split into several billed batches. On a grid request it
  * gives one job per tile, like `previewArea`. Most callers want
- * `client.previewAreaBatches(input, polygon, options)`, which passes `client.jobs` as `service`.
+ * `client.previewAreaBatches(input, polygon, options)`, which passes `client.jobs` and `client.billing`.
  *
  * @param service - The jobs service the plan is prepared against, for example `client.jobs`.
+ * @param billing - The service that prices a job, for example `client.billing`.
  * @param input - The analysis request fields.
  * @param polygon - The area to analyse.
  * @param options - The same run options `runArea` takes.
@@ -34,7 +42,9 @@ export interface AreaBatchPreview {
  * a facade request.
  * @category Run an analysis
  */
-export declare function previewAreaBatches(service: AreaJobsService, input: RunAreaInputLike, polygon: Polygon, options?: RunAreaOptions): Promise<AreaBatchPreview>;
+export declare function previewAreaBatches(service: AreaJobsService, billing: {
+    quote(analysisType: string): Promise<PriceQuote>;
+}, input: RunAreaInputLike, polygon: Polygon, options?: RunAreaOptions): Promise<AreaBatchPreview>;
 /**
  * The analysis request fields `previewAreaBatches` accepts: an object keyed by request field
  * name.

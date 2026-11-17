@@ -16,7 +16,7 @@ export { initializeCore } from "../internal/initialize.js";
 export { CoreInitializationError, CoreNotReadyError, CoreTerminalError, } from "../internal/errors.js";
 export { ALLOWED_HOSTS, assertAllowedUrl, GEO_BASE_URL, geoUrlFor, isAllowedUrl, } from "./allowed-hosts.js";
 export { GeodataDependencyError, GeodataError, GeodataFetchError, GeodataRangeError, HostNotAllowedError, OvertureFileLimitError, OvertureReadTooLargeError, SiteReadError, } from "./errors.js";
-export { bboxIntersects, DATA_USER_AGENT, DEFAULT_PUBLIC_TIMEOUT_MS, fetchPublicBytes, fetchPublicJson, fetchPublicText, MAX_HTTP_200_BYTES, MAX_JSON_BYTES, MAX_RANGE_BYTES, pointToBbox, } from "./http.js";
+export { bboxIntersects, DATA_USER_AGENT, DEFAULT_PUBLIC_TIMEOUT_MS, fetchPublicBytes, fetchPublicJson, fetchPublicText, MAX_JSON_BYTES, pointToBbox, } from "./http.js";
 // The read-margin DERIVATIONS are here so a caller can size their own read;
 // the refusal GATE is not. `checkReadMargin`, `LAYER_REQUIREMENT` and the
 // `ReadMarginRecord` shape are how `runArea` refuses, not a call a caller
@@ -24,11 +24,10 @@ export { bboxIntersects, DATA_USER_AGENT, DEFAULT_PUBLIC_TIMEOUT_MS, fetchPublic
 // as their Python twins do (FINAL-SANITY F8).
 export { groundReadDistanceM, readMarginM, ReadMarginError, requiredMarginM, resolveReadAnalysisType, WIDEST_READ_ANALYSIS_TYPE, } from "./read-margin.js";
 export { bytesRangeTransport, httpRangeTransport } from "./range-transport.js";
-export { MAX_BACKOFF_MS, MAX_RANGE_ATTEMPTS, MIN_BACKOFF_MS, RangeRetry, } from "./retry.js";
 export { featureCollectionJson, featuresArrayText, jsonArrayOf, jsonObjectOf, requireFeatureCollection, requireJsonArray, spliceJsonArrays, } from "./json-chain.js";
 export { clearManifestCaches, fetchOvertureManifest, fetchSources, INDEXED_COLLECTIONS, resolveOverlayCity, selectOvertureFiles, SOURCES_TTL_MS, } from "./manifests.js";
 export { clearFgbCache, readFgbBbox, readFgbBboxJson, readFgbBytes, } from "./fgb.js";
-export { HEADER_PREFIX_BYTES, KERNEL_FGB_EXPORTS, MAX_PLANNED_RANGE_BYTES, MAX_PLANNED_TOTAL_BYTES, } from "./fgb-kernel.js";
+export { HEADER_PREFIX_BYTES, KERNEL_FGB_EXPORTS, } from "./fgb-kernel.js";
 export { COLUMNS_BY_COLLECTION, LAND_COVER_MIN_MAX_ZOOM, overtureReaderAvailable, planRowGroups, readOvertureCollection, readOvertureCollectionJson, requireOvertureReader, } from "./overture.js";
 // The reader's internals — the membership predicate, the row-group planner,
 // the byte budget and the concurrency constants — are NOT exported here. A
@@ -49,5 +48,5 @@ export { acquireBuildingsArea } from "./buildings-area.js";
 // `decompose` now crosses into the kernel from `site-chunks.ts`; the other
 // four moved to `rect-union-metrics.ts` when `rect-union.ts` was deleted
 // (rect-union kernel port).
-export { bboxAreaKm2, decompose, farEndErrorM, namePieces, SITE_CHUNK_EDGE_M, SITE_CHUNK_THRESHOLD_KM2, SITE_CHUNKS_IN_FLIGHT, SITE_EXTENT_WARNING_KM, siteChunks, siteRectangle, } from "./site-chunks.js";
+export { decompose, namePieces, SITE_CHUNKS_IN_FLIGHT, siteChunks, siteRectangle, } from "./site-chunks.js";
 export { bboxAreaM2, MAX_SLAB_TOLERANCE_DEG, SLAB_TOLERANCE_FACTOR, slabToleranceDeg, unionAreaM2, } from "./rect-union-metrics.js";

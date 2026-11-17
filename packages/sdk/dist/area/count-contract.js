@@ -34,8 +34,12 @@
 // -- the facade COUNTS did not move with it, so this stayed at the version
 // that last changed them, until now: 11 counts a downward-facing face too --
 // a soffit, a cantilever underside, a wall that leans out over the ground
-// (`SURFGRID_VERSION` 7). The Python twin is count contract 6.
-export const FACADE_COUNT_CONTRACT_VERSION = 11;
+// (`SURFGRID_VERSION` 7). 12: the cells of a building depend only on its own
+// mesh and the terrain, not on the other buildings of its job
+// (`SURFGRID_VERSION` 8). 13: a building is laid out from its own geometry alone,
+// a cell that a neighbour hides is kept, and a roof frame is deterministic
+// (`SURFGRID_VERSION` 9). The Python twin is count contract 8.
+export const FACADE_COUNT_CONTRACT_VERSION = 13;
 /** What each schedule contract changed in the count, named in the refusal. */
 const COUNT_CHANGES = [
     [6, "the kernel welds each building's vertices (infrared-core #555)"],
@@ -43,6 +47,8 @@ const COUNT_CHANGES = [
     [8, "the kernel cleans each building in a canonical order (infrared-core #630)"],
     [9, "the kernel gives a terrace under an overhang roof sensors (infrared-core #674)"],
     [11, "the kernel gives downward-facing faces sensors too (infrared-core surfgrid v7)"],
+    [12, "the kernel gates each building on its own mesh, not its job (infrared-core surfgrid v8)"],
+    [13, "the kernel lays out each building from its own geometry, with a fixed roof frame (infrared-core surfgrid v9)"],
 ];
 /**
  * Thrown when a facade retry is refused because the saved schedule's batches

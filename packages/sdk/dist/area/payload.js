@@ -6,6 +6,7 @@ import { WeatherDocument } from "../weather-epw.js";
 import { BASE, FAST, LOCATION, MODEL_INPUT_NAMES, PERIOD_ALIASES, SURFACE, TERRAIN, TOP_LEVEL_ALIASES, } from "./payload-aliases.js";
 import { THERMAL_CONTROL_KEYS, THERMAL_MODELS, rejectThermalControls, validatePhysics, } from "./thermal-controls.js";
 import { pickKeys, registryAlias } from "./registry-pick.js";
+import { CAMEL_SURFACE_FIELDS, WIRE_SURFACE_FIELDS, pinSurfaceFields } from "./surface-fields.js";
 function define(target, key, value) {
     Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
 }
@@ -31,7 +32,7 @@ function range(value) {
         return [parts[0], parts[1]];
     return undefined;
 }
-function timePeriod(filtersValue) {
+function timePeriod(filtersValue, type) {
     const filters = record(filtersValue, "dateFilters");
     const period = record(filters.period, "dateFilters.period");
     const start = record(period.start, "dateFilters.period.start");
@@ -47,83 +48,36 @@ function timePeriod(filtersValue) {
         endDay: days?.[1] ?? numeric(end.day, "end day"),
         endHour: hours?.[1] ?? numeric(end.hour, "end hour"),
     };
-    // Refuse a MALFORMED window here, before it is submitted — a month outside 1-12, an hour outside
-    // 0-23, a day outside its own month's length. A window that crosses the year end (a date span of
-    // one typical year, in calendar order of the year) and a single-hour window are both valid and
-    // reach the model unchanged (`internal/weather-window.ts`, D45). This package validated nothing
-    // here up to 0.9, so this is a narrowing, and it narrows only what no model could have read.
-    weatherWindow(windowOf(resolved));
+    // The kernel refuses a window the server would refuse, before anything is submitted
+    // (`internal/weather-window.ts`). A year-wrap window and a single-hour window are valid.
+    weatherWindow(windowOf(resolved), type);
     return resolved;
 }
-function weatherRows(value, period) {
-    if (Array.isArray(value))
-        return value.map((row, index) => record(row, `weatherData[${index}]`));
-    const columns = record(value, "weatherData");
-    if (!Array.isArray(columns.month) || !Array.isArray(columns.day) || !Array.isArray(columns.hour)) {
-        throw new TypeError("weatherData must be rows or an EPW column object");
-    }
-    // Column-form weather is a station document's hourly arrays: the KERNEL selects the RESOLVED
-    // window (`timePeriod()` — period with the `filter` day/hour shorthand folded in, the same
-    // `time-period` the model receives) with the kernel `filter_hours`: the date span the worker
-    // counts, a daily hour range, EPW hours 1-24 on a 0-23 basis (D238). Up to 0.12 this package
-    // selected by month.
-    let filtered;
+/**
+ * The arrays a model reads from catalog weather, by request name. The KERNEL
+ * selects them (`weatherColumns`): column weather is cut to the RESOLVED
+ * window (`timePeriod()`, the `filter` shorthand folded in), a gap in a
+ * required column is refused, never filled in (D44), and pedestrian wind
+ * comfort needs a speed and a direction in every row and two speeds above zero.
+ */
+function weatherColumns(value, type, period) {
+    let text;
     try {
-        filtered = requireCore("prepareAnalysisPayload").weatherFilterHours(JSON.stringify({ weatherData: columns }), weatherWindowJson(windowOf(period)));
+        text = requireCore("prepareAnalysisPayload").weatherColumns(JSON.stringify(value), type, period === undefined ? undefined : weatherWindowJson(windowOf(period), type));
     }
     catch (error) {
         if (error instanceof CoreNotReadyError)
             throw error;
-        throw new TypeError(`weatherData could not be filtered to dateFilters.period: ${error instanceof Error ? error.message : String(error)}`);
+        throw new TypeError(`weatherData: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const kept = record(record(JSON.parse(filtered), "weatherData").weatherData, "weatherData");
-    const hours = Array.isArray(kept.hour) ? kept.hour : [];
-    const output = [];
-    for (let index = 0; index < hours.length; index += 1) {
-        const row = {};
-        for (const [key, column] of Object.entries(kept)) {
-            if (Array.isArray(column))
-                row[key] = column[index];
-        }
-        output.push(row);
+    const output = {};
+    for (const [snake, column] of Object.entries(JSON.parse(text))) {
+        const camel = MODEL_INPUT_NAMES[snake];
+        if (camel === undefined)
+            throw new TypeError(`unexpected weather column ${snake}`);
+        output[camel] = column;
     }
     return output;
-}
-/**
- * One column of a model's weather input, kept in step with its siblings.
- *
- * A gap is a REJECTION, not a shortened column. Dropping the row here left
- * this column one shorter than every other array, so every hour after the
- * gap reached the model as the next hour's reading — silently, and after the
- * charge (`docs/DEVIATIONS.md` D44 rule 1, D45). Substituting a value is
- * refused for the same reason: it would change a billed result. The twin is
- * the Python `analyses.types._rows_to_columns`.
- */
-function series(rows, key) {
-    const output = [];
-    for (const [index, row] of rows.entries()) {
-        const value = row[key];
-        if (value === null || value === undefined) {
-            throw new TypeError(`weather column ${key} has no reading at row ${index} of ${rows.length} in ` +
-                "the selected window. A gap in a required column is refused, never " +
-                "filled in: substituting a value would change a billed result. " +
-                "Choose a window without the gap, or bring a file that covers it.");
-        }
-        output.push(numeric(value, `weatherData.${key}`));
-    }
-    return output;
-}
-function pairedWind(rows) {
-    const windSpeed = [];
-    const windDirection = [];
-    for (const row of rows) {
-        if (row.windSpeed === null || row.windSpeed === undefined ||
-            row.windDirection === null || row.windDirection === undefined)
-            continue;
-        windSpeed.push(numeric(row.windSpeed, "weatherData.windSpeed"));
-        windDirection.push(numeric(row.windDirection, "weatherData.windDirection"));
-    }
-    return { windSpeed, windDirection };
 }
 function pick(input, keys) {
     const output = {};
@@ -195,23 +149,9 @@ function modelTransform(input) {
                 "dateFilters, or select the arrays yourself with " +
                 "document.modelInputs(...).");
         }
-        // The one field this pass-through DOES narrow, and for the same reason the camelCase path does
-        // below: the server's `cell-tris` arm is 12.6x the body for a picture this SDK's kernel draws
-        // for free, so no request this SDK builds asks for it (D88).
+        // The surface fields are pinned by the kernel rule (`pinSurfaceFields`).
         const raw = { ...input };
-        if (raw["analysis-surfaces"] != null) {
-            raw["emit-cell-tris"] = false;
-            // infrared-core #674: every surface request names the bundled kernel's roof-gate version, so
-            // the worker runs the gate THIS SDK was tested against rather than guessing from an absent
-            // field (old SDKs omit it and keep the frozen v5 layout; see UPGRADING.md). An explicit
-            // caller value is kept as is -- `prepareSubmissionBody` repeats this same "set only if
-            // absent" rule for a direct submission that never reaches this function
-            // (`internal/submit-body.ts`).
-            if (raw["surfgrid-version"] == null)
-                raw["surfgrid-version"] = requireCore("prepareAnalysisPayload").surfgridVersion();
-        }
-        if (raw["mesh-cleaning"] === "auto")
-            delete raw["mesh-cleaning"];
+        pinSurfaceFields(raw, WIRE_SURFACE_FIELDS);
         return raw;
     }
     const type = input.analysisType ?? input["analysis-type"];
@@ -225,22 +165,8 @@ function modelTransform(input) {
     else
         rejectThermalControls(input, type);
     let output = { ...input };
-    // PINNED false, not defaulted: the server's `cell-tris` arm is 12.6x the response body (+214 MB
-    // on the 66-job F3 scene) for a picture this SDK's own kernel draws for free. A caller asking
-    // `emitCellTris: true` is asking for the TRIANGLES, not for the server to render them, and gets
-    // them synthesized locally after the merge -- `area/facade-synthesis.ts`, ADR 0008,
-    // `docs/DEVIATIONS.md` D88. The wire-shaped `analysis-type` path above returns before this and
-    // still passes the field through untouched.
-    if (output.analysisSurfaces != null) {
-        output.emitCellTris = false;
-        // infrared-core #674: same as the wire-shaped pass-through above.
-        if (output.surfgridVersion == null)
-            output.surfgridVersion = requireCore("prepareAnalysisPayload").surfgridVersion();
-    }
-    // "auto" IS the default (#555): sent and hashed as nothing, so an explicit
-    // "auto" and an omitted field are the same request.
-    if (output.meshCleaning === "auto")
-        delete output.meshCleaning;
+    // The pinned surface fields (`emitCellTris` is never asked of the server, ADR 0008, D88): the kernel rule.
+    pinSurfaceFields(output, CAMEL_SURFACE_FIELDS);
     if (output.dateFilters === undefined) {
         if (byoWeather !== undefined) {
             throw new TypeError("weather (a parsed EPW document) requires dateFilters: the window is " +
@@ -250,7 +176,7 @@ function modelTransform(input) {
         return output;
     }
     const filters = record(output.dateFilters, "dateFilters");
-    const period = timePeriod(filters);
+    const period = timePeriod(filters, type);
     if (type === "direct-sun-hours" || type === "daylight-availability") {
         if (byoWeather !== undefined) {
             throw new TypeError(`${type} takes no weather arrays; a parsed EPW document is only an ` +
@@ -303,33 +229,22 @@ function modelTransform(input) {
     }
     if (output.weatherData === undefined)
         throw new TypeError(`${type} requires weatherData`);
-    const rows = weatherRows(output.weatherData, period);
+    const weather = output.weatherData;
     if (type === "pedestrian-wind-comfort") {
         output = pick(output, pickKeys(type, [...BASE, "criteria"]));
-        const wind = pairedWind(rows);
-        if (wind.windSpeed.length === 0)
-            throw new TypeError("pedestrian-wind-comfort needs paired wind data");
-        Object.assign(output, wind);
     }
     else if (type === "solar-radiation") {
         output = pick(output, pickKeys(type, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]));
         output.timePeriod = period;
-        output.directNormalRadiation = series(rows, "directNormalRadiation");
-        output.diffuseHorizontalRadiation = series(rows, "diffuseHorizontalRadiation");
     }
     else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
         output = pick(output, pickKeys(type, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]));
         output.timePeriod = period;
-        for (const key of [
-            "horizontalInfraredRadiationIntensity", "diffuseHorizontalRadiation",
-            "directNormalRadiation", "globalHorizontalRadiation", "dryBulbTemperature",
-            "windSpeed", "relativeHumidity",
-        ])
-            output[key] = series(rows, key);
     }
     else {
         throw new TypeError(`unsupported analysis type ${type}`);
     }
+    Object.assign(output, weatherColumns(weather, type, period));
     return output;
 }
 function wirePeriod(value) {

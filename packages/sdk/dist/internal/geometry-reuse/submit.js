@@ -6,6 +6,7 @@
  */
 import { AuthPartitionChangedError } from "../auth.js";
 import { requireCore } from "../core.js";
+import { zipPayload } from "../zip-payload.js";
 import { submitArchive, uploadArchive } from "../submission.js";
 import { GatewayTransport } from "../transport.js";
 import { jsonWireBytes } from "../wire-json.js";
@@ -60,7 +61,7 @@ export async function submitBody(analysisType, body, transport, groups = []) {
         throw new TypeError("request has no JSON wire form");
     return submitArchive({
         endpointPath: `/async/${encodeURIComponent(analysisType)}`,
-        archive: requireCore().zipPayloadJson(json),
+        archive: await zipPayload(json),
         gateway: transport.gateway,
         uploadGateway: transport.uploadGateway,
         fetch: transport.fetch,
@@ -77,7 +78,7 @@ export async function submitBody(analysisType, body, transport, groups = []) {
 /** Upload one geometry document and return its presigned GET URL. */
 export async function uploadGeometry(bytes, transport) {
     return uploadArchive({
-        archive: requireCore().zipPayloadJson(bytes),
+        archive: await zipPayload(bytes),
         uploadGateway: transport.uploadGateway,
         fetch: transport.fetch,
         timeoutMs: transport.timeoutMs,

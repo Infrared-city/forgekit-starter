@@ -1,6 +1,6 @@
 import { requireCore } from "../internal/core.js";
 import { rememberGroup } from "../internal/geometry-reuse/identity.js";
-import { rememberWireText } from "../internal/wire-json.js";
+import { KernelGroup } from "../internal/kernel-group.js";
 import { SiteAssignment } from "./site-assign.js";
 const WASM_USIZE_MAX = 0xffff_ffff;
 /** Every group this host has an area tiling policy for. */
@@ -88,12 +88,12 @@ const decoder = new TextDecoder();
 // Maintainer note (not published): `planAreaSubmission` drives THIS one: it yields the thread
 // between tiles (D78) and the facade split reads the kernel's `core`, `shrink_band` and `demoted`
 // off `site` instead of asking the kernel a second time per tile (D63, D90). A tile costs one
-// `JSON.parse` per group of the kernel's own bytes, and each parsed group is remembered with
-// those bytes and its kernel hash, so the reuse path never canonicalises or re-hashes it and
-// digests an identity only when asked.
+// `JSON.parse` per group of the kernel's own bytes for `composeTilePayloads`, remembered with
+// those bytes and its kernel hash, so the reuse path never canonicalises or re-hashes it.
 //
-// `rememberWire`: remember each group's arena bytes as its wire text (`internal/wire-json.ts`).
-// ONLY the plan path sets this: its group objects are SDK-owned (the prepared site, D96).
+// `rememberWire`: the plan path. Each group stays the arena's bytes as a `KernelGroup`
+// (`internal/kernel-group.ts`): never parsed, written into the body and identified as it is.
+// ONLY the plan path sets this: its groups are SDK-owned (the prepared site, D96).
 // `composeTilePayloads` hands its payloads to the caller, who may change them before a submit, so
 // it never remembers. `terrain`: the terrain read once for `groups["ground-geometry"]` (D200).
 export function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = false, texts, rememberWire = false, terrain) {
@@ -116,7 +116,7 @@ export function beginCompose(groups, tiles, polygon, options = {}, keepKernelSit
     if (groups["ground-geometry"] !== undefined && options.terrainContext === undefined) {
         throw new TypeError("terrainContext is required for ground-geometry");
     }
-    const site = SiteAssignment.read(groups, tileInput, polygon, options.analysisType ?? undefined, options.terrainContext?.margin_m, keepKernelSite, texts, terrain);
+    const site = SiteAssignment.read(groups, tileInput, polygon, options.analysisType ?? undefined, options.terrainContext?.margin_m, keepKernelSite, texts, terrain, options.contextReachM, options.contextBufferM);
     const payloads = {};
     return {
         site,
@@ -131,10 +131,14 @@ export function beginCompose(groups, tiles, polygon, options = {}, keepKernelSit
                 const written = site.group(index, group);
                 if (written === undefined)
                     continue;
+                if (rememberWire) {
+                    // The plan's own groups stay the kernel's bytes: never parsed, sent as they are.
+                    const text = { bytes: written.bytes, hash: written.hash };
+                    payload[group] = new KernelGroup(() => text, written.bytes.length === 2);
+                    continue;
+                }
                 const value = JSON.parse(decoder.decode(written.bytes));
                 rememberGroup(group, value, written.bytes, written.hash);
-                if (rememberWire)
-                    rememberWireText(value, written.bytes);
                 payload[group] = value;
             }
             payloads[tile.tileId] = payload;

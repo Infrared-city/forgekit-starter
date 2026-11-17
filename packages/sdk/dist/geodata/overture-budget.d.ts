@@ -1,10 +1,22 @@
 import type { Bbox } from "./http.js";
 import type { ParquetMetadata } from "./overture-parquet.js";
+/**
+ * What one Overture CALL is allowed to move, and how much of it at once.
+ *
+ * Two limits, both of them stated rather than discovered. The parquet
+ * footers say exactly how many compressed bytes the selected row groups
+ * hold before a single one is fetched, so an AOI that cannot fit fails HERE
+ * with a number in the message — not as an out-of-memory kill, and never as
+ * a browser tab that stops responding. And a browser allows six connections
+ * per host, so a wave that starts nine row-group reads at one bucket queues
+ * three of them anyway while holding three more decoded buffers alive.
+ */
 /** Row-group reads in flight at the Overture bucket, across every type. */
 export declare const OVERTURE_HOST_CONCURRENCY: number;
 /**
- * The byte limit for a runtime. A parameter, so BOTH arms can be tested in
- * whichever realm the tests happen to run in.
+ * The compressed bytes ONE CALL may plan in a runtime: the kernel's number
+ * (a browser tab shares a ~4 GB heap with its page, so it gets less). A
+ * parameter, so BOTH arms can be tested in whichever realm the tests run in.
  */
 export declare function plannedBytesLimitFor(node: boolean): number;
 /**

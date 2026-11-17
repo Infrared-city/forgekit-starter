@@ -103,7 +103,15 @@ import { MODEL_INPUT_NAMES, TOP_LEVEL_ALIASES } from "./payload-aliases.js";
 // now gets facade sensors too (`SURFGRID_VERSION` 7), so
 // "facades"/"all" counts move again. `"roofs"` counts do not change.
 // `area/count-contract.ts` refuses a retry of an older contract by name.
-export const SCHEDULE_CONTRACT_VERSION = 11;
+//
+// **Version 12 changes the COUNT again** (`SURFGRID_VERSION` 8): the cells of a
+// building depend only on its own mesh and the terrain, not on the other
+// buildings of its job, so "roofs"/"all" and downward "facades" counts move.
+//
+// **Version 13 changes the COUNT again** (`SURFGRID_VERSION` 9): a building is
+// laid out from its own geometry alone, a cell that a neighbour hides is kept,
+// and a roof frame is deterministic, so every surface count can move.
+export const SCHEDULE_CONTRACT_VERSION = 13;
 /**
  * The schedule record version from which `AreaSchedule.weatherIdentity` names the weather a run
  * submitted. A weather-bearing schedule written under a lower version is refused on retry.

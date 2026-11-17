@@ -1,9 +1,10 @@
 export { jobFromResponse, parseJobStatus } from "./internal/job-response.js";
+import { type ByteResponse } from "./internal/transport.js";
 import { type BinaryCapability } from "./internal/binary-submission.js";
 import { type StatusSweep } from "./internal/status-batch.js";
 import { type ParsedResult, type ParseResultOptions } from "./results/router.js";
-import type { DownloadResult, DownloadResultsOptions, JobsServiceOptions, SubmitOptions, WaitForCompletionOptions } from "./job-options.js";
-export type { BinaryAcknowledgement, DownloadResult, DownloadResultsOptions, JobsServiceOptions, OnPollCallback, SubmitOptions, WaitForCompletionOptions, } from "./job-options.js";
+import type { DownloadResult, DownloadResultsOptions, JobsServiceOptions, SubmitOptions, SubmitPreparedOptions, WaitForCompletionOptions } from "./job-options.js";
+export type { BinaryAcknowledgement, DownloadResult, DownloadResultsOptions, JobsServiceOptions, OnPollCallback, SubmitOptions, SubmitPreparedOptions, WaitForCompletionOptions, } from "./job-options.js";
 import { type Job, type PreparedSubmission } from "./job-model.js";
 import { FacadeCaptures } from "./area/facade-captures.js";
 export { JobStatus } from "./job-model.js";
@@ -29,12 +30,14 @@ export declare class JobsService {
     private readonly geometryReuseEnabled;
     private readonly geometryReuseOptions;
     private readonly capabilities;
-    /** `undefined` until the batched status route has been tried once. */
+    /** What `getStatusBatch` learned of the batched route (1.0.0 behaviour); unset: not known. */
     private batchedStatus;
     private readonly binaryPrepared;
     private readonly geometryUrls;
     private readonly auth;
     private readonly binaryUrlReuse;
+    /** Area runs send their binary jobs in batch submits when the API offers them (`JobsServiceOptions.batchSubmit`). */
+    readonly batchSubmit: boolean;
     /** Default `consoleLogger`, like every other service in this package. */
     private readonly logger;
     /**
@@ -59,17 +62,20 @@ export declare class JobsService {
     /** Validates and encodes a request without sending it; returns the `PreparedSubmission`. */
     prepareSubmission(analysisType: string, payload: Readonly<Record<string, unknown>>, options?: Omit<SubmitOptions, "signal">): PreparedSubmission;
     /** Sends a `PreparedSubmission` and returns the accepted `Job`; the options are used by area runs. */
-    submitPrepared(prepared: PreparedSubmission, options?: {
+    submitPrepared(prepared: PreparedSubmission, options?: SubmitPreparedOptions): Promise<Job>;
+    /** The options of one binary submission of this client. */
+    private binaryOptions;
+    /** An outdoor binary submission: the encode and the URL reuse of this client. */
+    private outdoorBinary;
+    /** @internal Batch submit: one outdoor binary request, uploaded, not POSTed; else `undefined`. */
+    prepareBatchItem(prepared: PreparedSubmission, options?: {
+        readonly signal?: AbortSignal;
+    }): Promise<Uint8Array | undefined>;
+    /** @internal ONE POST of a batch body the run engine wrote; an HTTP error is returned. */
+    postBatch(body: string, options?: {
         readonly signal?: AbortSignal;
         readonly beforeDispatch?: () => void;
-        /** The upload and POST slots of one area run; unset for a single submit. */
-        readonly stages?: {
-            readonly uploaded: () => void;
-            readonly post: <T>(send: () => Promise<T>) => Promise<T>;
-        };
-        /** The `Idempotency-Key` that makes a retried send safe; unset for a single submit. */
-        readonly idempotencyKey?: string;
-    }): Promise<Job>;
+    }): Promise<ByteResponse>;
     /**
      * Finishes all validation and encoding of a binary submission before any
      * paid request is sent. The encoded bytes are kept (within a memory budget)
@@ -95,9 +101,8 @@ export declare class JobsService {
         readonly signal?: AbortSignal;
     }): Promise<Job>;
     /**
-     * Whether the API's route for reading many job statuses at once has
-     * answered this client. `false` until it has, and for good once the API
-     * shows it lacks the route; area runs use it to choose their poll interval.
+     * Whether the API's route for reading many job statuses at once has answered this client.
+     * `false` until it has, and for good once the API shows it lacks the route.
      */
     get batchedStatusSupported(): boolean;
     /**
@@ -111,23 +116,31 @@ export declare class JobsService {
         readonly maxWorkers?: number;
     }): Promise<StatusSweep>;
     /**
-     * Polls a job until it succeeds or fails. `options.timeout` is in seconds
-     * (default 900).
+     * Waits for a job to succeed or fail: one `GET /async/jobs/{id}` 1 s after
+     * the call, then every 1 s until 10 s, then every 2 s. After HTTP 429, a 5xx
+     * or a network error it backs off (at most 30 s, never shorter than
+     * `Retry-After`). `options.timeout` is in seconds (default 900).
      *
      * @returns The finished `Job`.
      * @throws {JobFailedError} when the job fails.
      * @throws {JobTimeoutError} when the timeout passes first.
      * @throws {JobAbortedError} when `options.signal` aborts the wait.
+     * @throws {JobPollError} when a status request is refused for good (for example 401 or 404).
      */
     waitForCompletion(jobId: string, options?: WaitForCompletionOptions): Promise<Job>;
     private resultsUrl;
     private download;
     /**
      * Downloads the result archive of a finished job, retrying a failed
-     * download a few times. Pass `options.job` to skip reading the status.
+     * download a few times (each try with a fresh link). Pass `options.job` to
+     * skip reading the status.
      *
      * @throws {JobNotCompletedError} when the job has not succeeded.
      * @throws {TypeError} when `options.job` is a different job.
      */
     downloadResults(jobId: string, options?: DownloadResultsOptions): Promise<DownloadResult>;
+    /** @internal One try of `downloadResults`: the run engine retries an area run's downloads. */
+    downloadResultsOnce(jobId: string, options?: DownloadResultsOptions): Promise<DownloadResult>;
+    private downloadable;
+    private downloadOnce;
 }

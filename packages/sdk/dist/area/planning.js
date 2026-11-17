@@ -1,6 +1,7 @@
 import { CONFIG_HASH_V2_CONTRACT_VERSION, scheduleConfigHash, kernelConfigHash, } from "./config-hash.js";
 import { suppliedSceneAlignment } from "../internal/scene-alignment.js";
 import { areaTransport } from "../internal/transport-choice.js";
+import { requireCore } from "../internal/core.js";
 import { consoleLogger } from "../logger.js";
 import { checkFacadeCountContract } from "./count-contract.js";
 import { Slice } from "./cooperative.js";
@@ -8,39 +9,16 @@ import { prepareAreaPayload } from "./payload.js";
 import { dropUnknownRequestKeys } from "./unknown-request-keys.js";
 import { buildEntries } from "./plan-entries.js";
 import { GROUP_KEYS, indexed } from "./plan-layers.js";
-import { liveTerrain, siteTerrain, terrainDigest } from "./site-terrain.js";
-import { buildPreparedSite, preparedSiteKey, preparedSites, } from "./prepared-site.js";
-import { checkPaidRetrySiteIdentity } from "./site-identity-guard.js";
+import { liveTerrain, siteTerrain, terrainKey } from "./site-terrain.js";
+import { buildPreparedSite, preparedSiteKey, preparedSites, siteKeyMemo, } from "./prepared-site.js";
+import { checkPaidRetrySiteIdentity, SITE_IDENTITY_PREFIX } from "./site-identity-guard.js";
 import { checkFacadeSensorCap } from "./sensor-cap.js";
 import { buildRetryContext } from "./retry-context.js";
 import { freshRunId } from "./retry-plan.js";
-import { FacadeOwnership } from "./facade-ownership.js";
 import { facadeRequest } from "./site-facade.js";
 import { generateTilesForPolygon, getTilingConfig, validatePolygon } from "./tiling.js";
 import { consumeGradeOption } from "../to-grade.js";
 import { checkResumeWeather, isWeatherBearing, preparedWeatherIdentity, } from "./weather-guard.js";
-/**
- * The identity a paid retry compares with `retryFrom.siteIdentity`.
- *
- * 0.12.13-next.17 and older hashed each acquisition result whole, with its
- * per-fetch `executionTime`, so their saved identity differs from today's
- * content-only one for the same inputs (D187). On that mismatch only, the
- * legacy key is computed too; when IT matches, the inputs are the ones the
- * schedule was made from. The legacy key covers a superset of today's
- * content, so this accepts nothing today's key would refuse for new content.
- *
- * Not gated on a resubmit: a complete schedule is checked too, so a
- * legacy-key schedule must get the same fallback.
- */
-async function retrySiteIdentity(current, inputs, prior) {
-    const recorded = prior?.siteIdentity;
-    if (current === undefined || recorded === undefined || recorded === current ||
-        prior === undefined)
-        return current;
-    const legacyKey = await preparedSiteKey(inputs, undefined, true);
-    return legacyKey !== undefined && `sha256:${kernelConfigHash({ siteKey: legacyKey })}` === recorded
-        ? recorded : current;
-}
 /**
  * Build and validate the whole submission plan for an area run, before any job is submitted.
  *
@@ -52,6 +30,8 @@ async function retrySiteIdentity(current, inputs, prior) {
  * @param input - The analysis request fields.
  * @param polygonInput - The area to analyse.
  * @param options - Run options such as `retryFrom`, `signal` and `maxTilesOverride`.
+ * @param memo - Per-call digests of the mesh groups (`SiteKeyMemo`), shared by the analyses of one call.
+ * @param facadeSites - Per call, the facade plan inputs of each site's analyses (`area/stream.ts` shares their parts).
  * @returns The validated submission plan.
  * @throws {TypeError} when the input carries `vegetation-instances` or `sensor-points`,
  * which area runs do not support.
@@ -70,7 +50,7 @@ async function retrySiteIdentity(current, inputs, prior) {
 // `options.signal` at each boundary, so a host around this SDK stays responsive and a stop is
 // honoured during the plan rather than 24 s later. The work, the order and the answer are
 // unchanged.
-export async function planAreaSubmission(service, input, polygonInput, options = {}) {
+export async function planAreaSubmission(service, input, polygonInput, options = {}, memo, facadeSites) {
     const slice = new Slice(options);
     slice.check();
     if (input.vegetationInstances != null || input["vegetation-instances"] != null) {
@@ -125,8 +105,7 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     });
     const { tiles, byId } = indexed(grid);
     const config = getTilingConfig(analysisType);
-    const requestedMargin = options.terrainContextMarginM ?? 128;
-    const terrainContextMarginM = Math.max((config.contextSizeM - config.inferenceSizeM) / 2, requestedMargin);
+    const terrainContextMarginM = JSON.parse(requireCore().terrainMargin(analysisType, options.terrainContextMarginM)).effective_m;
     if (options.retryFrom?.terrainContextMarginM !== undefined &&
         options.retryFrom.terrainContextMarginM !== terrainContextMarginM) {
         throw new Error("retryFrom terrainContextMarginM mismatch");
@@ -151,28 +130,33 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     const texts = new Map();
     // A new map, or a map changed in place, gets a new digest (D104, D182);
     // raw key-order changes may conservatively refuse retry.
-    const siteKey = await preparedSiteKey(inputs, texts);
+    const ground = terrainKey(payload["ground-geometry"], texts);
+    const hashes = memo ?? siteKeyMemo();
+    const siteKey = preparedSiteKey(inputs, texts, ground, hashes);
     // D224: ONE retry context per round, built here -- before the legacy
     // -identity fallback below and the paid-retry guard further down read
     // `resubmitKeys`, and before `buildEntries` reads `retryContext.resubmitKeys`.
     const retryContext = options.retryFrom === undefined
         ? undefined
         : await buildRetryContext(service, options.retryFrom, options);
-    const currentSiteIdentity = await retrySiteIdentity(siteKey === undefined ? undefined : `sha256:${kernelConfigHash({ siteKey })}`, inputs, options.retryFrom);
+    const currentSiteIdentity = `${SITE_IDENTITY_PREFIX}${kernelConfigHash({ siteKey })}`;
     // A no-POST carry-forward cannot attest legacy jobs to newly supplied inputs.
     const siteIdentity = options.retryFrom === undefined ? currentSiteIdentity : options.retryFrom.siteIdentity;
     // The terrain, read into the kernel once per content (D200): the site
     // below is built on it, and the schedule hash folds its group hash.
-    const terrain = siteTerrain(payload["ground-geometry"], terrainDigest(siteKey), texts);
+    const terrain = siteTerrain(payload["ground-geometry"], ground, texts);
     const site = await preparedSites().get(siteKey, () => buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain), options.signal);
     texts.clear();
     slice.check();
+    if (surfaceFields && facadeSites !== undefined) {
+        // What the facade plan and its captures read: equal for every analysis that plans the same jobs.
+        const inputs = JSON.stringify([facadeRequest(payload, tiles, options.retryFrom, options.maxSensorsPerJob, options.packing), payload["terrain-alignment"] ?? null]);
+        facadeSites.set(site.answers, [...(facadeSites.get(site.answers) ?? []), inputs]);
+    }
     // A facade run's bodies are the kernel's, and a binary grid run sends the
     // kernel's artifact: neither composes a tile payload (#816, D277).
     const composed = surfaceFields || areaTransport(options, analysisType) === "binary"
         ? undefined : await composedTiles(site, slice, options.signal);
-    const ownership = new FacadeOwnership(site.answers.unowned);
-    ownership.seedFromSchedule(options.retryFrom?.batchMembership);
     // SHALLOW. `base` is copied once per tile below and nothing on the tile
     // path writes into a nested value — `Object.assign` sets the composed
     // geometry groups and the two location fields, both top level, and the
@@ -199,7 +183,11 @@ export async function planAreaSubmission(service, input, polygonInput, options =
     // An unset alignment on a supplied scene is "as-is" on the wire, so it is
     // "as-is" in the hash (the same function the submit path uses).
     const alignment = suppliedSceneAlignment(analysisType, payload);
-    const gridHash = scheduleConfigHash(analysisType, alignment === undefined ? payload : { ...payload, "terrain-alignment": alignment }, liveTerrain(terrain));
+    // #980: the kernel's one warning for point trees that stand at z = 0 on terrain.
+    const treeZ = requireCore().treeZWarning(site.answers.treesWithoutZ ?? 0, payload["terrain-alignment"] ?? alignment);
+    if (treeZ !== undefined)
+        (options.logger ?? consoleLogger).warn(treeZ);
+    const gridHash = scheduleConfigHash(analysisType, alignment === undefined ? payload : { ...payload, "terrain-alignment": alignment }, liveTerrain(terrain), undefined, hashes.groups);
     // As Python: the same hash for a grid and a facade run. The buildings are
     // `exclude` in v2; the batch membership and the site identity guard them.
     const configHash = gridHash;
@@ -211,7 +199,7 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         // "does this round resubmit anything" answer (`resubmit.length > 0`) -- never
         // `failedSubmissions.length > 0`, which misses a compute-failed job or
         // an uncertain key with no failed SUBMIT.
-        checkPaidRetrySiteIdentity(options.retryFrom, currentSiteIdentity, (retryContext?.resubmitKeys.size ?? 0) > 0);
+        checkPaidRetrySiteIdentity(options.retryFrom, currentSiteIdentity, (retryContext?.resubmitKeys.size ?? 0) > 0, options.logger);
     }
     // D224: the kernel's retry plan (built above) decides WHICH keys are
     // rebuilt and sent -- never `failed - uncertain` host arithmetic. A fresh
@@ -223,18 +211,16 @@ export async function planAreaSubmission(service, input, polygonInput, options =
         ? tiles.map((tile) => ({ ...tile }))
         : options.retryFrom.tilePositions.map((position) => ({ ...position }));
     const built = await buildEntries(tiles, {
-        service, options, analysisType, base, byId, ownership, site: site.answers, surfaceFields, retry,
+        service, options, analysisType, base, byId, site: site.answers, surfaceFields, retry,
         runId, attemptFor,
         ...(composed === undefined ? {} : { composed }),
-        ...(surfaceFields ? { facadeRequest: facadeRequest(base, tiles, options.retryFrom, options.maxSensorsPerJob) } : {}),
+        ...(surfaceFields ? { facadeRequest: facadeRequest(base, tiles, options.retryFrom, options.maxSensorsPerJob, options.packing) } : {}),
         reuseScope: (key) => [
             "area-v1", key, config.inferenceSizeM, config.contextSizeM,
             config.stepM, terrainContextMarginM, surfaceFields ? 2 : 0,
         ].join(":"),
     }, slice);
     tilePositions.push(...built.extraPositions);
-    if (surfaceFields)
-        ownership.finish(options.retryFrom === undefined);
     return {
         polygon, analysisType, configHash,
         ...(siteIdentity === undefined ? {} : { siteIdentity }),

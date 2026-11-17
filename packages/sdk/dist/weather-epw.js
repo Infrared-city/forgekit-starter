@@ -160,7 +160,7 @@ export class WeatherDocument {
     modelInputs(request) {
         const wire = {
             analysis_type: request.analysisType,
-            time_period: weatherWindow(request.timePeriod),
+            time_period: weatherWindow(request.timePeriod, request.analysisType),
         };
         if (request.subtype !== undefined)
             wire.subtype = request.subtype;
@@ -183,32 +183,14 @@ export class WeatherDocument {
      * @throws {WeatherModelInputsError} when the file cannot be filtered to that window.
      */
     filterHours(filters) {
-        let out;
+        const core = requireCore();
         try {
-            out = requireCore().weatherFilterHours(JSON.stringify({ weatherData: this.document.values ?? {} }), weatherWindowJson(filters));
+            return JSON.parse(core.weatherRows(core.weatherFilterHours(JSON.stringify({ weatherData: this.document.values ?? {} }), weatherWindowJson(filters))));
         }
         catch (error) {
             throw new WeatherModelInputsError(`this weather file cannot be filtered to that window: ${reason(error)}`, { cause: error });
         }
-        const filtered = JSON.parse(out).weatherData;
-        if (filtered === null || typeof filtered !== "object" || Array.isArray(filtered))
-            return [];
-        return rowsFromColumns(filtered);
     }
-}
-/** Column arrays to one record per row. Pure shaping; a gap stays a gap. */
-function rowsFromColumns(columns) {
-    const arrays = Object.entries(columns).filter((entry) => Array.isArray(entry[1]));
-    const rowCount = arrays.reduce((most, [, values]) => Math.max(most, values.length), 0);
-    const rows = [];
-    for (let index = 0; index < rowCount; index += 1) {
-        const record = {};
-        for (const [field, values] of arrays) {
-            record[field] = index < values.length ? values[index] : null;
-        }
-        rows.push(record);
-    }
-    return rows;
 }
 /**
  * Validates the text of an `.epw` weather file and returns its document.

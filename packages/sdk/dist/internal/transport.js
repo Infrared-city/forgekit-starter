@@ -3,6 +3,8 @@ import { bodySenderFor } from "./body-sender.js";
 import { Deadline, requireTimeout } from "./deadline.js";
 import { resolveFetch } from "./fetch.js";
 import { sendBody, sendLimits, stopDetail } from "./send-body.js";
+import { requireCore } from "./core.js";
+import { CoreNotReadyError } from "./errors.js";
 import { trimTrailingSlashes } from "./url-trim.js";
 export class TransportError extends Error {
     phase;
@@ -31,6 +33,24 @@ export function retryAfterSeconds(headers) {
     const value = Number(raw);
     return Number.isFinite(value) && value >= 0 ? value : undefined;
 }
+/**
+ * The message of a gateway HTTP error. A refused API key (401, 403) says so in
+ * the kernel's one sentence, the text a run error of a refused key has. Before
+ * the core is loaded the plain status line stays, so the error still reaches
+ * the caller with its status.
+ */
+function httpErrorMessage(status) {
+    if (status === 401 || status === 403) {
+        try {
+            return requireCore().apiKeyRefusedMessage(status);
+        }
+        catch (error) {
+            if (!(error instanceof CoreNotReadyError))
+                throw error;
+        }
+    }
+    return `gateway request received HTTP ${status}`;
+}
 // One deadline over headers AND body (D43): three minutes covers the largest
 // public-data object at a slow link; the Python twin uses the same default.
 // A request WITH a body is timed by the send guard instead (#556): the stall
@@ -48,6 +68,15 @@ export function cancelResponseBody(response) {
 }
 function mutation(method) {
     return method !== "GET" && method !== "HEAD";
+}
+/** Connect failures of a fetch (Node `cause.code`): no request left the client. */
+const NEVER_CONNECTED = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"]);
+/** The cause text of a fetch that never connected (DNS, connect refused), else undefined. */
+function connectFailure(error) {
+    const cause = error?.cause;
+    if (typeof cause?.code !== "string" || !NEVER_CONNECTED.has(cause.code))
+        return undefined;
+    return typeof cause.message === "string" ? cause.message : cause.code;
 }
 function safePhase(method, dispatched) {
     if (!dispatched)
@@ -183,7 +212,7 @@ export class GatewayTransport {
             }
             if (!response.ok && options.acceptHttpErrors !== true) {
                 cancelResponseBody(response);
-                throw new TransportError(`gateway request received HTTP ${response.status}`, "response", "http", method, response.status, retryAfterSeconds(response.headers));
+                throw new TransportError(httpErrorMessage(response.status), "response", "http", method, response.status, retryAfterSeconds(response.headers));
             }
             const buffer = await deadline.wait(() => response.arrayBuffer(), sent);
             return {
@@ -197,6 +226,10 @@ export class GatewayTransport {
                 (error instanceof AuthPartitionChangedError && !dispatched))
                 throw error;
             const stopped = deadline.reason();
+            const refused = stopped === undefined ? connectFailure(error) : undefined;
+            if (refused !== undefined) {
+                throw new TransportError(`gateway request could not connect: ${refused}`, "pre-dispatch", "network", method);
+            }
             const reason = stopped ?? (dispatched ? "network" : "auth");
             const phase = safePhase(method, dispatched);
             const message = stopped === "timeout" ?

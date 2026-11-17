@@ -16,5 +16,4 @@ export interface AreaRetryContext {
 }
 export declare function buildRetryContext(service: AreaStatusService, retryFrom: AreaSchedule, options?: {
     readonly signal?: AbortSignal;
-    readonly maxWorkers?: number;
 }): Promise<AreaRetryContext>;

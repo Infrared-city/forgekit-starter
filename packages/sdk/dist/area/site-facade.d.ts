@@ -4,6 +4,9 @@ import type { Slice } from "./cooperative.js";
 import type { SiteAnswer, TileAnswer } from "./site-assign.js";
 import type { AreaSchedule } from "./schedule-types.js";
 import type { IndexedTile } from "./types.js";
+import { type WasmCore } from "../internal/core.js";
+import type { CaptureHold } from "./facade-captures.js";
+type KernelCaptureStore = InstanceType<WasmCore["CaptureStore"]>;
 /**
  * Facade batches from the kernel `Site`, the path the Python host takes
  * (`_area/_submission_plan.py`, `Site.facade_batches` / `facade_frames`).
@@ -42,21 +45,21 @@ export interface FacadeBatch {
     readonly buildingIds: readonly string[];
     readonly sensorCount: number;
     /** The kernel's pretty capture for the body's `terrain-alignment` (`null`: unsent). */
-    readonly capture: (alignment: string | null) => Uint8Array;
+    readonly capture: (alignment: string | null, store: KernelCaptureStore) => Promise<CaptureHold>;
     /** The batch's binary artifact (D156), when the site answers artifacts. */
-    readonly artifact?: (limits: ArtifactLimits) => FacadeArtifact;
+    readonly artifact?: (limits: ArtifactLimits) => Promise<FacadeArtifact>;
 }
 /**
  * The kernel request for this run: only what the caller set, and a retry's
  * saved batches. The kernel parser owns every default and type check (D160),
  * the same rule the Python host sends to (`_area/_native_facade_plan.py`).
  */
-export declare function facadeRequest(payload: Readonly<Record<string, unknown>>, tiles: readonly IndexedTile[], retryFrom: AreaSchedule | undefined, maxSensorsPerJob: number | undefined): Record<string, unknown>;
+export declare function facadeRequest(payload: Readonly<Record<string, unknown>>, tiles: readonly IndexedTile[], retryFrom: AreaSchedule | undefined, maxSensorsPerJob: number | undefined, packing: string | undefined): Record<string, unknown>;
 /**
  * Every tile's batches in `selected`, one kernel call per tile with the
- * thread handed back between them. A fresh plan (no saved batches) is a pure
- * function of the site and the request, so it is kept on the site answer and
- * a run after its preview does not count the sensors a second time.
+ * thread handed back between them. The kernel keeps a fresh plan on the site
+ * by its plan key (D-2026101011-lotus-cedar-umber), so the analyses of a run, a preview and the run
+ * after it, and a later run on the same site count each tile once.
  */
 export declare function planFacadeRecords(site: SiteAnswer, tileCount: number, selected: ReadonlySet<number>, request: Readonly<Record<string, unknown>>, slice: Slice): Promise<ReadonlyMap<number, readonly FacadeRecord[]>>;
 /** The body order: the payload's fields, the carried groups, the location. */
@@ -75,3 +78,4 @@ export declare function facadeTileBase(base: Readonly<Record<string, unknown>>, 
 export declare function facadeBatchesForTile(value: Readonly<Record<string, unknown>>, tileId: string, tileIndex: number, records: readonly FacadeRecord[], site: SiteAnswer, answer: TileAnswer, present: number, 
 /** Whether the plan submits a batch; a retry submits only some. */
 submits?: (record: FacadeRecord) => boolean): FacadeBatch[];
+export {};

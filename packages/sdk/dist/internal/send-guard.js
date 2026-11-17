@@ -5,8 +5,10 @@
  * Two rules stop a send, and nothing else does:
  *
  * 1. **Stall guard.** No body byte moved for `stallMs`: stop. A slow upload
- *    that still moves never trips it. It bounds the connect as well, because
- *    no byte moves before the connection exists.
+ *    that still moves never trips it. The clock starts at the first body
+ *    pull, not at dispatch: a request that waits for its connection (a busy
+ *    gateway, a thread blocked in a kernel call) is not stalled (D299). The
+ *    total budget below bounds that wait.
  * 2. **Total budget.** The body is not sent `budgetMs` after the first byte
  *    was offered: stop. `budgetMs` scales with the body size.
  *
@@ -26,6 +28,7 @@ export class SendGuard {
     onStop;
     phase = "idle";
     sent = 0;
+    pulled = false;
     stopped;
     timers = new Map();
     constructor(limits, onStop) {
@@ -46,7 +49,6 @@ export class SendGuard {
             return;
         this.phase = "sending";
         if (observesProgress) {
-            this.arm("stall", this.limits.stallMs);
             this.arm("budget", this.limits.budgetMs);
         }
         else {
@@ -56,8 +58,9 @@ export class SendGuard {
     progress(sentBytes) {
         if (this.phase !== "sending")
             return;
-        if (sentBytes !== this.sent)
+        if (!this.pulled || sentBytes !== this.sent)
             this.arm("stall", this.limits.stallMs);
+        this.pulled = true;
         this.sent = sentBytes;
         if (sentBytes >= this.limits.totalBytes)
             this.finished();

@@ -1,19 +1,20 @@
 // Maintainer note (not published): `runAndWait` for an analysis the kernel splits into
 // parts (daylight-factor, D221): plan, submit the parts, wait, join. A request of one part
 // takes the one-job path and sends the bytes it always sent.
-import { waitForSchedule } from "../area/wait-schedule.js";
+import { collectOnEngine } from "../area/engine-jobs.js";
+import { computeAreaState } from "../area/schedule.js";
 import { decompressResultValue } from "../compat.js";
 import { requireCore } from "../internal/core.js";
 import { requireTimeout } from "../internal/deadline.js";
-import { defaultPollTimeoutS } from "../internal/poll-engine.js";
-import { DEFAULT_TOKENS_PER_JOB } from "../pricing.js";
+import { estimateRun } from "../price-list.js";
 import { checkArchiveOptions, decompressResultArchive } from "../results/archive.js";
 import { parseResultDocument } from "../results/router.js";
 import { DaylightFactorResult, isDaylightFrame } from "./daylight-result.js";
-import { mergeFormat, mergePartsDocument } from "./merge.js";
+import { joinParts, mergeFormat, mergePartsDocument } from "./merge.js";
 import { planRequest, splitsAnalysis } from "./plan.js";
 import { resolveResultFormat } from "./result-format.js";
 import { submitParts } from "./submit.js";
+import { attachCellTris, cellTrisCapture } from "./cell-tris.js";
 import { AnalysisPartsError } from "./types.js";
 /**
  * Thrown when the parts of a run do not all finish within the timeout.
@@ -114,7 +115,7 @@ export function daylightValue(document, format, logger) {
 export async function runPlannedAndWait(jobs, logger, request, options = {}) {
     // Checked before any POST: a bad timeout must not bill parts and lose them.
     // The default is the kernel's wait timeout (900 s) on both paths, as today.
-    const timeoutS = options.timeout ?? defaultPollTimeoutS();
+    const timeoutS = options.timeout ?? requireCore().pollDefaultTimeoutSeconds();
     requireTimeout(timeoutS * 1_000);
     // The archive limits too: a bad one must fail before the job is paid.
     if (options.archive !== undefined)
@@ -129,6 +130,8 @@ export async function runPlannedAndWait(jobs, logger, request, options = {}) {
         // One part is one JSON job, as Python sends it: its control can carry the
         // whole `sensor-points` list, which the binary envelope does not take.
         // The kernel turns the JSON result into the frame (`daylightValue`).
+        // Before the submit: the capture is of the body that is sent.
+        const capture = cellTrisCapture(request);
         const job = await jobs.submitPrepared(request.prepared, signal);
         const completed = await jobs.waitForCompletion(job.jobId, {
             ...signal,
@@ -137,8 +140,12 @@ export async function runPlannedAndWait(jobs, logger, request, options = {}) {
         });
         const download = await jobs.downloadResults(completed.jobId, { job: completed, ...signal });
         const archive = options.archive;
-        if (!daylight)
-            return decompressResultValue(jobs, download.content, archive === undefined ? undefined : { archive });
+        if (!daylight) {
+            const value = decompressResultValue(jobs, download.content, archive === undefined ? undefined : { archive });
+            if (capture !== undefined)
+                attachCellTris(value, download.content, completed.jobId, capture, logger);
+            return value;
+        }
         const value = daylightValue(decompressResultArchive(download.content, archive), format, logger);
         logWarnings(value, request.analysisType, logger);
         return value;
@@ -166,16 +173,28 @@ function withSchedule(error, schedule) {
         "This error's schedule holds the accepted jobs: merge it again, or pass it as retryFrom.", [], schedule, [], { cause: error });
 }
 async function waitAndJoin(jobs, logger, request, schedule, timeoutS, options) {
-    await waitForSchedule(jobs, schedule, {
+    // The engine waits for every part and downloads it (goal `results`).
+    const archives = new Map();
+    const { facts, outcome } = await collectOnEngine(jobs, schedule.jobs, { archives }, {
+        goal: "results",
         timeoutS,
-        ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
-        ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
-        onTimeout: (last) => new PartsTimeoutError(`${request.analysisType} parts timed out after ${timeoutS}s: ` +
-            `${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed`, schedule),
+        ...(options.onProgress === undefined ? {} : {
+            onProgress: () => {
+                try {
+                    options.onProgress(computeAreaState(schedule));
+                }
+                catch { /* an observer never changes the run */ }
+            },
+        }),
     });
+    if (outcome === "timeout") {
+        const last = computeAreaState(schedule);
+        throw new PartsTimeoutError(`${request.analysisType} parts timed out after ${timeoutS}s: ` +
+            `${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed`, schedule);
+    }
     const format = mergeFormat(schedule, options);
-    const document = await mergePartsDocument(jobs, schedule, { ...options, resultFormat: format, logger });
+    const document = joinParts(schedule, archives, facts.lost, { ...options, resultFormat: format, logger });
     const value = daylightValue(document, format, logger);
     logWarnings(value, request.analysisType, logger);
     return value;
@@ -219,23 +238,28 @@ export async function runParts(jobs, logger, input, options = {}) {
  * Previews what a run of `input` would submit and bill, offline: no request is sent.
  *
  * @param jobs - The job service (only used to prepare the submission).
+ * @param billing - The service that prices a job, for example `client.billing`.
  * @param logger - The client logger.
  * @param input - The wire-keyed analysis request.
  * @param options - The same options as the run.
  * @param target - Optional planning target for the split.
  * @returns The part count, sensors per part and estimated cost in tokens.
+ * @throws {PricingUnavailableError} when the price list cannot be fetched and the client has none.
  * @category Run an analysis
  */
-export function previewParts(jobs, logger, input, options = {}, target) {
+export async function previewParts(jobs, billing, logger, input, options = {}, target) {
     const { analysisType, plan } = planRequest(jobs, input, options, logger, target);
     const parts = plan === undefined ? [] : plan.parts.map((part) => ({
         key: part.key, floorKeys: [...part.floor_keys], sensors: part.sensors,
     }));
     const partCount = Math.max(1, parts.length);
+    const priced = estimateRun(partCount, await billing.quote(analysisType));
     return {
         analysisType, partCount, totalSensors: plan?.total_sensors ?? 0, parts,
-        tokensPerJob: DEFAULT_TOKENS_PER_JOB,
-        estimatedCostTokens: partCount * DEFAULT_TOKENS_PER_JOB,
+        tokensPerJob: priced.tokensPerJob,
+        estimatedCostTokens: priced.estimatedCostTokens,
+        pricingSource: priced.pricingSource,
+        ...(priced.pricingVersion === undefined ? {} : { pricingVersion: priced.pricingVersion }),
         ...(plan?.unsplit_reason == null ? {} : { unsplitReason: plan.unsplit_reason }),
         notes: plan?.notes ?? [],
     };

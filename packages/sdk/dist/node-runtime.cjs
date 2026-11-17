@@ -57,7 +57,8 @@ __export(node_runtime_exports, {
   geodata: () => geodata,
   root: () => node_exports,
   tiling: () => tiling,
-  utilities: () => utilities
+  utilities: () => utilities,
+  worker: () => worker
 });
 module.exports = __toCommonJS(node_runtime_exports);
 
@@ -69,6 +70,7 @@ __export(node_exports, {
   AnalysisService: () => AnalysisService,
   AreaGeometryProbeError: () => AreaGeometryProbeError,
   AreaGeometryReferenceError: () => AreaGeometryReferenceError,
+  AreaRunError: () => AreaRunError,
   AreaTimeoutError: () => AreaTimeoutError,
   BillingService: () => BillingService,
   BuildingsService: () => BuildingsService,
@@ -82,9 +84,7 @@ __export(node_exports, {
   DEFAULT_DAYLIGHT_RESULT_FORMAT: () => DEFAULT_DAYLIGHT_RESULT_FORMAT,
   DEFAULT_MAX_LONG_AXIS_PX: () => DEFAULT_MAX_LONG_AXIS_PX,
   DEFAULT_STATIC_BASE_URL: () => DEFAULT_STATIC_BASE_URL,
-  DEFAULT_TOKENS_PER_JOB: () => DEFAULT_TOKENS_PER_JOB,
   DaylightFactorResult: () => DaylightFactorResult,
-  ESTIMATED_SECONDS_PER_TILE: () => ESTIMATED_SECONDS_PER_TILE,
   EpwParseError: () => EpwParseError,
   FacadeArtifactMismatchError: () => FacadeArtifactMismatchError,
   FacadeCountContractError: () => FacadeCountContractError,
@@ -103,6 +103,7 @@ __export(node_exports, {
   JobAbortedError: () => JobAbortedError,
   JobFailedError: () => JobFailedError,
   JobNotCompletedError: () => JobNotCompletedError,
+  JobPollError: () => JobPollError,
   JobStatus: () => JobStatus,
   JobTimeoutError: () => JobTimeoutError,
   JobsService: () => JobsService,
@@ -112,9 +113,9 @@ __export(node_exports, {
   NO_ROOM: () => NO_ROOM,
   OvertureFileLimitError: () => OvertureFileLimitError,
   OvertureReadTooLargeError: () => OvertureReadTooLargeError,
-  PER_JOB_MODEL_KEYS: () => PER_JOB_MODEL_KEYS,
   PHYSICS_TIERS: () => PHYSICS_TIERS,
   PartsTimeoutError: () => PartsTimeoutError,
+  PricingUnavailableError: () => PricingUnavailableError,
   REGISTRY_URL: () => REGISTRY_URL,
   ReadMarginError: () => ReadMarginError,
   RegistryFetchError: () => RegistryFetchError,
@@ -123,6 +124,7 @@ __export(node_exports, {
   StaticWeatherReader: () => StaticWeatherReader,
   SubmissionUncertainError: () => SubmissionUncertainError,
   THERMAL_CONTROLS: () => THERMAL_CONTROLS,
+  TILE_FAILURE_KINDS: () => TILE_FAILURE_KINDS,
   TILE_SIZE_CELLS: () => TILE_SIZE_CELLS,
   TILE_SIZE_M: () => TILE_SIZE_M,
   TILING_SUPPORTED_TYPES: () => TILING_SUPPORTED_TYPES,
@@ -158,11 +160,13 @@ __export(node_exports, {
   decompressResultValue: () => decompressResultValue,
   deserializeToCamelCase: () => deserializeToCamelCase,
   estimateWorkflowRunTokens: () => estimateWorkflowRunTokens,
+  exportMeshes: () => exportMeshes,
   fetchVisualConfigurations: () => fetchVisualConfigurations,
   flattenVisualConfigs: () => flattenVisualConfigs,
   freePreparedSites: () => freePreparedSites,
   freezeAreaSchedule: () => freezeAreaSchedule,
   generateTilesForPolygon: () => generateTilesForPolygon,
+  geojsonLayersToDotbim: () => geojsonLayersToDotbim,
   getTilingConfig: () => getTilingConfig,
   gridImageSize: () => gridImageSize,
   groundReadDistanceM: () => groundReadDistanceM,
@@ -190,11 +194,13 @@ __export(node_exports, {
   resolveReadAnalysisType: () => resolveReadAnalysisType,
   resolveTokensPerJob: () => resolveTokensPerJob,
   resolveVisualConfig: () => resolveVisualConfig,
+  retryPolicy: () => retryPolicy,
   runArea: () => runArea,
   serializeToKebab: () => serializeToKebab,
   setOwnKey: () => setOwnKey,
   sharedLegendRange: () => sharedLegendRange,
   silentLogger: () => silentLogger,
+  simplifyMeshes: () => simplifyMeshes,
   submitAreaPlan: () => submitAreaPlan,
   surfaceColumnsFromBytes: () => surfaceColumnsFromBytes,
   surfaceColumnsToBytes: () => surfaceColumnsToBytes,
@@ -209,6 +215,7 @@ __export(node_exports, {
   validatePolygon: () => validatePolygon,
   vegetationRegistryDocument: () => vegetationRegistryDocument,
   vertexValues: () => vertexValues,
+  weldMeshes: () => weldMeshes,
   windClassOrdinals: () => windClassOrdinals
 });
 
@@ -317,6 +324,9 @@ setSha256Native((parts) => {
   return hash.digest("hex");
 });
 
+// src/node.ts
+var import_node_os = require("node:os");
+
 // src/internal/errors.ts
 function detectCoreRealm() {
   const scope = globalThis;
@@ -365,9 +375,13 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // tested against instead of guessing from an absent field.
   "surfgridVersion",
   "geometryGroups",
+  // D293: the context options as the site key names them.
+  "contextKey",
   // Geometry schema 2 (D206): the body fields the geometry document carries,
   // the schema this kernel writes, and the one per-job sensor budget.
   "binaryGeometryFields",
+  "hostRetryWaitSeconds",
+  "rangeReadStep",
   "geometrySchemaVersion",
   "maxSensorsPerJob",
   "geometryGroupHash",
@@ -379,12 +393,20 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // field registry; the host builds the control body and the group hashes.
   "configHashV2",
   "configGroupHash",
+  // Hashes over buffers (no JSON): a mesh group, the site key, the buildings
+  // fingerprint fold, a terrain document's content key.
+  "configGroupHashBuffers",
+  "siteKey",
+  "foldBuildingsFingerprint",
+  "terrainContentKey",
   "energyBalanceYear",
   // Rules that were host copies: which models may take a terrain hash from a
   // `SiteTerrain` handle, and the `as-is` default for a supplied scene.
   "inertKeys",
   "terrainHandleHashApplies",
   "resolveTerrainAlignment",
+  // The tree z warning of an "as-is" run on terrain (#980).
+  "treeZWarning",
   "fieldRegistryJson",
   // D91: the wind family's datum — every supplied mesh's own lowest point to
   // z = 0, one pass over the packed site at the plan seam.
@@ -412,28 +434,54 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "site_bodies",
   // D101: every tile's IRBF artifact from the same site, and one body's for
   // the direct `submit` path — the kernel packs, frames, zips and digests.
-  "site_artifacts",
+  "site_artifactsStart",
+  "site_artifactsEnd",
   "geometryArtifact",
   // The facade batches, planned from the same kept site, and every batch's
   // selected body, capture and artifact (D156: its targets, the rest as
   // context) from one call per tile, as the Python host does
   // (`area/site-facade.ts`, WP3).
-  "site_facadeBatches",
-  "site_facadeFrames",
+  "site_facadeBatchesStart",
+  "site_facadeBatchesEnd",
+  "site_facadeFramesStart",
+  "site_facadeFramesEnd",
+  "site_facadeScenesStart",
+  "site_facadeScenesEnd",
+  // A facade job's capture, put straight into the client's store (D-2026101110-iris-nectar-maple).
+  "site_facadeCapturesStart",
+  "site_facadeCapturesEnd",
+  // The facade analyses of one stream share each tile's parts (`area/stream.ts`).
+  "site_shareFacadeParts",
   "site_checkTerrain",
   "site_identity",
-  "site_unowned",
   // `splitFacadeCoreContext` and its report twin are NOT here: the kernel
-  // `Site` plans every facade job (`site_facadeBatches`), so this package
+  // `Site` plans every facade job (`site_facadeBatchesStart`), so this package
   // calls neither. The kernel still exports both.
   // `partitionFacadeCoreContext` and its `...F64` twin are NOT here: the site
   // pass answers `core`, the shrink band, the demoted ids and `unowned` for the
   // whole grid in one call, so this package no longer asks per tile (D90). The
   // kernel still exports both, for a caller composing tiles itself.
-  // D158: the cap's one validation rule, checked before any planning. The
-  // exact planner itself runs inside `site_facadeBatches`; the kernel still
-  // exports `planExactSurfaceBatchesCapped` for a caller composing tiles.
-  "checkMaxSensorsPerJob",
+  // D158: the cap's one validation rule, checked before any planning (a fresh
+  // run or a retry, D300). The exact planner itself runs inside
+  // `site_facadeBatchesStart`; the kernel still exports
+  // `planExactSurfaceBatchesCapped` for a caller composing tiles.
+  "checkSensorCap",
+  // D300: rules both hosts kept their own copy of -- the terrain margin, the
+  // Overture byte cap, the final error of a run and of an engine stop, the
+  // time window, the catalog weather columns, the pinned surface fields and
+  // the price of a run (list URL, price per job, estimate, price source).
+  "terrainMargin",
+  "overturePlannedBytesLimit",
+  "areaFinalError",
+  "engineStop",
+  "apiKeyRefusedMessage",
+  "validateTimeWindow",
+  "weatherColumns",
+  "surfaceWireFields",
+  "pricingUrl",
+  "tokensPerJob",
+  "areaEstimate",
+  "priceSource",
   // D160: four small rules this package used to restate, now asked of the
   // kernel as the Python host does — which analyses get the tile location,
   // the Overture bbox membership, the terrain triangle cap, and the polygon
@@ -448,21 +496,38 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // `area/facade-layout-schedule.ts` to derive a saved schedule's per-job
   // `tileOrigin` without restating that math host-side.
   "scalarUnproject",
-  // The area GRID merge (D273): one kernel merger per run decodes, places,
-  // blends and clips every tile archive, in the wire dtype. A class appears
-  // as its methods (see the SITE note above).
+  // The area GRID merge (D273): one kernel merger per run places, blends and
+  // clips every tile, in the wire dtype; the archives of one turn decode in
+  // ONE call (`decodeGridTilesStart`, D299). A class appears as its methods (see
+  // the SITE note above).
+  "decodeGridTilesStart",
+  "decodeGridTilesEnd",
+  "__wbg_gridtiles_free",
   "__wbg_areagridmerger_free",
   "areagridmerger_new",
-  "areagridmerger_push",
+  "areagridmerger_pushMany",
   "areagridmerger_finish",
+  // The run engine: every send, poll, download and hand-over decision of a
+  // stream run (`area/run-engine.ts`; a class: its methods).
+  "__wbg_runengine_free",
+  "runengine_new",
+  "runengine_step",
+  "runengine_facts",
+  // The wait for ONE job (`JobWait`): the host does the GET and the sleep.
+  "__wbg_jobwait_free",
+  "jobwait_new",
+  "jobwait_next",
   "groundCleanV3",
+  // Flat GeoJSON layer tessellation (`geojsonLayersToDotbim`, #985).
+  "geojsonLayersToDotbim",
   "gridToPng",
   "packedIndexCount",
+  "tileFrameOrigin",
   "tileSwOffset",
   // Facade "pretty mode" (ADR 0008, D88): the SDK draws the per-cell render
   // geometry with the kernel it already bundles instead of downloading 12.6x
   // the body from the server. The area merge synthesizes inside the one-call
-  // join (`joinSurfaceJobs`, below).
+  // join (`SurfaceJoinStream.finish`, below).
   "synthesizeSurfaces",
   // Offline facade layout rebuild + compact export (#707, D252/D254). Both
   // calls return a `FacadeLayoutHandle` that holds the rebuilt/reloaded
@@ -473,6 +538,11 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "facadeLayoutFromBytes",
   // The public mesh utility `cleanMesh` (#555, D208).
   "cleanMesh",
+  // The context-mesh utilities `weldMeshes`, `simplifyMeshes` and
+  // `exportMeshes` (D294).
+  "weldMeshes",
+  "simplifyMeshes",
+  "exportMeshes",
   // The exact per-tile re-anchor. It replaced the constant-offset loop the
   // host used to run per mesh (D48), which is why `transformBuildingCoords`
   // is no longer on this list: the kernel still exports it, both bindings
@@ -483,6 +553,8 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // compose calls (D57 / rect-union kernel port): `chunk ∩ union(tile
   // rectangles)`, replacing this package's own `geodata/rect-union.ts`.
   "rectUnionDecompose",
+  "siteChunks",
+  "siteFrameWarnings",
   // Daylight-factor floor parts (`parts/`, D221): plan, part body, join.
   "daylightParts",
   "daylightPartBody",
@@ -501,15 +573,12 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "defaultTransport",
   "sendBudgetSeconds",
   "sendStallSeconds",
-  "pollIntervalSeconds",
-  "pollErrorDelaySeconds",
   "pollDefaultTimeoutSeconds",
-  "pollFirstDelaySeconds",
-  // The area retry plan and its idempotency key, and the same-key resend budget (D224). See `area/retry-plan.ts`.
+  // The area retry plan and its idempotency key (D224). See `area/retry-plan.ts`.
   "areaIdempotencyKey",
   "planAreaRetry",
-  "submitResendDelaySeconds",
-  "classifySubmitSend",
+  // The run engine's retry limits, read-only (issue #873). See `area/run-engine.ts`.
+  "retryPolicy",
   "windClassOrdinals",
   "overlayAoiIntersectsPolygon",
   "overlayBboxCandidates",
@@ -551,10 +620,16 @@ var REQUIRED_FUNCTION_EXPORTS = [
   // does not call it.
   "vegetationPointsToMeshes",
   "overtureSelectFiles",
-  // Static weather: the two kernel operations behind the three public
-  // weather methods.
-  "weatherNearestStations",
+  // Static weather: the `WeatherCatalog` handle, the pointer rule, the hour
+  // filter and the row shaper behind the three public weather methods
+  // (D-2026101012-heron-quartz-maple).
+  "__wbg_weathercatalog_free",
+  "weathercatalog_new",
+  "weathercatalog_nearest",
+  "weathercatalog_find",
+  "weatherPointerFolder",
   "weatherFilterHours",
+  "weatherRows",
   // Bring-your-own weather. A core without these cannot parse an EPW file,
   // cannot prove which weather a run used and cannot select a model's
   // arrays — each of them a shipped path, so a missing one is one loud
@@ -578,15 +653,28 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "decodeBinaryResult",
   "inspectBinaryResult",
   "decodeGridDocument",
-  // The area SURFACE merge: each download decoded as it arrives (WP4), then
-  // the whole run joined into columns in one call, triangles included (D197).
-  "decodeSurfaceArchive",
-  "decodeSurfaceArchives",
-  "joinSurfaceJobs",
+  // The area SURFACE merge (D197, D-2026101011-slate-aspen-pine): the downloads of each turn decoded in
+  // ONE call (`decodeSurfaceJobsStart`, D-2026101110-iris-nectar-maple) and kept by the stream, then the whole run joined
+  // into columns, triangles included (a class: its methods).
+  "decodeSurfaceJobsStart",
+  "decodeSurfaceJobsEnd",
+  "__wbg_surfacejobs_free",
+  "__wbg_surfacejoinstream_free",
+  "surfacejoinstream_new",
+  "surfacejoinstream_pushManyStart",
+  "surfacejoinstream_pushManyEnd",
+  "surfacejoinstream_finishStart",
+  "surfacejoinstream_finishEnd",
   // The captures of the run, shared by its analyses (a class: its methods).
   "__wbg_capturestore_free",
   "capturestore_new",
   "capturestore_remember",
+  "__wbg_capturehold_free",
+  "capturehold_bind",
+  "capturehold_key",
+  // A single facade job (D-2026101113-spruce-hazel-bison): its capture and its per-cell triangles.
+  "surfaceJobCapture",
+  "surfaceJobTriangles",
   // The one batch widen of surface values (D272): `surfaceValuesF32`.
   "surfaceValuesF32",
   // The render buffers of a surface result (D271, #753): `surfaceRenderBuffers`.
@@ -595,13 +683,21 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "surfaceColumnsToBytes",
   "surfaceColumnsFromBytes",
   // Brief J (D106): the deterministic `payload.json` ZIP writer every json
-  // submit body and geometry-reference document uses. Replaces
-  // `internal/zip.ts` (`fflate`), deleted in the same PR.
-  "zipPayloadJson",
+  // submit body and geometry-reference document uses; every body of one
+  // turn in ONE call (`internal/zip-payload.ts`, D299).
+  "zipPayloadJsonManyStart",
+  "zipPayloadJsonManyEnd",
+  // A heavy kernel call runs on the pool while the JS thread goes on: a `...Start` gives a
+  // `PoolTask`, its `...End` reads the result (`internal/pool-task.ts`).
+  "__wbg_pooltask_free",
+  "pooltask_flag",
+  "pooltask_done",
   "__wbindgen_malloc",
   "__wbindgen_realloc",
   "__wbindgen_free",
-  "__wbindgen_exn_store",
+  // No `__wbindgen_exn_store`: the threaded core catches JS exceptions with
+  // WebAssembly exception handling (D299) and does not export it; the glue
+  // of each build checks its own internals.
   "__wbindgen_start",
   "__externref_table_alloc",
   "__externref_table_dealloc",
@@ -610,11 +706,8 @@ var REQUIRED_FUNCTION_EXPORTS = [
   "griddocumentdecode_route",
   "griddocumentdecode_finiteNumbersValidated",
   "__wbg_categoricalareadense_free",
-  "__wbg_surfacearchive_free",
   "categoricalareadense_values",
-  "categoricalareadense_legend",
-  "surfacearchive_route",
-  "surfacearchive_error"
+  "categoricalareadense_legend"
 ];
 
 // src/internal/core.ts
@@ -699,14 +792,14 @@ async function loadCore(source) {
 async function startPool(module2, threads) {
   const threaded = module2;
   const init = threaded.initThreadPool;
-  const abortOnPanic = threaded.installPanicAbort;
+  const abortOnOom = threaded.installOomAbort;
   try {
-    if (typeof init !== "function" || typeof abortOnPanic !== "function") {
+    if (typeof init !== "function" || typeof abortOnOom !== "function") {
       throw new CoreInitializationError(
-        "the threaded Infrared core has no initThreadPool or installPanicAbort export"
+        "the threaded Infrared core has no initThreadPool or installOomAbort export"
       );
     }
-    abortOnPanic();
+    abortOnOom();
     await init(threads);
   } catch (error) {
     throw new CoreInitializationError(
@@ -773,6 +866,14 @@ var packagedCoreLoader;
 function registerPackagedCoreLoader(load) {
   packagedCoreLoader = load;
 }
+function loadPackagedCore(threads) {
+  if (packagedCoreLoader === void 0) {
+    return Promise.reject(new CoreInitializationError(
+      "threads need the packaged Node core: load @infrared-city/infrared-sdk/worker in a Node worker_threads Worker"
+    ));
+  }
+  return packagedCoreLoader(threads);
+}
 async function ensureCore(method) {
   if (core !== void 0) return;
   if (packagedCoreLoader !== void 0) {
@@ -812,7 +913,7 @@ function initializeCore(options = {}) {
 }
 
 // src/version.ts
-var VERSION = "1.0.1";
+var VERSION = "1.1.0";
 
 // src/logger.ts
 var discard = (..._args) => void 0;
@@ -848,9 +949,7 @@ var TILING_SUPPORTED_TYPES = new Set(
 var billing_exports = {};
 __export(billing_exports, {
   BillingService: () => BillingService,
-  DEFAULT_TOKENS_PER_JOB: () => DEFAULT_TOKENS_PER_JOB,
-  ESTIMATED_SECONDS_PER_TILE: () => ESTIMATED_SECONDS_PER_TILE,
-  PER_JOB_MODEL_KEYS: () => PER_JOB_MODEL_KEYS,
+  PricingUnavailableError: () => PricingUnavailableError,
   estimateWorkflowRunTokens: () => estimateWorkflowRunTokens,
   resolveBracketName: () => resolveBracketName,
   resolveTokensPerJob: () => resolveTokensPerJob
@@ -893,9 +992,9 @@ function resolveFetch(implementation) {
   if (implementation != null) return implementation;
   const native = globalThis.fetch;
   if (typeof native !== "function") return void 0;
-  const bound2 = native.bind(globalThis);
-  defaults.add(bound2);
-  return bound2;
+  const bound3 = native.bind(globalThis);
+  defaults.add(bound3);
+  return bound3;
 }
 function isDefaultFetch(fetcher) {
   return defaults.has(fetcher);
@@ -974,7 +1073,7 @@ var xhrSender = {
       const xhr = new XMLHttpRequest();
       const total = request.body.byteLength;
       const onAbort = () => xhr.abort();
-      const settled = () => request.signal.removeEventListener("abort", onAbort);
+      const settled2 = () => request.signal.removeEventListener("abort", onAbort);
       xhr.open(request.method, request.url);
       xhr.responseType = "arraybuffer";
       xhr.withCredentials = false;
@@ -982,7 +1081,7 @@ var xhrSender = {
       xhr.upload.onprogress = (event) => progress.progress(event.loaded);
       xhr.upload.onload = () => progress.progress(total);
       xhr.onload = () => {
-        settled();
+        settled2();
         progress.finished();
         if (xhr.responseURL !== "" && !sameUrl(xhr.responseURL, request.url)) {
           resolve(Response.error());
@@ -1000,11 +1099,11 @@ var xhrSender = {
         }
       };
       xhr.onerror = () => {
-        settled();
+        settled2();
         reject(new Error("the request failed"));
       };
       xhr.onabort = () => {
-        settled();
+        settled2();
         reject(new Error("request stopped"));
       };
       request.signal.addEventListener("abort", onAbort, { once: true });
@@ -1061,6 +1160,7 @@ var SendGuard = class {
   }
   phase = "idle";
   sent = 0;
+  pulled = false;
   stopped;
   timers = /* @__PURE__ */ new Map();
   /** Why the guard stopped the send, if it did. */
@@ -1076,7 +1176,6 @@ var SendGuard = class {
     if (this.phase !== "idle") return;
     this.phase = "sending";
     if (observesProgress) {
-      this.arm("stall", this.limits.stallMs);
       this.arm("budget", this.limits.budgetMs);
     } else {
       this.arm("window", this.limits.budgetMs + this.limits.responseMs);
@@ -1084,7 +1183,8 @@ var SendGuard = class {
   }
   progress(sentBytes) {
     if (this.phase !== "sending") return;
-    if (sentBytes !== this.sent) this.arm("stall", this.limits.stallMs);
+    if (!this.pulled || sentBytes !== this.sent) this.arm("stall", this.limits.stallMs);
+    this.pulled = true;
     this.sent = sentBytes;
     if (sentBytes >= this.limits.totalBytes) this.finished();
   }
@@ -1270,12 +1370,12 @@ function trimTrailingSlashes(value) {
 
 // src/internal/transport.ts
 var TransportError = class extends Error {
-  constructor(message, phase, reason2, method, status, retryAfterS) {
+  constructor(message, phase, reason2, method, status2, retryAfterS) {
     super(message);
     this.phase = phase;
     this.reason = reason2;
     this.method = method;
-    this.status = status;
+    this.status = status2;
     this.retryAfterS = retryAfterS;
   }
   name = "TransportError";
@@ -1286,6 +1386,16 @@ function retryAfterSeconds(headers) {
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? value : void 0;
 }
+function httpErrorMessage(status2) {
+  if (status2 === 401 || status2 === 403) {
+    try {
+      return requireCore().apiKeyRefusedMessage(status2);
+    } catch (error) {
+      if (!(error instanceof CoreNotReadyError)) throw error;
+    }
+  }
+  return `gateway request received HTTP ${status2}`;
+}
 var DEFAULT_TIMEOUT_MS = 18e4;
 function cancelResponseBody(response) {
   try {
@@ -1295,6 +1405,12 @@ function cancelResponseBody(response) {
 }
 function mutation(method) {
   return method !== "GET" && method !== "HEAD";
+}
+var NEVER_CONNECTED = /* @__PURE__ */ new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"]);
+function connectFailure(error) {
+  const cause = error?.cause;
+  if (typeof cause?.code !== "string" || !NEVER_CONNECTED.has(cause.code)) return void 0;
+  return typeof cause.message === "string" ? cause.message : cause.code;
 }
 function safePhase(method, dispatched) {
   if (!dispatched) return "pre-dispatch";
@@ -1417,7 +1533,7 @@ var GatewayTransport = class {
       if (!response.ok && options.acceptHttpErrors !== true) {
         cancelResponseBody(response);
         throw new TransportError(
-          `gateway request received HTTP ${response.status}`,
+          httpErrorMessage(response.status),
           "response",
           "http",
           method,
@@ -1434,6 +1550,10 @@ var GatewayTransport = class {
     } catch (error) {
       if (error instanceof TransportError || error instanceof AuthPartitionChangedError && !dispatched) throw error;
       const stopped = deadline.reason();
+      const refused = stopped === void 0 ? connectFailure(error) : void 0;
+      if (refused !== void 0) {
+        throw new TransportError(`gateway request could not connect: ${refused}`, "pre-dispatch", "network", method);
+      }
       const reason2 = stopped ?? (dispatched ? "network" : "auth");
       const phase = safePhase(method, dispatched);
       const message = stopped === "timeout" ? limits === void 0 ? "gateway request timed out" : `gateway request timed out (${stopDetail(deadline, limits)})` : stopped === "aborted" ? "gateway request was aborted" : dispatched ? "gateway request failed after dispatch" : "gateway request failed before dispatch";
@@ -1477,13 +1597,13 @@ async function mapLimit(values, limit3, operation) {
   if (!Number.isSafeInteger(limit3) || limit3 < 1) throw new TypeError("maxWorkers must be positive");
   const output = new Array(values.length);
   let next = 0;
-  async function worker() {
+  async function worker2() {
     while (next < values.length) {
       const index2 = next++;
       output[index2] = await operation(values[index2], index2);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(limit3, values.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(limit3, values.length) }, worker2));
   return output;
 }
 
@@ -1511,16 +1631,89 @@ function requireJson(value, operation) {
   return value;
 }
 
-// src/pricing.ts
-var DEFAULT_TOKENS_PER_JOB = 10;
-var ESTIMATED_SECONDS_PER_TILE = 10;
+// src/price-list.ts
+var PricingUnavailableError = class extends Error {
+  /**
+   * @param url - The price list URL that was fetched.
+   * @param cause - Why the fetch failed.
+   */
+  constructor(url, cause) {
+    super(
+      `the price list at ${url} cannot be fetched: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause }
+    );
+    this.url = url;
+  }
+  name = "PricingUnavailableError";
+};
+function estimateRun(plannedJobs, quote) {
+  const estimate = JSON.parse(requireCore().areaEstimate(plannedJobs, quote.tokensPerJob));
+  return {
+    ...quote,
+    estimatedCostTokens: estimate.estimated_cost_tokens,
+    estimatedTimeS: estimate.estimated_time_s
+  };
+}
+var PriceCache = class {
+  constructor(fetchList, url, logger, nowMs = Date.now) {
+    this.fetchList = fetchList;
+    this.url = url;
+    this.logger = logger;
+    this.nowMs = nowMs;
+  }
+  list;
+  /** The price of one job of `analysisType`. */
+  async quote(analysisType2) {
+    const core2 = requireCore();
+    const ageS = this.list === void 0 ? void 0 : (this.nowMs() - this.list.fetchedAtMs) / 1e3;
+    let source = ageS === void 0 ? void 0 : core2.priceSource(false, ageS);
+    if (source !== "cached") {
+      try {
+        this.list = { body: await this.fetchList(), fetchedAtMs: this.nowMs() };
+        source = core2.priceSource(true, 0);
+      } catch (error) {
+        if (this.list === void 0 || ageS === void 0) throw new PricingUnavailableError(this.url, error);
+        this.logger.warn({
+          event: "pricing_fetch_failed",
+          message: "the price list cannot be fetched; using the last list the client fetched",
+          url: this.url,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        source = core2.priceSource(false, ageS);
+      }
+    }
+    const price = JSON.parse(core2.tokensPerJob(JSON.stringify(this.list.body), analysisType2));
+    return {
+      tokensPerJob: price.tokens_per_job,
+      ...price.version === void 0 || price.version === null ? {} : { pricingVersion: String(price.version) },
+      pricingSource: source
+    };
+  }
+};
+
+// src/legacy-pricing.ts
+function resolveTokensPerJob(pricing, analysisType2) {
+  return JSON.parse(requireCore().tokensPerJob(JSON.stringify(pricing), analysisType2)).tokens_per_job;
+}
+async function previewAreaWithPricing(client, polygon, options) {
+  const { forceRefresh: _ignored, ...previewOptions } = options;
+  const { pricingSource: _source, ...preview } = await client.previewArea(polygon, previewOptions);
+  return { ...preview, pricingSource: "remote" };
+}
 
 // src/billing.ts
+var PRICING_PATH = "/billing/pricing";
 var BillingService = class {
-  transport;
   /** Creates the service from the client's base URL, credentials and transport settings. */
   constructor(options) {
-    this.transport = serviceTransport(options);
+    this.options = options;
+  }
+  transport;
+  prices;
+  // The price list is a public route at the API root, outside `/v2` (`pricingUrl`, a kernel
+  // call, so it runs on first use: a client may be made before `initializeCore`).
+  url() {
+    return requireCore().pricingUrl(String(this.options.baseUrl));
   }
   /**
    * Fetches the current public price list.
@@ -1529,35 +1722,34 @@ var BillingService = class {
    * @throws Error when the API returns an empty response, or the request fails.
    */
   async getPublicPricing() {
+    this.transport ??= serviceTransport({
+      ...this.options,
+      baseUrl: this.url().slice(0, -PRICING_PATH.length)
+    });
     return requireJson(
-      await this.transport.requestJson("/billing/pricing"),
+      await this.transport.requestJson(PRICING_PATH),
       "pricing lookup"
     );
   }
+  /**
+   * The price of one job of an analysis, from the price list. The client
+   * keeps the list for 20 minutes; `pricingSource` says whether the price is
+   * `"live"`, `"cached"` or `"stale"` (the list could not be fetched again).
+   *
+   * @param analysisType - The analysis to price.
+   * @throws {PricingUnavailableError} when the list cannot be fetched and the client has none.
+   */
+  quote(analysisType2) {
+    this.prices ??= new PriceCache(
+      () => this.getPublicPricing(),
+      this.url(),
+      this.options.logger ?? consoleLogger
+    );
+    return this.prices.quote(analysisType2);
+  }
 };
-var PER_JOB_MODEL_KEYS = Object.freeze({
-  "wind-speed": "wind_pix2pix",
-  "pedestrian-wind-comfort": "wind_pix2pix",
-  "thermal-comfort-index": "utci",
-  "thermal-comfort-statistics": "utci",
-  "daylight-availability": "daylight_availability",
-  "direct-sun-hours": "dsh",
-  "solar-radiation": "solar_radiation",
-  "sky-view-factors": "svf",
-  "daylight-factor": "daylight_factor"
-});
 function validTokens(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-function resolveTokensPerJob(pricing, analysisType) {
-  const current = pricing.analysisType?.[analysisType]?.tokens;
-  if (validTokens(current)) return current;
-  const action = pricing.actionCatalog?.["run-analysis"]?.tokens;
-  if (validTokens(action)) return action;
-  const legacy = pricing.perJob?.[PER_JOB_MODEL_KEYS[analysisType]]?.tokens;
-  if (validTokens(legacy)) return legacy;
-  const fallback = pricing.perJob?.default?.tokens;
-  return validTokens(fallback) ? fallback : DEFAULT_TOKENS_PER_JOB;
 }
 function resolveBracketName(pricing, areaKm2) {
   const tiers = Object.entries(pricing.brackets ?? {}).filter((entry) => entry[1]?.maxKm2 === null || validTokens(entry[1]?.maxKm2)).sort((a, b) => (a[1].maxKm2 ?? Number.POSITIVE_INFINITY) - (b[1].maxKm2 ?? Number.POSITIVE_INFINITY));
@@ -1594,11 +1786,9 @@ function grouped(value) {
 function capRefusal(verdict) {
   const grid = `the ${verdict.family} grid (${verdict.step_m} m step)`;
   if (verdict.kind === "bbox_too_large") {
-    const cost2 = verdict.estimate * DEFAULT_TOKENS_PER_JOB;
-    return `Polygon bbox would generate about ${grouped(verdict.estimate)} tiles on ${grid}, over the limit of ${grouped(verdict.limit)} non-empty tiles; a bbox grid that large is refused before a single tile is built. At about ${DEFAULT_TOKENS_PER_JOB} tokens per billed tile that is up to about ${grouped(cost2)} tokens IF every bbox tile were non-empty \u2014 most will not be, so read it as an upper bound. To get past this pre-check, pass maxTilesOverride: ${verdict.min_override} or more; the non-empty cap is checked after it. A bbox this large is more often a coordinate-order mistake (GeoJSON is [lon, lat]).`;
+    return `Polygon bbox would generate about ${grouped(verdict.estimate)} tiles on ${grid}, over the limit of ${grouped(verdict.limit)} non-empty tiles; a bbox grid that large is refused before a single tile is built. Most bbox tiles will not be non-empty, so read the count as an upper bound. To get past this pre-check, pass maxTilesOverride: ${verdict.min_override} or more; the non-empty cap is checked after it. A bbox this large is more often a coordinate-order mistake (GeoJSON is [lon, lat]).`;
   }
-  const cost = verdict.count * DEFAULT_TOKENS_PER_JOB;
-  return `Polygon produces ${grouped(verdict.count)} non-empty tiles on ${grid}, over the limit of ${grouped(verdict.limit)}. Each tile is one billed job at about ${DEFAULT_TOKENS_PER_JOB} tokens, so this run would cost about ${grouped(cost)} tokens. To run it, pass maxTilesOverride: ${verdict.count}; to spend less, shrink the polygon or size it first with previewArea().`;
+  return `Polygon produces ${grouped(verdict.count)} non-empty tiles on ${grid}, over the limit of ${grouped(verdict.limit)}. Each tile is one billed job. To run it, pass maxTilesOverride: ${verdict.count}; to spend less, shrink the polygon or size it first with previewArea().`;
 }
 function generateTilesForPolygon(polygon, options = {}) {
   const limit3 = optionalUsize(options.maxTilesOverride, "maxTilesOverride");
@@ -1612,9 +1802,9 @@ function generateTilesForPolygon(polygon, options = {}) {
   if (!verdict.ok) throw new Error(capRefusal(verdict));
   return verdict.tiles;
 }
-function getTilingConfig(analysisType) {
+function getTilingConfig(analysisType2) {
   const wire2 = parseJson(
-    requireCore("getTilingConfig").getTilingConfig(analysisType ?? void 0)
+    requireCore("getTilingConfig").getTilingConfig(analysisType2 ?? void 0)
   );
   return {
     inferenceSizeM: wire2.inference_size_m,
@@ -1698,24 +1888,13 @@ __export(geodata_exports, {
   INDEXED_COLLECTIONS: () => INDEXED_COLLECTIONS,
   KERNEL_FGB_EXPORTS: () => KERNEL_FGB_EXPORTS,
   LAND_COVER_MIN_MAX_ZOOM: () => LAND_COVER_MIN_MAX_ZOOM,
-  MAX_BACKOFF_MS: () => MAX_BACKOFF_MS,
-  MAX_HTTP_200_BYTES: () => MAX_HTTP_200_BYTES,
   MAX_JSON_BYTES: () => MAX_JSON_BYTES,
-  MAX_PLANNED_RANGE_BYTES: () => MAX_PLANNED_RANGE_BYTES,
-  MAX_PLANNED_TOTAL_BYTES: () => MAX_PLANNED_TOTAL_BYTES,
-  MAX_RANGE_ATTEMPTS: () => MAX_RANGE_ATTEMPTS,
-  MAX_RANGE_BYTES: () => MAX_RANGE_BYTES,
   MAX_SLAB_TOLERANCE_DEG: () => MAX_SLAB_TOLERANCE_DEG,
-  MIN_BACKOFF_MS: () => MIN_BACKOFF_MS,
   OvertureFileLimitError: () => OvertureFileLimitError,
   OvertureReadTooLargeError: () => OvertureReadTooLargeError,
   ROADS_URL: () => ROADS_URL,
-  RangeRetry: () => RangeRetry,
   ReadMarginError: () => ReadMarginError,
   SITE_CHUNKS_IN_FLIGHT: () => SITE_CHUNKS_IN_FLIGHT,
-  SITE_CHUNK_EDGE_M: () => SITE_CHUNK_EDGE_M,
-  SITE_CHUNK_THRESHOLD_KM2: () => SITE_CHUNK_THRESHOLD_KM2,
-  SITE_EXTENT_WARNING_KM: () => SITE_EXTENT_WARNING_KM,
   SLAB_TOLERANCE_FACTOR: () => SLAB_TOLERANCE_FACTOR,
   SOURCES_TTL_MS: () => SOURCES_TTL_MS,
   SiteReadError: () => SiteReadError,
@@ -1730,7 +1909,6 @@ __export(geodata_exports, {
   acquireTrees: () => acquireTrees,
   acquireTreesJson: () => acquireTreesJson,
   assertAllowedUrl: () => assertAllowedUrl,
-  bboxAreaKm2: () => bboxAreaKm2,
   bboxAreaM2: () => bboxAreaM2,
   bboxIntersects: () => bboxIntersects,
   bytesRangeTransport: () => bytesRangeTransport,
@@ -1738,7 +1916,6 @@ __export(geodata_exports, {
   clearManifestCaches: () => clearManifestCaches,
   clearOvertureMetadataCache: () => clearOvertureMetadataCache,
   decompose: () => decompose,
-  farEndErrorM: () => farEndErrorM,
   featureCollectionJson: () => featureCollectionJson,
   featuresArrayText: () => featuresArrayText,
   fetchOvertureManifest: () => fetchOvertureManifest,
@@ -1805,16 +1982,16 @@ var GeodataDependencyError = class extends GeodataError {
   }
 };
 var GeodataFetchError = class extends GeodataError {
-  constructor(url, detail, status) {
-    super(`${url}: ${detail}`);
-    this.status = status;
+  constructor(url, detail, status2, options) {
+    super(`${url}: ${detail}`, options);
+    this.status = status2;
   }
   name = "GeodataFetchError";
 };
 var GeodataRangeError = class extends GeodataError {
-  constructor(url, detail, status) {
+  constructor(url, detail, status2) {
     super(`${url}: ${detail}`);
-    this.status = status;
+    this.status = status2;
   }
   name = "GeodataRangeError";
 };
@@ -1918,9 +2095,9 @@ async function readStream(reader, comparable, limits) {
   const chunks = [];
   let total = 0;
   for (; ; ) {
-    const step = await reader.read();
-    if (step.done) break;
-    const chunk2 = step.value;
+    const step2 = await reader.read();
+    if (step2.done) break;
+    const chunk2 = step2.value;
     if (chunk2 === void 0) continue;
     total += chunk2.byteLength;
     if (total > limits.cap) {
@@ -1967,126 +2144,6 @@ function join(chunks, total) {
   }
   return out;
 }
-
-// src/geodata/retry.ts
-var MAX_RANGE_ATTEMPTS = 3;
-var MIN_BACKOFF_MS = 250;
-var MAX_BACKOFF_MS = 1e3;
-function pathOf(url) {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return url;
-  }
-}
-function transientStatus(status) {
-  return status === 429 || status >= 500 && status < 600;
-}
-var RangeRetry = class {
-  /**
-   * @param url - The object being read; only its path is logged.
-   * @param callerIfMatch - The entity tag the caller requires, if any.
-   * @param logger - Where each retry is reported. Defaults to the console.
-   */
-  constructor(url, callerIfMatch, logger = consoleLogger) {
-    this.url = url;
-    this.logger = logger;
-    this.tag = callerIfMatch;
-  }
-  /** Attempts already finished. */
-  attempts = 0;
-  /** A `200` answer to a `Range` request is asked again at most once. */
-  wholeObjectRetries = 0;
-  tag;
-  /** The `If-Match` header for the next attempt: the entity tag of this read, if known. */
-  headers() {
-    return this.tag === void 0 ? {} : { "If-Match": this.tag };
-  }
-  /**
-   * Record the entity tag an answer carried, or refuse the answer.
-   *
-   * The first answer of a read that named no tag pins one, so a retry cannot
-   * silently read a different file.
-   *
-   * @param etag - The entity tag of the answer, if it carried one.
-   * @throws {GeodataRangeError} when the tag differs from the one this read is
-   *   pinned to, meaning the object was replaced during the read (status 412).
-   */
-  // Maintainer note (not published): A later answer under another tag is the
-  // object having been replaced under the read, the same event a 412 names,
-  // reported the same way, for a host that ignores `If-Match`.
-  observe(etag) {
-    if (etag === void 0 || etag === "") return;
-    if (this.tag === void 0) {
-      this.tag = etag;
-      return;
-    }
-    if (this.tag !== etag) {
-      throw new GeodataRangeError(
-        this.url,
-        `the object changed between two attempts of one read (entity tag ${this.tag} became ${etag})`,
-        412
-      );
-    }
-  }
-  /**
-   * Whether a `200` answer to this range request is worth asking again.
-   *
-   * A `200` means the server ignored the range and is offering the whole
-   * object. This is asked before the body is read, because asking again costs
-   * one request while reading a large body costs much more. It is `false`
-   * once the single re-ask is spent or no attempt is left; the answer is then
-   * accepted if the object is small and refused if it is large.
-   *
-   * @returns `true` when the range request should be sent again.
-   */
-  // Maintainer note (not published): Read BEFORE the body: on the world
-  // FlatGeobufs the whole object is gigabytes. Asking again costs one
-  // request; reading it first costs up to the 8 MiB cap. When this is false
-  // the answer falls to the existing whole-object rule.
-  willAskAgainForWholeObject() {
-    return this.wholeObjectRetries === 0 && this.attempts + 1 < MAX_RANGE_ATTEMPTS;
-  }
-  /**
-   * The wait before the next attempt, or `undefined` when the read must fail.
-   *
-   * Call once per failed attempt: each call counts an attempt, and each retry
-   * is logged as a warning.
-   *
-   * @param error - The failure of the attempt that just finished.
-   * @returns The wait in milliseconds, or `undefined` when the failure is not
-   *   retryable or the attempts are used up.
-   */
-  // Maintainer note (not published): It counts the attempt, so a caller that
-  // asks twice about one failure gets one retry, not two.
-  next(error) {
-    this.attempts += 1;
-    if (this.attempts >= MAX_RANGE_ATTEMPTS) return void 0;
-    const reason2 = this.reasonFor(error);
-    if (reason2 === void 0) return void 0;
-    if (reason2 === "whole-object") this.wholeObjectRetries += 1;
-    const waitMs = MIN_BACKOFF_MS + Math.random() * (MAX_BACKOFF_MS - MIN_BACKOFF_MS);
-    this.logger.warn(
-      `range read retry attempt=${this.attempts + 1}/${MAX_RANGE_ATTEMPTS} reason=${reason2} path=${pathOf(this.url)} wait_ms=${Math.round(waitMs)}`
-    );
-    return waitMs;
-  }
-  /** The number of attempts finished so far. */
-  get attemptsMade() {
-    return this.attempts;
-  }
-  reasonFor(error) {
-    if (!(error instanceof GeodataError)) return "connection";
-    const status = error.status;
-    if (status === void 0) return void 0;
-    if (status === 200) {
-      return this.wholeObjectRetries === 0 ? "whole-object" : void 0;
-    }
-    if (status === 429) return "throttled";
-    if (transientStatus(status)) return "server";
-    return void 0;
-  }
-};
 
 // src/geodata/stall.ts
 var STALL_TIMEOUT_MS = 6e4;
@@ -2139,13 +2196,13 @@ var StallWatch = class {
     const reader = body.getReader();
     const forwarded = new ReadableStream({
       pull: async (controller) => {
-        const step = await reader.read();
-        if (step.done) {
+        const step2 = await reader.read();
+        if (step2.done) {
           controller.close();
           return;
         }
         this.touch();
-        controller.enqueue(step.value);
+        controller.enqueue(step2.value);
       },
       cancel: (reason2) => reader.cancel(reason2)
     });
@@ -2157,124 +2214,6 @@ var StallWatch = class {
     this.parent.removeEventListener("abort", this.onParentAbort);
   }
 };
-
-// src/geodata/range-answer.ts
-var MAX_HTTP_200_BYTES = 8 * 1024 * 1024;
-var MAX_RANGE_BYTES = 64 * 1024 * 1024;
-var CONTENT_RANGE = /^bytes (\d+)-(\d+)\/(\d+|\*)$/;
-function etagOf(response) {
-  return response.headers.get("etag") ?? void 0;
-}
-function assertOneUnencodedRange(url, response) {
-  const type = (response.headers.get("content-type") ?? "").toLowerCase();
-  if (type.startsWith("multipart/byteranges")) {
-    cancelBody(response);
-    throw new GeodataRangeError(
-      url,
-      "the answer is multipart/byteranges; this reader asks for one range and reads one range",
-      206
-    );
-  }
-  const encoding = (response.headers.get("content-encoding") ?? "").trim().toLowerCase();
-  if (encoding !== "" && encoding !== "identity") {
-    cancelBody(response);
-    throw new GeodataRangeError(
-      url,
-      `the range answer is encoded as ${encoding}; lengths are checked on decoded bytes, so only identity is accepted`,
-      206
-    );
-  }
-}
-function parseContentRange(url, response) {
-  const raw = response.headers.get("content-range");
-  const match = raw === null ? null : CONTENT_RANGE.exec(raw.trim());
-  if (match === null) {
-    cancelBody(response);
-    throw new GeodataRangeError(
-      url,
-      raw === null ? "the range answer carries no content-range" : `content-range is not one byte range: ${raw}`,
-      206
-    );
-  }
-  const start = Number(match[1]);
-  const end = Number(match[2]);
-  const total = match[3] === "*" ? void 0 : Number(match[3]);
-  const usable = Number.isSafeInteger(start) && Number.isSafeInteger(end) && end >= start && (total === void 0 || Number.isSafeInteger(total) && total > end);
-  if (!usable) {
-    cancelBody(response);
-    throw new GeodataRangeError(url, `content-range is not a usable byte range: ${raw}`, 206);
-  }
-  return { start, end, ...total === void 0 ? {} : { total } };
-}
-async function readPartialAnswer(url, response, start, endExclusive) {
-  assertOneUnencodedRange(url, response);
-  const range2 = parseContentRange(url, response);
-  const requestedEnd = endExclusive === void 0 ? void 0 : endExclusive - 1;
-  const expectedEnd = requestedEnd === void 0 ? range2.end : range2.total === void 0 ? requestedEnd : Math.min(requestedEnd, range2.total - 1);
-  if (range2.start !== start || range2.end !== expectedEnd) {
-    cancelBody(response);
-    throw new GeodataRangeError(
-      url,
-      `content-range answers bytes ${range2.start}-${range2.end}, not the requested ${start}-${requestedEnd ?? "end"}`,
-      206
-    );
-  }
-  const expected = range2.end - range2.start + 1;
-  if (expected > MAX_RANGE_BYTES) {
-    cancelBody(response);
-    throw new GeodataRangeError(
-      url,
-      `the range answer announces ${expected} bytes; the limit for one range is ${MAX_RANGE_BYTES} bytes`,
-      206
-    );
-  }
-  const bytes = await readCappedBody(response, {
-    cap: expected,
-    fail: (detail) => new GeodataRangeError(url, `the range answer ${detail}`, 206)
-  });
-  if (bytes.byteLength !== expected) {
-    throw new GeodataRangeError(
-      url,
-      `the range answer carries ${bytes.byteLength} bytes, not the ${expected} bytes of its content-range`,
-      206
-    );
-  }
-  const etag = etagOf(response);
-  return {
-    bytes,
-    ...range2.total === void 0 ? {} : { totalSize: range2.total },
-    ...etag === void 0 ? {} : { etag }
-  };
-}
-async function readWholeObjectAnswer(url, response, start, endExclusive) {
-  const declared = declaredLength(response);
-  if (declared !== void 0 && declared > MAX_HTTP_200_BYTES) {
-    cancelBody(response);
-    throw new GeodataRangeError(
-      url,
-      `a range request was answered with 200 and ${declared} bytes; the limit is ${MAX_HTTP_200_BYTES} bytes`,
-      200
-    );
-  }
-  const whole = await readCappedBody(response, {
-    cap: MAX_HTTP_200_BYTES,
-    fail: (detail) => new GeodataRangeError(url, `a range request was answered with 200 and it ${detail}`, 200)
-  });
-  const needed = endExclusive ?? start;
-  if (whole.byteLength < needed) {
-    throw new GeodataRangeError(
-      url,
-      `a range request was answered with 200 and ${whole.byteLength} bytes, which do not reach the requested bytes ${start}-${needed}`,
-      200
-    );
-  }
-  const etag = etagOf(response);
-  return {
-    bytes: whole.slice(start, endExclusive ?? whole.byteLength),
-    totalSize: whole.byteLength,
-    ...etag === void 0 ? {} : { etag }
-  };
-}
 
 // src/geodata/http.ts
 var METERS_PER_DEG_LAT = 111320;
@@ -2302,24 +2241,44 @@ function fetchImpl(options) {
   }
   return implementation;
 }
+var PublicGetRetry = class {
+  tries = 0;
+  attempt() {
+    this.tries += 1;
+    return {};
+  }
+  next(error) {
+    const status2 = error instanceof GeodataFetchError ? error.status : void 0;
+    if (error instanceof GeodataError && status2 === void 0) return void 0;
+    const waitS = requireCore().hostRetryWaitSeconds(
+      "public_get",
+      "after_send",
+      status2,
+      this.tries,
+      Math.random(),
+      void 0
+    );
+    return waitS === void 0 ? void 0 : waitS * 1e3;
+  }
+};
 async function withRequest(url, headers, options, use, retry) {
   const checked = assertAllowedUrl(url);
   const timeoutMs = options.timeoutMs ?? DEFAULT_PUBLIC_TIMEOUT_MS;
   const deadline = new Deadline(options.signal, timeoutMs);
   const signal = deadline.controller.signal;
-  const step = (work) => deadline.wait(work);
-  const stopped = (error) => new GeodataFetchError(checked, stopDetail2(error, deadline, timeoutMs));
+  const step2 = (work) => deadline.wait(work);
+  const stopped = (error) => new GeodataFetchError(checked, stopDetail2(error, deadline, timeoutMs), void 0, { cause: error });
   const stallMs = options.stallTimeoutMs ?? STALL_TIMEOUT_MS;
   try {
     for (; ; ) {
       const watch = retry !== void 0 && stallMs < timeoutMs ? new StallWatch(signal, stallMs) : void 0;
       try {
-        const response = await step(
+        const response = await step2(
           () => fetchImpl(options)(checked, {
             headers: {
               "User-Agent": DATA_USER_AGENT,
               ...headers,
-              ...retry === void 0 ? {} : retry.headers()
+              ...retry === void 0 ? {} : retry.attempt()
             },
             redirect: "error",
             signal: watch?.controller.signal ?? signal
@@ -2334,7 +2293,7 @@ async function withRequest(url, headers, options, use, retry) {
             response.status
           );
         }
-        return await step(() => use(watch === void 0 ? response : watch.watch(response)));
+        return await step2(() => use(watch === void 0 ? response : watch.watch(response)));
       } catch (caught) {
         const error = watch?.stalled === true ? new Error(`no data arrived for ${stallMs} ms`) : caught;
         const waitMs = deadline.reason() === void 0 ? retry?.next(error) : void 0;
@@ -2343,7 +2302,7 @@ async function withRequest(url, headers, options, use, retry) {
           throw stopped(error);
         }
         try {
-          await step(() => delay(waitMs, signal));
+          await step2(() => delay(waitMs, signal));
         } catch (stop) {
           throw stopped(stop);
         }
@@ -2364,7 +2323,7 @@ function stopDetail2(error, deadline, timeoutMs) {
   return `request failed: ${error instanceof Error ? error.message : String(error)}`;
 }
 async function fetchPublicText(url, options = {}) {
-  const retry = new RangeRetry(url, void 0, options.logger);
+  const retry = new PublicGetRetry();
   return withRequest(url, { Accept: "application/json" }, options, async (response) => {
     if (!response.ok) {
       cancelBody(response);
@@ -2415,15 +2374,15 @@ async function fetchPublicJson(url, options = {}) {
 
 // src/geodata/read-margin.ts
 var WIDEST_READ_ANALYSIS_TYPE = "solar-radiation";
-function resolveReadAnalysisType(analysisType) {
-  const name = (analysisType ?? "").trim();
+function resolveReadAnalysisType(analysisType2) {
+  const name = (analysisType2 ?? "").trim();
   return name === "" ? WIDEST_READ_ANALYSIS_TYPE : name;
 }
-function readMarginM(analysisType) {
-  return getTilingConfig(resolveReadAnalysisType(analysisType)).contextSizeM / 2;
+function readMarginM(analysisType2) {
+  return getTilingConfig(resolveReadAnalysisType(analysisType2)).contextSizeM / 2;
 }
-function groundReadDistanceM(analysisType) {
-  return Math.ceil(Math.SQRT2 * readMarginM(analysisType));
+function groundReadDistanceM(analysisType2) {
+  return Math.ceil(Math.SQRT2 * readMarginM(analysisType2));
 }
 var ReadMarginError = class extends Error {
   /** The layer that was acquired too narrowly, for example `"buildings"`. */
@@ -2452,10 +2411,10 @@ function recordedMargin(layer) {
   if (typeof layer !== "object" || layer === null) return void 0;
   const value = layer.readMarginM;
   if (typeof value !== "number" || !Number.isFinite(value)) return void 0;
-  const named2 = layer.analysisType;
+  const named = layer.analysisType;
   return {
     readMarginM: value,
-    ...typeof named2 === "string" ? { analysisType: named2 } : {}
+    ...typeof named === "string" ? { analysisType: named } : {}
   };
 }
 var LAYER_REQUIREMENT = {
@@ -2463,14 +2422,14 @@ var LAYER_REQUIREMENT = {
   "ground materials": groundReadDistanceM,
   trees: groundReadDistanceM
 };
-function requiredMarginM(layer, analysisType) {
+function requiredMarginM(layer, analysisType2) {
   const derive = LAYER_REQUIREMENT[layer];
   if (derive === void 0) {
     throw new TypeError(
       `unknown acquisition layer ${JSON.stringify(layer)}; known layers are ${Object.keys(LAYER_REQUIREMENT).sort().join(", ")}`
     );
   }
-  return derive(analysisType);
+  return derive(analysisType2);
 }
 function checkReadMargin(acquired, layer, analysisTypes) {
   const record3 = recordedMargin(acquired);
@@ -2500,48 +2459,13 @@ function httpRangeTransport(options = {}) {
   const sizes = /* @__PURE__ */ new Map();
   async function ranged(url, start, endExclusive, read) {
     const range2 = endExclusive === void 0 ? `bytes=${start}-` : `bytes=${start}-${endExclusive - 1}`;
-    const retry = new RangeRetry(url, read?.ifMatch, options.logger);
+    const state = new KernelRangeRead(url, start, endExclusive, read?.ifMatch, options.logger);
     const answer = await withRequest(
       url,
-      {
-        Range: range2,
-        // Lengths are checked on decoded bytes, so an encoded range answer
-        // cannot be checked at all. Browser handling of this header varies;
-        // the answer is checked as well as asked for. Hosts must allow it
-        // in CORS when a browser sends it.
-        "Accept-Encoding": "identity"
-      },
+      { Range: range2, "Accept-Encoding": "identity" },
       options,
-      async (response) => {
-        if (response.status === 412) {
-          cancelBody(response);
-          throw new GeodataRangeError(
-            url,
-            "the object changed between two ranges of one read (If-Match failed)",
-            412
-          );
-        }
-        if (response.status !== 200 && response.status !== 206) {
-          cancelBody(response);
-          throw new GeodataFetchError(url, `HTTP ${response.status}`, response.status);
-        }
-        try {
-          retry.observe(response.headers.get("etag") ?? void 0);
-        } catch (stale) {
-          cancelBody(response);
-          throw stale;
-        }
-        if (response.status === 200 && retry.willAskAgainForWholeObject()) {
-          cancelBody(response);
-          throw new GeodataRangeError(
-            url,
-            "a range request was answered with 200; the range is asked for once more",
-            200
-          );
-        }
-        return response.status === 200 ? await readWholeObjectAnswer(url, response, start, endExclusive) : await readPartialAnswer(url, response, start, endExclusive);
-      },
-      retry
+      (response) => state.answer(response),
+      state
     );
     if (answer.totalSize !== void 0) sizes.set(url, answer.totalSize);
     return answer;
@@ -2585,6 +2509,125 @@ function bytesRangeTransport(bytes, url = "https://geo.infrared.city/in-memory.f
     }
   };
 }
+var AskAgain = class extends Error {
+  constructor(waitMs) {
+    super("asked again");
+    this.waitMs = waitMs;
+  }
+};
+function step(event) {
+  return JSON.parse(requireCore().rangeReadStep(JSON.stringify(event)));
+}
+function header(response, name) {
+  return response.headers.get(name);
+}
+function numberHeader(response, name) {
+  const raw = header(response, name);
+  const value = raw === null ? Number.NaN : Number(raw.trim());
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+var KernelRangeRead = class {
+  constructor(url, start, endExclusive, ifMatch, logger = consoleLogger) {
+    this.url = url;
+    this.logger = logger;
+    this.read = {
+      start,
+      end: endExclusive === void 0 ? null : endExclusive - 1,
+      tries: 0,
+      pinned: ifMatch ?? null
+    };
+    let host = url;
+    try {
+      host = new URL(url).hostname || url;
+    } catch {
+    }
+    this.host = host;
+  }
+  read;
+  host;
+  attempt() {
+    this.read = { ...this.read, tries: this.read.tries + 1 };
+    return this.read.pinned === null ? {} : { "If-Match": this.read.pinned };
+  }
+  next(error) {
+    const waitMs = error instanceof AskAgain ? error.waitMs : error instanceof GeodataError ? void 0 : this.afterFailure();
+    if (waitMs !== void 0) {
+      this.logger.warn(
+        `range read retry attempt=${this.read.tries + 1} path=${this.path()} wait_ms=${Math.round(waitMs)}`
+      );
+    }
+    return waitMs;
+  }
+  async answer(response) {
+    const decided = step({
+      event: "answer",
+      read: this.read,
+      answer: {
+        status: response.status,
+        content_range: header(response, "content-range"),
+        content_type: header(response, "content-type"),
+        content_encoding: header(response, "content-encoding"),
+        content_length: numberHeader(response, "content-length"),
+        etag: header(response, "etag"),
+        retry_after_s: numberHeader(response, "retry-after")
+      },
+      jitter: Math.random(),
+      host: this.host
+    });
+    if (decided.do !== "body") cancelBody(response);
+    if (decided.do === "again") {
+      this.read = decided.read;
+      throw new AskAgain(decided.wait_s * 1e3);
+    }
+    if (decided.do === "stale") throw new GeodataRangeError(this.url, decided.message, 412);
+    if (decided.do === "refuse") {
+      if (response.status !== 200 && response.status !== 206) {
+        throw new GeodataFetchError(this.url, `HTTP ${response.status}`, response.status);
+      }
+      throw new GeodataRangeError(this.url, decided.message, response.status);
+    }
+    this.read = decided.read;
+    const bytes = await readCappedBody(response, {
+      cap: decided.cap,
+      fail: (detail) => new GeodataRangeError(
+        this.url,
+        decided.whole ? `${this.host} answered 200 to a Range request (host cache configuration); report it at https://github.com/Infrared-city/infrared-core/issues` : `the range answer ${detail}`,
+        response.status
+      )
+    });
+    const checked = step({
+      event: "body",
+      read: this.read,
+      whole: decided.whole,
+      cap: decided.cap,
+      body_len: bytes.byteLength
+    });
+    if (typeof checked["refuse"] === "string") {
+      throw new GeodataRangeError(this.url, checked["refuse"], response.status);
+    }
+    const etag = header(response, "etag") ?? void 0;
+    const offset = checked["offset"];
+    const length = checked["length"];
+    const total = decided.whole ? bytes.byteLength : decided.total;
+    return {
+      bytes: decided.whole ? bytes.subarray(offset, offset + length) : bytes,
+      ...total === null ? {} : { totalSize: total },
+      ...etag === void 0 ? {} : { etag }
+    };
+  }
+  afterFailure() {
+    const decided = step({ event: "failure", read: this.read, phase: "after_send", jitter: Math.random() });
+    const waitS = decided["wait_s"];
+    return typeof waitS === "number" ? waitS * 1e3 : void 0;
+  }
+  path() {
+    try {
+      return new URL(this.url).pathname;
+    } catch {
+      return this.url;
+    }
+  }
+};
 
 // src/geodata/json-chain.ts
 function firstToken(json) {
@@ -2683,13 +2726,13 @@ async function fetchSources(options = {}) {
   return (await fetchSourcesEntry(options)).document;
 }
 async function fetchSourcesEntry(options = {}) {
-  const now2 = options.now ?? Date.now();
-  if (sourcesCache !== void 0 && now2 - sourcesCache.fetchedAt < SOURCES_TTL_MS) {
+  const now3 = options.now ?? Date.now();
+  if (sourcesCache !== void 0 && now3 - sourcesCache.fetchedAt < SOURCES_TTL_MS) {
     return sourcesCache;
   }
   const text = await fetchPublicText(`${GEO_BASE_URL}/sources.json`, options);
   const document2 = JSON.parse(text);
-  sourcesCache = { fetchedAt: now2, document: document2, text };
+  sourcesCache = { fetchedAt: now3, document: document2, text };
   return sourcesCache;
 }
 function sourceKeyFor(document2, id) {
@@ -2803,8 +2846,6 @@ var KERNEL_FGB_EXPORTS = Object.freeze({
 var HEADER_PREFIX_BYTES = 8192;
 var MAX_HEADER_BYTES = 16 * 1024 * 1024;
 var MAX_SEARCH_STEPS = 32;
-var MAX_PLANNED_RANGE_BYTES = 64 * 1024 * 1024;
-var MAX_PLANNED_TOTAL_BYTES = 256 * 1024 * 1024;
 var objectCache = /* @__PURE__ */ new Map();
 function clearFgbCache() {
   objectCache.clear();
@@ -2822,41 +2863,23 @@ function concat(chunks) {
   }
   return out;
 }
-var RangeBudget = class {
-  constructor(url) {
-    this.url = url;
-  }
-  spent = 0;
-  take(length) {
-    if (length > MAX_PLANNED_RANGE_BYTES) {
-      throw new GeodataRangeError(
-        this.url,
-        `the kernel planned a ${length}-byte range, over the ${MAX_PLANNED_RANGE_BYTES}-byte per-range cap`
-      );
-    }
-    this.spent += length;
-    if (this.spent > MAX_PLANNED_TOTAL_BYTES) {
-      throw new GeodataRangeError(
-        this.url,
-        `the kernel planned ${this.spent} bytes for one read, over the ${MAX_PLANNED_TOTAL_BYTES}-byte total cap`
-      );
-    }
-  }
-};
 function checkedRange(url, range2, fileSize, budget) {
   const start = Number(range2[0]);
   const length = Number(range2[1]);
-  if (!Number.isInteger(start) || !Number.isInteger(length) || start < 0 || length <= 0) {
+  if (!Number.isInteger(start) || !Number.isInteger(length) || start < 0 || length < 0) {
     throw new GeodataError(
       `${url}: the kernel planned an unusable range [${String(range2[0])}, ${String(range2[1])}]`
     );
   }
-  budget.take(length);
-  if (start + length > fileSize) {
-    throw new GeodataError(
-      `${url}: the kernel planned a range past the end of the file ([${start}, ${length}] of ${fileSize} bytes)`
-    );
-  }
+  const checked = JSON.parse(requireCore().rangeReadStep(JSON.stringify({
+    event: "plan",
+    start,
+    length,
+    file_size: fileSize,
+    spent: budget.spent
+  })));
+  if (checked.refuse !== void 0) throw new GeodataRangeError(url, checked.refuse);
+  budget.spent = checked.spent;
   return [start, length];
 }
 async function openObject(url, transport3, layout) {
@@ -2870,10 +2893,10 @@ async function openObject(url, transport3, layout) {
   if (!Number.isInteger(required2) || required2 <= 0 || required2 > MAX_HEADER_BYTES) {
     throw new GeodataError(`${url}: the kernel reported an unusable header size ${required2}`);
   }
-  const header = required2 <= first.bytes.byteLength ? first.bytes.subarray(0, required2) : (await transport3.read(url, 0, required2, {
+  const header2 = required2 <= first.bytes.byteLength ? first.bytes.subarray(0, required2) : (await transport3.read(url, 0, required2, {
     ...first.etag === void 0 ? {} : { ifMatch: first.etag }
   })).bytes;
-  const entry = { etag: first.etag, fileSize, header, topNodes: [] };
+  const entry = { etag: first.etag, fileSize, header: header2, topNodes: [] };
   objectCache.set(key, entry);
   return entry;
 }
@@ -2891,11 +2914,11 @@ async function readFgbBboxJsonWithKernel(url, bbox, transport3) {
 async function readWithFunctions(layout, searchStep, decodeRangeFeatures, url, bbox, transport3) {
   const cache2 = await openObject(url, transport3, layout);
   const ifMatch = cache2.etag === void 0 ? {} : { ifMatch: cache2.etag };
-  const budget = new RangeBudget(url);
+  const budget = { url, spent: 0 };
   const fetchedNodes = [...cache2.topNodes];
-  let step;
+  let step2;
   for (let attempt = 0; attempt < MAX_SEARCH_STEPS; attempt += 1) {
-    step = searchStep(
+    step2 = searchStep(
       cache2.header,
       bbox.west,
       bbox.south,
@@ -2904,8 +2927,8 @@ async function readWithFunctions(layout, searchStep, decodeRangeFeatures, url, b
       cache2.fileSize,
       fetchedNodes
     );
-    if (step.need.length === 0) break;
-    for (const range2 of step.need) {
+    if (step2.need.length === 0) break;
+    for (const range2 of step2.need) {
       const [start, length] = checkedRange(url, range2, cache2.fileSize, budget);
       const answer = await transport3.read(url, start, start + length, ifMatch);
       fetchedNodes.push({ offset: start, bytes: answer.bytes });
@@ -2914,12 +2937,12 @@ async function readWithFunctions(layout, searchStep, decodeRangeFeatures, url, b
       cache2.topNodes = [...fetchedNodes];
     }
   }
-  if (step === void 0 || step.need.length > 0) {
+  if (step2 === void 0 || step2.need.length > 0) {
     throw new GeodataError(`${url}: the index search did not converge`);
   }
-  if (step.features.length === 0) return '{"type":"FeatureCollection","features":[]}';
+  if (step2.features.length === 0) return '{"type":"FeatureCollection","features":[]}';
   const chunks = [];
-  for (const range2 of step.features) {
+  for (const range2 of step2.features) {
     const [start, length] = checkedRange(url, range2, cache2.fileSize, budget);
     chunks.push((await transport3.read(url, start, start + length, ifMatch)).bytes);
   }
@@ -2979,10 +3002,9 @@ async function cachedOvertureMetadata(release4, url, load) {
 }
 
 // src/geodata/overture-budget.ts
-var OVERTURE_PLANNED_BYTES_LIMIT = plannedBytesLimitFor(isNode());
 var OVERTURE_HOST_CONCURRENCY = hostConcurrencyFor(isNode());
 function plannedBytesLimitFor(node) {
-  return node ? 512 * 1024 * 1024 : 256 * 1024 * 1024;
+  return requireCore().overturePlannedBytesLimit(node ? "node" : "browser");
 }
 function hostConcurrencyFor(node) {
   return node ? 16 : 6;
@@ -2991,7 +3013,7 @@ function isNode() {
   const runtime = globalThis.process;
   return typeof runtime?.versions?.node === "string";
 }
-function plannedBudget(limit3 = OVERTURE_PLANNED_BYTES_LIMIT) {
+function plannedBudget(limit3 = plannedBytesLimitFor(isNode())) {
   let planned = 0;
   return {
     limitBytes: limit3,
@@ -3303,7 +3325,7 @@ async function readOvertureRows(collection, bbox, options, map) {
   if (urls.length === 0) return { rows: [], release: release4 };
   const { parquet, compressors, geometry: raw } = await loadParquet();
   const transport3 = options.transport ?? httpRangeTransport(options);
-  const plans2 = await mapLimit(
+  const plans = await mapLimit(
     urls,
     OVERTURE_FILE_CONCURRENCY,
     async (url) => {
@@ -3325,13 +3347,13 @@ async function readOvertureRows(collection, bbox, options, map) {
       };
     }
   );
-  const tasks = plans2.flatMap((plan) => plan.groups.map((group) => ({ plan, group })));
+  const tasks = plans.flatMap((plan) => plan.groups.map((group) => ({ plan, group })));
   const budget = options.budget ?? plannedBudget(options.maxPlannedBytes);
   budget.add(
     collection,
     bbox,
-    plans2.reduce((sum, plan) => sum + plan.bytes, 0),
-    plans2.length,
+    plans.reduce((sum, plan) => sum + plan.bytes, 0),
+    plans.length,
     tasks.length
   );
   const decoded = await mapLimit(
@@ -3457,8 +3479,8 @@ async function acquireTrees(bbox, options = {}) {
     warnings
   };
 }
-function treesFeatureCollection(result) {
-  return { type: "FeatureCollection", features: [...result.features] };
+function treesFeatureCollection(result2) {
+  return { type: "FeatureCollection", features: [...result2.features] };
 }
 
 // src/geodata/ground.ts
@@ -3542,10 +3564,6 @@ function tileFeaturesJson(features2, bbox) {
 }
 
 // src/geodata/site-chunks.ts
-var SITE_CHUNK_THRESHOLD_KM2 = 4;
-var SITE_AREA_WARNING_KM2 = 20;
-var SITE_EXTENT_WARNING_KM = 5;
-var SITE_CHUNK_EDGE_M = 2e3;
 var SITE_CHUNKS_IN_FLIGHT = 2;
 function decompose(clip, rectangles) {
   const flatClip = Float64Array.from([clip.west, clip.south, clip.east, clip.north]);
@@ -3564,75 +3582,30 @@ function decompose(clip, rectangles) {
   }
   return pieces;
 }
-function bboxAreaKm2(bbox) {
-  const midLat = (bbox.south + bbox.north) / 2;
-  const height = (bbox.north - bbox.south) * METERS_PER_DEG_LAT;
-  const width = (bbox.east - bbox.west) * METERS_PER_DEG_LAT * Math.cos(midLat * Math.PI / 180);
-  return Math.max(0, height) * Math.max(0, width) / 1e6;
-}
-function withPieces(id, bbox, rectangles) {
-  const pieces = decompose(bbox, rectangles);
-  if (pieces.length === 0) throw new Error("no read chunk meets any tile rectangle");
-  return named(id, bbox, pieces);
-}
 function namePieces(id, pieces) {
   return pieces.length === 1 ? [{ id, bbox: pieces[0] }] : pieces.map((piece, index2) => ({ id: `${id}-p${String(index2)}`, bbox: piece }));
 }
-function named(id, bbox, pieces) {
-  return { id, bbox, pieces: namePieces(id, pieces) };
-}
 function siteChunks(site, used, logger = consoleLogger) {
   warnIfOverOneFrame(site, logger);
-  const rectangles = used ?? [site];
-  if (bboxAreaKm2(site) <= SITE_CHUNK_THRESHOLD_KM2) {
-    return [withPieces("site", site, rectangles)];
-  }
-  const midLat = (site.south + site.north) / 2;
-  const stepLat = SITE_CHUNK_EDGE_M / METERS_PER_DEG_LAT;
-  const stepLon = SITE_CHUNK_EDGE_M / (METERS_PER_DEG_LAT * Math.max(Math.cos(midLat * Math.PI / 180), 1e-6));
-  const rows = Math.max(1, Math.ceil((site.north - site.south) / stepLat));
-  const cols = Math.max(1, Math.ceil((site.east - site.west) / stepLon));
-  const chunks = [];
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const bbox = {
-        west: site.west + col * (site.east - site.west) / cols,
-        east: site.west + (col + 1) * (site.east - site.west) / cols,
-        south: site.south + row * (site.north - site.south) / rows,
-        north: site.south + (row + 1) * (site.north - site.south) / rows
-      };
-      const pieces = decompose(bbox, rectangles);
-      if (pieces.length === 0) continue;
-      chunks.push(named(`chunk-r${String(row)}c${String(col)}`, bbox, pieces));
-    }
-  }
-  if (chunks.length === 0) throw new Error("no read chunk meets any tile rectangle");
-  return chunks;
+  const flatUsed = Float64Array.from(
+    (used ?? [site]).flatMap((rect) => [rect.west, rect.south, rect.east, rect.north])
+  );
+  const chunks = JSON.parse(requireCore().siteChunks(flatBbox(site), flatUsed));
+  return chunks.map((chunk2) => ({
+    id: chunk2.id,
+    bbox: bboxOf(chunk2.bbox),
+    pieces: chunk2.pieces.map((piece) => ({ id: piece.id, bbox: bboxOf(piece.bbox) }))
+  }));
+}
+function flatBbox(bbox) {
+  return Float64Array.from([bbox.west, bbox.south, bbox.east, bbox.north]);
+}
+function bboxOf([west, south, east, north]) {
+  return { west, south, east, north };
 }
 function warnIfOverOneFrame(site, logger) {
-  const midLat = (site.south + site.north) / 2;
-  const cosMid = Math.cos(midLat * Math.PI / 180);
-  const widthM = (site.east - site.west) * METERS_PER_DEG_LAT * cosMid;
-  const heightM = (site.north - site.south) * METERS_PER_DEG_LAT;
-  const area = bboxAreaKm2(site);
-  if (area > SITE_AREA_WARNING_KM2) {
-    const error = Math.abs(1 - Math.cos(site.north * Math.PI / 180) / cosMid) * 100;
-    logger.warn(
-      `this area is ${area.toFixed(1)} km2, above the ${SITE_AREA_WARNING_KM2} km2 one run is recommended for: every layer is stored in ONE local frame whose east-west scale is fixed at its origin latitude, so shapes at the far corner are off by about ${error.toFixed(2)} %. Results stay usable; for exact geometry split the area into several area runs \u2014 raster results are geo-referenced by bounds and stitch by lat/lon.`
-    );
-  }
-  const longestM = Math.max(widthM, heightM);
-  if (longestM > SITE_EXTENT_WARNING_KM * 1e3) {
-    logger.warn(
-      `this site is ${(longestM / 1e3).toFixed(1)} km along its longest side, above the ${SITE_EXTENT_WARNING_KM.toFixed(1)} km one run is recommended for: every layer is stored in ONE local frame whose east-west scale is fixed at its origin latitude, so the far-end error grows with EXTENT, not with area \u2014 a long, narrow site carries the error of a site as long. Here it is about ${farEndErrorM(site.south, longestM).toFixed(2)} m. Results stay usable; for exact geometry split the site into several area runs \u2014 raster results are geo-referenced by bounds and stitch by lat/lon.`
-    );
-  }
-}
-function farEndErrorM(southLat, extentM) {
-  const cosOrigin = Math.cos(southLat * Math.PI / 180);
-  if (cosOrigin === 0) return 0;
-  const farLat = southLat + extentM / METERS_PER_DEG_LAT;
-  return Math.abs(1 - Math.cos(farLat * Math.PI / 180) / cosOrigin) * extentM;
+  const warnings = JSON.parse(requireCore().siteFrameWarnings(flatBbox(site)));
+  for (const warning of warnings) logger.warn(warning);
 }
 function siteRectangle(rectangles) {
   return unionBbox(rectangles);
@@ -3642,7 +3615,7 @@ async function eachChunk(chunks, task, requested, signal) {
     throw new TypeError("maxWorkers must be a positive integer");
   }
   const out = Array.from({ length: chunks.length });
-  const failures2 = [];
+  const failures = [];
   let cursor = 0;
   const ceiling = Math.min(SITE_CHUNKS_IN_FLIGHT, requested ?? SITE_CHUNKS_IN_FLIGHT);
   const workers = Math.min(ceiling, Math.max(1, chunks.length));
@@ -3655,16 +3628,16 @@ async function eachChunk(chunks, task, requested, signal) {
       try {
         out[index2] = await task(chunk2, index2);
       } catch (error) {
-        failures2.push({ index: index2, id: chunk2.id, error });
+        failures.push({ index: index2, id: chunk2.id, error });
       }
     }
   }));
   if (signal?.aborted === true) throw signal.reason ?? new DOMException("aborted", "AbortError");
-  if (failures2.length > 0) throw siteReadFailure(failures2, chunks.length);
+  if (failures.length > 0) throw siteReadFailure(failures, chunks.length);
   return out;
 }
-function siteReadFailure(failures2, total) {
-  const ordered = [...failures2].sort((left, right) => left.index - right.index);
+function siteReadFailure(failures, total) {
+  const ordered = [...failures].sort((left, right) => left.index - right.index);
   const ids = ordered.map((failure2) => failure2.id);
   return new SiteReadError(
     `site read failed for ${String(ids.length)} of ${String(total)} read chunks (${ids.join(", ")}): every chunk feeds the site, so a partial answer would be an emptier city that nobody can see`,
@@ -3817,10 +3790,10 @@ function extrudePieces(collectionJson, source, site, rectangles, defaultHeightM)
       defaultHeightM
     );
   }
-  const named2 = namePieces("site", pieces);
-  const answer = extrudeAll(collectionJson, source, named2, defaultHeightM);
+  const named = namePieces("site", pieces);
+  const answer = extrudeAll(collectionJson, source, named, defaultHeightM);
   const buildings = {};
-  for (const piece of named2) {
+  for (const piece of named) {
     const bodies = answer[piece.id] ?? {};
     if (Object.keys(bodies).length === 0) continue;
     const moved = reanchorEntries(
@@ -3839,7 +3812,6 @@ function extrudePieces(collectionJson, source, site, rectangles, defaultHeightM)
 
 // src/geodata/buildings-area.ts
 async function acquireBuildingsArea(site, options) {
-  warnIfOverOneFrame(site, options.logger ?? consoleLogger);
   if (options.bestAvailable === false) await requireOvertureReader();
   const rectangles = options.rectangles ?? [];
   if (rectangles.length > 1 && !await tilesAgreeOnSource(rectangles, options)) {
@@ -3863,6 +3835,7 @@ async function acquireBuildingsArea(site, options) {
     source = "overture";
     overtureRelease = read.release;
   }
+  warnIfOverOneFrame(site, options.logger ?? consoleLogger);
   return {
     buildings: extrudePieces(
       collectionJson,
@@ -3936,6 +3909,7 @@ async function perRectangleArea(site, rectangles, options) {
       }
     }
   }
+  warnIfOverOneFrame(site, options.logger ?? consoleLogger);
   return {
     buildings,
     origin: [site.west, site.south],
@@ -4043,10 +4017,10 @@ var BuildingsService = class {
   // normalised and extruded per tile and offset the results into the grid, which
   // mixed two frames (D48).
   async directArea(polygon, options, started) {
-    const analysisType = resolveReadAnalysisType(options.analysisType);
-    const halfExtentM = readMarginM(analysisType);
+    const analysisType2 = resolveReadAnalysisType(options.analysisType);
+    const halfExtentM = readMarginM(analysisType2);
     const grid = generateTilesForPolygon(polygon, {
-      analysisType,
+      analysisType: analysisType2,
       ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
     });
     const active3 = grid.flat().filter((tile) => !tile.empty);
@@ -4062,7 +4036,7 @@ var BuildingsService = class {
         warnings: [],
         origin: [empty.lon, empty.lat],
         readMarginM: halfExtentM,
-        analysisType
+        analysisType: analysisType2
       };
     }
     const site = siteRectangle(rectangles);
@@ -4110,94 +4084,11 @@ var BuildingsService = class {
       // thinner city that nobody can see (D48).
       failedTiles: [],
       readMarginM: halfExtentM,
-      analysisType,
+      analysisType: analysisType2,
       ...overtureRelease === void 0 ? {} : { overtureRelease }
     };
   }
 };
-
-// src/area/field-registry.ts
-var cached;
-function registryModels() {
-  const core2 = requireCore();
-  if (cached?.core === core2) return cached.models;
-  const document2 = JSON.parse(core2.fieldRegistryJson());
-  const models = /* @__PURE__ */ new Map();
-  for (const [name, row] of Object.entries(document2.models)) {
-    models.set(name, { fields: row.fields, byKey: new Map(row.fields.map((f) => [f.key, f])) });
-  }
-  cached = { core: core2, models };
-  return models;
-}
-function registryModel(model) {
-  return registryModels().get(model);
-}
-function modelsWithField(key) {
-  const names = /* @__PURE__ */ new Set();
-  for (const [name, row] of registryModels()) if (row.byKey.has(key)) names.add(name);
-  return names;
-}
-function fieldEnum(model, key) {
-  return registryModel(model)?.byKey.get(key)?.enum;
-}
-function knownValues(models, key) {
-  const values = /* @__PURE__ */ new Set();
-  for (const model of models) {
-    const field = registryModel(model)?.byKey.get(key);
-    if (field === void 0) continue;
-    for (const value of field.enum ?? []) values.add(String(value));
-    for (const value of Object.keys(field.deprecatedValues ?? {})) values.add(value);
-    for (const value of Object.keys(field.rejectedValues ?? {})) values.add(value);
-  }
-  return [...values];
-}
-function fieldMinimum(model, key) {
-  return registryModel(model)?.byKey.get(key)?.minimum;
-}
-
-// src/area/config-hash.ts
-function kernelConfigHash(fields) {
-  return requireCore().configHash(JSON.stringify(fields));
-}
-var CONFIG_HASH_V2_CONTRACT_VERSION = 10;
-function hashInputs(model, payload, terrain) {
-  const row = registryModel(model);
-  if (row === void 0) {
-    throw new Error(`the kernel field registry has no model ${JSON.stringify(model)}: its config hash cannot be built`);
-  }
-  const classes = /* @__PURE__ */ new Map();
-  for (const field of row.fields) classes.set(field.key, field.hash);
-  const core2 = requireCore();
-  const inert = new Set(core2.inertKeys(model));
-  const control = {};
-  const groups = {};
-  for (const [key, value] of Object.entries(payload)) {
-    if (value === null || value === void 0) continue;
-    const hashClass = classes.get(key);
-    if (hashClass === void 0) {
-      if (!inert.has(key)) control[key] = value;
-      continue;
-    }
-    if (hashClass === "exclude") continue;
-    if (hashClass === "value") {
-      control[key] = value;
-      continue;
-    }
-    const known = key === "ground-geometry" && core2.terrainHandleHashApplies(model) ? terrain?.groupHash : void 0;
-    groups[key] = typeof known === "string" ? known : core2.configGroupHash(model, key, JSON.stringify(value));
-  }
-  return { control, groups };
-}
-function resolvedBalanceYear(control, now2) {
-  const series2 = control["dry-bulb-temperature"];
-  const rows = Array.isArray(series2) || ArrayBuffer.isView(series2) ? series2.length : 0;
-  return requireCore().energyBalanceYear(void 0, now2.getUTCFullYear(), rows);
-}
-function scheduleConfigHash(model, payload, terrain, now2 = /* @__PURE__ */ new Date()) {
-  const { control, groups } = hashInputs(model, payload, terrain);
-  if (model === "energy-balance" && control.year === void 0) control.year = resolvedBalanceYear(control, now2);
-  return requireCore().configHashV2(model, JSON.stringify(control), JSON.stringify(groups));
-}
 
 // src/internal/kernel-group.ts
 var EMPTY = { bytes: new TextEncoder().encode("{}"), hash: void 0 };
@@ -4244,8 +4135,209 @@ function groupHasContent(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
 }
 
+// src/internal/wire-json.ts
+function hasToJson(value) {
+  return value !== null && typeof value === "object" && typeof value.toJSON === "function";
+}
+var encoder4 = new TextEncoder();
+var sequence = 0;
+function typedAsArray(_key, value) {
+  return ArrayBuffer.isView(value) && !(value instanceof DataView) ? Array.from(value) : value;
+}
+function jsonWireBytes(body, replacer) {
+  return spliceJsonBytes(body, () => void 0, replacer);
+}
+function spliceJsonBytes(body, known, replacer) {
+  const plain = () => {
+    const text = JSON.stringify(body, replacer);
+    return text === void 0 ? void 0 : encoder4.encode(text);
+  };
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return plain();
+  if (hasToJson(body)) return plain();
+  const entries3 = Object.entries(body);
+  const texts = [];
+  const stand = {};
+  sequence = (sequence + 1) % Number.MAX_SAFE_INTEGER;
+  const tag = `\0ir-wire-${sequence}-${Math.random().toString(36).slice(2)}-`;
+  for (const [key, value] of entries3) {
+    const text = value instanceof KernelGroup ? value.text().bytes : hasToJson(value) ? void 0 : known(value);
+    let written = value;
+    if (text !== void 0) {
+      written = `${tag}${texts.length}`;
+      texts.push(text);
+    }
+    Object.defineProperty(stand, key, {
+      value: written,
+      enumerable: true,
+      writable: true,
+      configurable: true
+    });
+  }
+  if (texts.length === 0) return plain();
+  const outer = JSON.stringify(stand, replacer);
+  if (outer === void 0) return plain();
+  const pieces = [];
+  let from = 0;
+  for (let index2 = 0; index2 < texts.length; index2 += 1) {
+    const marker = JSON.stringify(`${tag}${index2}`);
+    const at2 = outer.indexOf(marker, from);
+    if (at2 === -1 || outer.indexOf(marker, at2 + marker.length) !== -1) return plain();
+    pieces.push(encoder4.encode(outer.slice(from, at2)), texts[index2]);
+    from = at2 + marker.length;
+  }
+  if (outer.indexOf(JSON.stringify(tag).slice(1, -1), from) !== -1) return plain();
+  pieces.push(encoder4.encode(outer.slice(from)));
+  let total = 0;
+  for (const piece of pieces) total += piece.byteLength;
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const piece of pieces) {
+    out.set(piece, at);
+    at += piece.byteLength;
+  }
+  return out;
+}
+
+// src/area/field-registry.ts
+var cached;
+function registryModels() {
+  const core2 = requireCore();
+  if (cached?.core === core2) return cached.models;
+  const document2 = JSON.parse(core2.fieldRegistryJson());
+  const models = /* @__PURE__ */ new Map();
+  for (const [name, row] of Object.entries(document2.models)) {
+    models.set(name, { fields: row.fields, byKey: new Map(row.fields.map((f) => [f.key, f])) });
+  }
+  cached = { core: core2, models };
+  return models;
+}
+function registryModel(model) {
+  return registryModels().get(model);
+}
+function modelsWithField(key) {
+  const names = /* @__PURE__ */ new Set();
+  for (const [name, row] of registryModels()) if (row.byKey.has(key)) names.add(name);
+  return names;
+}
+function fieldEnum(model, key) {
+  return registryModel(model)?.byKey.get(key)?.enum;
+}
+function knownValues(models, key) {
+  const values = /* @__PURE__ */ new Set();
+  for (const model of models) {
+    const field = registryModel(model)?.byKey.get(key);
+    if (field === void 0) continue;
+    for (const value of field.enum ?? []) values.add(String(value));
+    for (const value of Object.keys(field.deprecatedValues ?? {})) values.add(value);
+    for (const value of Object.keys(field.rejectedValues ?? {})) values.add(value);
+  }
+  return [...values];
+}
+function fieldMinimum(model, key) {
+  return registryModel(model)?.byKey.get(key)?.minimum;
+}
+
+// src/area/mesh-buffers.ts
+function packMeshGroup(group) {
+  if (group === null || typeof group !== "object" || Array.isArray(group)) return void 0;
+  const meshes = Object.entries(group);
+  const ids = [];
+  const points = [];
+  const triangles = [];
+  const coordinateOffsets = new Uint32Array(meshes.length + 1);
+  const indexOffsets = new Uint32Array(meshes.length + 1);
+  let narrow = meshes.length > 0;
+  for (const [id, mesh] of meshes) {
+    if (mesh === null || typeof mesh !== "object") return void 0;
+    const { coordinates, indices: indices2, coordinates_bin: cb, indices_bin: ib } = mesh;
+    if (cb !== void 0 || ib !== void 0) return void 0;
+    const plain = (value) => Array.isArray(value) || ArrayBuffer.isView(value);
+    if (!plain(coordinates) || !plain(indices2)) return void 0;
+    if (!(coordinates instanceof Float32Array)) narrow = false;
+    ids.push(id);
+    points.push(coordinates);
+    triangles.push(indices2);
+    coordinateOffsets[ids.length] = coordinateOffsets[ids.length - 1] + coordinates.length;
+    indexOffsets[ids.length] = indexOffsets[ids.length - 1] + indices2.length;
+  }
+  const flat = narrow ? new Float32Array(coordinateOffsets[ids.length]) : new Float64Array(coordinateOffsets[ids.length]);
+  const words2 = new Uint32Array(indexOffsets[ids.length]);
+  for (let mesh = 0; mesh < ids.length; mesh++) {
+    const block = points[mesh];
+    flat.set(block, coordinateOffsets[mesh]);
+    words2.set(triangles[mesh], indexOffsets[mesh]);
+  }
+  return { ids, coordinates: flat, coordinateOffsets, indices: words2, indexOffsets };
+}
+
+// src/area/config-hash.ts
+function kernelConfigHash(fields) {
+  return requireCore().configHash(JSON.stringify(fields));
+}
+var CONFIG_HASH_V2_CONTRACT_VERSION = 10;
+function kernelGroupHashOnce(model, key, value, memo2) {
+  const object5 = value !== null && typeof value === "object" ? value : void 0;
+  const known = object5 === void 0 ? void 0 : memo2?.get(object5);
+  if (known !== void 0) return known;
+  const hashed = meshOrDocumentHash(model, key, value);
+  if (object5 !== void 0) memo2?.set(object5, hashed);
+  return hashed;
+}
+function meshOrDocumentHash(model, key, value) {
+  const core2 = requireCore();
+  const buffers = packMeshGroup(value);
+  const hashed = buffers === void 0 ? void 0 : core2.configGroupHashBuffers(
+    model,
+    key,
+    buffers.ids,
+    buffers.coordinates,
+    buffers.coordinateOffsets,
+    buffers.indices,
+    buffers.indexOffsets
+  );
+  return hashed ?? core2.configGroupHash(model, key, JSON.stringify(value, typedAsArray));
+}
+function hashInputs(model, payload, terrain, memo2) {
+  const row = registryModel(model);
+  if (row === void 0) {
+    throw new Error(`the kernel field registry has no model ${JSON.stringify(model)}: its config hash cannot be built`);
+  }
+  const classes = /* @__PURE__ */ new Map();
+  for (const field of row.fields) classes.set(field.key, field.hash);
+  const core2 = requireCore();
+  const inert = new Set(core2.inertKeys(model));
+  const control = {};
+  const groups = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === null || value === void 0) continue;
+    const hashClass = classes.get(key);
+    if (hashClass === void 0) {
+      if (!inert.has(key)) control[key] = value;
+      continue;
+    }
+    if (hashClass === "exclude") continue;
+    if (hashClass === "value") {
+      control[key] = value;
+      continue;
+    }
+    const known = key === "ground-geometry" && core2.terrainHandleHashApplies(model) ? terrain?.groupHash : void 0;
+    groups[key] = typeof known === "string" ? known : kernelGroupHashOnce(model, key, value, memo2);
+  }
+  return { control, groups };
+}
+function resolvedBalanceYear(control, now3) {
+  const series = control["dry-bulb-temperature"];
+  const rows = Array.isArray(series) || ArrayBuffer.isView(series) ? series.length : 0;
+  return requireCore().energyBalanceYear(void 0, now3.getUTCFullYear(), rows);
+}
+function scheduleConfigHash(model, payload, terrain, now3 = /* @__PURE__ */ new Date(), memo2) {
+  const { control, groups } = hashInputs(model, payload, terrain, memo2);
+  if (model === "energy-balance" && control.year === void 0) control.year = resolvedBalanceYear(control, now3);
+  return requireCore().configHashV2(model, JSON.stringify(control), JSON.stringify(groups));
+}
+
 // src/internal/scene-alignment.ts
-function suppliedSceneAlignment(analysisType, body) {
+function suppliedSceneAlignment(analysisType2, body) {
   const suppliedScene = [
     "geometries",
     "context-geometry",
@@ -4253,7 +4345,7 @@ function suppliedSceneAlignment(analysisType, body) {
     "vegetation-instances"
   ].some((name) => groupHasContent(body[name]));
   return requireCore().resolveTerrainAlignment(
-    analysisType,
+    analysisType2,
     Object.prototype.hasOwnProperty.call(body, "terrain-alignment"),
     groupHasContent(body["ground-geometry"]),
     suppliedScene
@@ -4261,23 +4353,25 @@ function suppliedSceneAlignment(analysisType, body) {
 }
 
 // src/internal/transport-choice.ts
-function defaultTransport(analysisType) {
-  return requireCore().defaultTransport(analysisType) === "json" ? "json" : "binary";
+function defaultTransport(analysisType2) {
+  return requireCore().defaultTransport(analysisType2) === "json" ? "json" : "binary";
 }
-function areaTransport(options, analysisType) {
+function areaTransport(options, analysisType2) {
   if (options.transport !== void 0) return options.transport;
   if (options.retryFrom !== void 0) return options.retryFrom.transport ?? "json";
-  return defaultTransport(analysisType);
+  return defaultTransport(analysisType2);
 }
 
 // src/area/count-contract.ts
-var FACADE_COUNT_CONTRACT_VERSION = 11;
+var FACADE_COUNT_CONTRACT_VERSION = 13;
 var COUNT_CHANGES = [
   [6, "the kernel welds each building's vertices (infrared-core #555)"],
   [7, "the kernel gives each wall a level grid (infrared-core #582)"],
   [8, "the kernel cleans each building in a canonical order (infrared-core #630)"],
   [9, "the kernel gives a terrace under an overhang roof sensors (infrared-core #674)"],
-  [11, "the kernel gives downward-facing faces sensors too (infrared-core surfgrid v7)"]
+  [11, "the kernel gives downward-facing faces sensors too (infrared-core surfgrid v7)"],
+  [12, "the kernel gates each building on its own mesh, not its job (infrared-core surfgrid v8)"],
+  [13, "the kernel lays out each building from its own geometry, with a fixed roof frame (infrared-core surfgrid v9)"]
 ];
 var FacadeCountContractError = class extends Error {
   constructor(message) {
@@ -4430,7 +4524,7 @@ function warnPhysicsDeprecated(value) {
   if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
     process.emitWarning(message, "DeprecationWarning");
   } else {
-    console.warn(`DeprecationWarning: ${message}`);
+    consoleLogger.warn(`DeprecationWarning: ${message}`);
   }
 }
 
@@ -4541,15 +4635,6 @@ function validateSensors(input) {
   }
   if (cleaning != null && surfaces2 == null) {
     throw new TypeError("mesh-cleaning only applies to analysis-surfaces requests");
-  }
-  const surfgridVersion = input["surfgrid-version"];
-  if (surfgridVersion != null && surfaces2 == null) {
-    throw new TypeError("surfgrid-version only applies to analysis-surfaces requests");
-  }
-  if (surfgridVersion != null && surfgridVersion !== requireCore().surfgridVersion()) {
-    throw new TypeError(
-      `surfgrid-version must be the bundled kernel's (${requireCore().surfgridVersion()}); leave it unset`
-    );
   }
 }
 function validateCanonicalBase64(blob, key) {
@@ -4669,53 +4754,26 @@ function validatePreparedAnalysisRequest(input, options = {}) {
 }
 
 // src/internal/weather-window.ts
-var MAX_DAY_PER_MONTH = [
-  31,
-  29,
-  31,
-  30,
-  31,
-  30,
-  31,
-  31,
-  30,
-  31,
-  30,
-  31
-];
-function integer(value, name) {
-  const number = typeof value === "number" ? value : Number(value);
-  if (!Number.isInteger(number)) throw new TypeError(`${name} must be a whole number`);
-  return number;
-}
-function endpoint(point, label) {
-  const month = integer(point?.month, `${label} month`);
-  const day = integer(point?.day, `${label} day`);
-  const hour = integer(point?.hour, `${label} hour`);
-  if (month < 1 || month > 12) throw new TypeError(`${label} month ${month} is not 1-12`);
-  if (hour < 0 || hour > 23) throw new TypeError(`${label} hour ${hour} is not 0-23`);
-  const longest = MAX_DAY_PER_MONTH[month - 1];
-  if (day < 1 || day > longest) {
-    throw new TypeError(`${label} day ${day} is not 1-${longest} for month ${month}`);
-  }
-  return [month, day, hour];
-}
-function weatherWindow(filters) {
-  const period = filters?.period;
-  if (period === void 0 || period === null) throw new TypeError("a window needs a period");
-  const [startMonth, startDay, startHour] = endpoint(period.start, "start");
-  const [endMonth, endDay, endHour] = endpoint(period.end, "end");
-  return {
-    start_month: startMonth,
-    start_day: startDay,
-    start_hour: startHour,
-    end_month: endMonth,
-    end_day: endDay,
-    end_hour: endHour
+function weatherWindow(filters, analysisType2) {
+  const start = filters?.period?.start;
+  const end = filters?.period?.end;
+  const window = {
+    start_month: start?.month,
+    start_day: start?.day,
+    start_hour: start?.hour,
+    end_month: end?.month,
+    end_day: end?.day,
+    end_hour: end?.hour
   };
+  try {
+    return JSON.parse(requireCore().validateTimeWindow(JSON.stringify(window), analysisType2));
+  } catch (error) {
+    if (error instanceof TypeError) throw error;
+    throw new TypeError(`time window: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
-function weatherWindowJson(filters) {
-  return JSON.stringify(weatherWindow(filters));
+function weatherWindowJson(filters, analysisType2) {
+  return JSON.stringify(weatherWindow(filters, analysisType2));
 }
 
 // src/weather-epw.ts
@@ -4813,7 +4871,7 @@ var WeatherDocument = class {
   modelInputs(request) {
     const wire2 = {
       analysis_type: request.analysisType,
-      time_period: weatherWindow(request.timePeriod)
+      time_period: weatherWindow(request.timePeriod, request.analysisType)
     };
     if (request.subtype !== void 0) wire2.subtype = request.subtype;
     if (request.solarModel !== void 0) wire2.solar_model = request.solarModel;
@@ -4838,11 +4896,15 @@ var WeatherDocument = class {
    * @throws {WeatherModelInputsError} when the file cannot be filtered to that window.
    */
   filterHours(filters) {
-    let out;
+    const core2 = requireCore();
     try {
-      out = requireCore().weatherFilterHours(
-        JSON.stringify({ weatherData: this.document.values ?? {} }),
-        weatherWindowJson(filters)
+      return JSON.parse(
+        core2.weatherRows(
+          core2.weatherFilterHours(
+            JSON.stringify({ weatherData: this.document.values ?? {} }),
+            weatherWindowJson(filters)
+          )
+        )
       );
     } catch (error) {
       throw new WeatherModelInputsError(
@@ -4850,26 +4912,8 @@ var WeatherDocument = class {
         { cause: error }
       );
     }
-    const filtered = JSON.parse(out).weatherData;
-    if (filtered === null || typeof filtered !== "object" || Array.isArray(filtered)) return [];
-    return rowsFromColumns(filtered);
   }
 };
-function rowsFromColumns(columns) {
-  const arrays = Object.entries(columns).filter(
-    (entry) => Array.isArray(entry[1])
-  );
-  const rowCount = arrays.reduce((most, [, values]) => Math.max(most, values.length), 0);
-  const rows = [];
-  for (let index2 = 0; index2 < rowCount; index2 += 1) {
-    const record3 = {};
-    for (const [field, values] of arrays) {
-      record3[field] = index2 < values.length ? values[index2] : null;
-    }
-    rows.push(record3);
-  }
-  return rows;
-}
 function parseEpw(text, options = {}) {
   if (typeof text !== "string") {
     throw new TypeError("parseEpw takes the EPW file's text; read the file first");
@@ -4950,6 +4994,7 @@ var MODEL_INPUT_NAMES = {
   global_horizontal_radiation: "globalHorizontalRadiation",
   dry_bulb_temperature: "dryBulbTemperature",
   wind_speed: "windSpeed",
+  wind_direction: "windDirection",
   relative_humidity: "relativeHumidity"
 };
 var BASE = ["analysisType", "geometries", "vegetation", "groundMaterials"];
@@ -5027,15 +5072,47 @@ var PICK_MODELS = [
 function pickKeys(model, ordered) {
   const row = registryModel(model);
   if (row === void 0) return [...ordered];
-  const named2 = new Set(ordered.map((key) => TOP_LEVEL_ALIASES.get(key) ?? key));
+  const named = new Set(ordered.map((key) => TOP_LEVEL_ALIASES.get(key) ?? key));
   const refused = new Set(NOT_OFFERED[model] ?? []);
   const joined = [];
   for (const field of row.fields) {
     if (field.internal === true || field.group === "weather" || ASSIGNED.has(field.key)) continue;
-    if (named2.has(field.key) || refused.has(field.key)) continue;
+    if (named.has(field.key) || refused.has(field.key)) continue;
     joined.push(camelOf(field.key));
   }
   return [...ordered, ...joined];
+}
+
+// src/area/surface-fields.ts
+var CAMEL_SURFACE_FIELDS = {
+  surfaces: "analysisSurfaces",
+  cellTris: "emitCellTris",
+  version: "surfgridVersion",
+  cleaning: "meshCleaning"
+};
+var WIRE_SURFACE_FIELDS = {
+  surfaces: "analysis-surfaces",
+  cellTris: "emit-cell-tris",
+  version: "surfgrid-version",
+  cleaning: "mesh-cleaning"
+};
+function pinSurfaceFields(target, names) {
+  if (Object.values(names).every((key) => target[key] == null)) return;
+  const wire2 = JSON.parse(requireCore().surfaceWireFields(JSON.stringify({
+    analysis_surfaces: target[names.surfaces] != null,
+    emit_cell_tris: target[names.cellTris],
+    surfgrid_version: target[names.version],
+    mesh_cleaning: target[names.cleaning]
+  })));
+  const values = [
+    [names.cellTris, wire2.emit_cell_tris],
+    [names.version, wire2.surfgrid_version],
+    [names.cleaning, wire2.mesh_cleaning]
+  ];
+  for (const [key, value] of values) {
+    if (value !== null && value !== void 0) target[key] = value;
+    else if (target[key] !== null) delete target[key];
+  }
 }
 
 // src/area/payload.ts
@@ -5049,9 +5126,9 @@ function record(value, name) {
   return value;
 }
 function numeric2(value, name) {
-  const result = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(result)) throw new TypeError(`${name} must be numeric`);
-  return result;
+  const result2 = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(result2)) throw new TypeError(`${name} must be numeric`);
+  return result2;
 }
 function range(value) {
   if (typeof value !== "string" || value.length === 0) return void 0;
@@ -5060,7 +5137,7 @@ function range(value) {
   if (parts.length === 2 && parts.every(Number.isFinite)) return [parts[0], parts[1]];
   return void 0;
 }
-function timePeriod(filtersValue) {
+function timePeriod(filtersValue, type) {
   const filters = record(filtersValue, "dateFilters");
   const period = record(filters.period, "dateFilters.period");
   const start = record(period.start, "dateFilters.period.start");
@@ -5076,61 +5153,28 @@ function timePeriod(filtersValue) {
     endDay: days?.[1] ?? numeric2(end.day, "end day"),
     endHour: hours?.[1] ?? numeric2(end.hour, "end hour")
   };
-  weatherWindow(windowOf(resolved));
+  weatherWindow(windowOf(resolved), type);
   return resolved;
 }
-function weatherRows(value, period) {
-  if (Array.isArray(value)) return value.map((row, index2) => record(row, `weatherData[${index2}]`));
-  const columns = record(value, "weatherData");
-  if (!Array.isArray(columns.month) || !Array.isArray(columns.day) || !Array.isArray(columns.hour)) {
-    throw new TypeError("weatherData must be rows or an EPW column object");
-  }
-  let filtered;
+function weatherColumns(value, type, period) {
+  let text;
   try {
-    filtered = requireCore("prepareAnalysisPayload").weatherFilterHours(
-      JSON.stringify({ weatherData: columns }),
-      weatherWindowJson(windowOf(period))
+    text = requireCore("prepareAnalysisPayload").weatherColumns(
+      JSON.stringify(value),
+      type,
+      period === void 0 ? void 0 : weatherWindowJson(windowOf(period), type)
     );
   } catch (error) {
     if (error instanceof CoreNotReadyError) throw error;
-    throw new TypeError(
-      `weatherData could not be filtered to dateFilters.period: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw new TypeError(`weatherData: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const kept = record(record(JSON.parse(filtered), "weatherData").weatherData, "weatherData");
-  const hours = Array.isArray(kept.hour) ? kept.hour : [];
-  const output = [];
-  for (let index2 = 0; index2 < hours.length; index2 += 1) {
-    const row = {};
-    for (const [key, column] of Object.entries(kept)) {
-      if (Array.isArray(column)) row[key] = column[index2];
-    }
-    output.push(row);
+  const output = {};
+  for (const [snake, column] of Object.entries(JSON.parse(text))) {
+    const camel = MODEL_INPUT_NAMES[snake];
+    if (camel === void 0) throw new TypeError(`unexpected weather column ${snake}`);
+    output[camel] = column;
   }
   return output;
-}
-function series(rows, key) {
-  const output = [];
-  for (const [index2, row] of rows.entries()) {
-    const value = row[key];
-    if (value === null || value === void 0) {
-      throw new TypeError(
-        `weather column ${key} has no reading at row ${index2} of ${rows.length} in the selected window. A gap in a required column is refused, never filled in: substituting a value would change a billed result. Choose a window without the gap, or bring a file that covers it.`
-      );
-    }
-    output.push(numeric2(value, `weatherData.${key}`));
-  }
-  return output;
-}
-function pairedWind(rows) {
-  const windSpeed = [];
-  const windDirection = [];
-  for (const row of rows) {
-    if (row.windSpeed === null || row.windSpeed === void 0 || row.windDirection === null || row.windDirection === void 0) continue;
-    windSpeed.push(numeric2(row.windSpeed, "weatherData.windSpeed"));
-    windDirection.push(numeric2(row.windDirection, "weatherData.windDirection"));
-  }
-  return { windSpeed, windDirection };
 }
 function pick(input, keys) {
   const output = {};
@@ -5176,11 +5220,7 @@ function modelTransform(input) {
       );
     }
     const raw = { ...input };
-    if (raw["analysis-surfaces"] != null) {
-      raw["emit-cell-tris"] = false;
-      if (raw["surfgrid-version"] == null) raw["surfgrid-version"] = requireCore("prepareAnalysisPayload").surfgridVersion();
-    }
-    if (raw["mesh-cleaning"] === "auto") delete raw["mesh-cleaning"];
+    pinSurfaceFields(raw, WIRE_SURFACE_FIELDS);
     return raw;
   }
   const type = input.analysisType ?? input["analysis-type"];
@@ -5188,11 +5228,7 @@ function modelTransform(input) {
   if (THERMAL_MODELS.has(type)) validatePhysics(input);
   else rejectThermalControls(input, type);
   let output = { ...input };
-  if (output.analysisSurfaces != null) {
-    output.emitCellTris = false;
-    if (output.surfgridVersion == null) output.surfgridVersion = requireCore("prepareAnalysisPayload").surfgridVersion();
-  }
-  if (output.meshCleaning === "auto") delete output.meshCleaning;
+  pinSurfaceFields(output, CAMEL_SURFACE_FIELDS);
   if (output.dateFilters === void 0) {
     if (byoWeather !== void 0) {
       throw new TypeError(
@@ -5202,7 +5238,7 @@ function modelTransform(input) {
     return output;
   }
   const filters = record(output.dateFilters, "dateFilters");
-  const period = timePeriod(filters);
+  const period = timePeriod(filters, type);
   if (type === "direct-sun-hours" || type === "daylight-availability") {
     if (byoWeather !== void 0) {
       throw new TypeError(
@@ -5239,32 +5275,19 @@ function modelTransform(input) {
     return output;
   }
   if (output.weatherData === void 0) throw new TypeError(`${type} requires weatherData`);
-  const rows = weatherRows(output.weatherData, period);
+  const weather = output.weatherData;
   if (type === "pedestrian-wind-comfort") {
     output = pick(output, pickKeys(type, [...BASE, "criteria"]));
-    const wind = pairedWind(rows);
-    if (wind.windSpeed.length === 0) throw new TypeError("pedestrian-wind-comfort needs paired wind data");
-    Object.assign(output, wind);
   } else if (type === "solar-radiation") {
     output = pick(output, pickKeys(type, [...BASE, ...LOCATION, ...SURFACE, ...TERRAIN]));
     output.timePeriod = period;
-    output.directNormalRadiation = series(rows, "directNormalRadiation");
-    output.diffuseHorizontalRadiation = series(rows, "diffuseHorizontalRadiation");
   } else if (type === "thermal-comfort-index" || type === "thermal-comfort-statistics") {
     output = pick(output, pickKeys(type, [...BASE, ...LOCATION, "subtype", ...TERRAIN, ...THERMAL_CONTROL_KEYS, ...FAST]));
     output.timePeriod = period;
-    for (const key of [
-      "horizontalInfraredRadiationIntensity",
-      "diffuseHorizontalRadiation",
-      "directNormalRadiation",
-      "globalHorizontalRadiation",
-      "dryBulbTemperature",
-      "windSpeed",
-      "relativeHumidity"
-    ]) output[key] = series(rows, key);
   } else {
     throw new TypeError(`unsupported analysis type ${type}`);
   }
+  Object.assign(output, weatherColumns(weather, type, period));
   return output;
 }
 function wirePeriod(value) {
@@ -5314,790 +5337,78 @@ function dropUnknownRequestKeys(payload, logger) {
   }
 }
 
+// src/area/context-options.ts
+function contextKey(options) {
+  return requireCore().contextKey(siteOptionsJson(options));
+}
+function siteOptionsJson(options) {
+  const value = (v) => typeof v === "number" && !Number.isFinite(v) ? String(v) : v;
+  return JSON.stringify({
+    terrain_margin_m: value(options.terrainMarginM),
+    context_reach_m: value(options.contextReachM),
+    context_buffer_m: value(options.contextBufferM)
+  });
+}
+function contextOptions(options) {
+  return {
+    ...options.contextReachM === void 0 ? {} : { contextReachM: options.contextReachM },
+    ...options.contextBufferM === void 0 ? {} : { contextBufferM: options.contextBufferM }
+  };
+}
+function warnContextHole(warning, logger) {
+  if (warning !== void 0) (logger ?? consoleLogger).warn(warning);
+}
+
 // src/area/site-pack.ts
 function plainCoordinates(mesh) {
   if (mesh === null || typeof mesh !== "object" || Array.isArray(mesh)) return void 0;
   const coordinates = mesh.coordinates;
-  if (!Array.isArray(coordinates)) return void 0;
-  if (coordinates.length === 0 || coordinates.length % 3 !== 0) return void 0;
-  for (const value of coordinates) {
-    if (typeof value !== "number" || !Number.isFinite(value)) return void 0;
-  }
-  return coordinates;
+  const flat = Array.isArray(coordinates) || coordinates instanceof Float64Array || coordinates instanceof Float32Array ? coordinates : void 0;
+  if (flat === void 0) return void 0;
+  if (flat.length === 0 || flat.length % 3 !== 0) return void 0;
+  return flat;
+}
+function words(value) {
+  return Array.isArray(value) || value instanceof Uint32Array ? value : void 0;
 }
 function pack(meshes, keepUnreadable) {
   const ids = [];
   const blocks = [];
+  const triangles = [];
   const offsets = [0];
+  const indexOffsets = [0];
   const stripped = /* @__PURE__ */ Object.create(null);
   let total = 0;
+  let indexTotal = 0;
   for (const [id, mesh] of Object.entries(meshes)) {
-    const readable = plainCoordinates(mesh);
-    if (readable === void 0 && !keepUnreadable) continue;
-    const block = readable ?? [];
+    const coordinates2 = plainCoordinates(mesh);
+    const triangle = keepUnreadable ? words(mesh?.indices) : [];
+    const readable = coordinates2 !== void 0 && triangle !== void 0;
+    if (!readable && !keepUnreadable) continue;
+    const block = readable ? coordinates2 : [];
     ids.push(id);
     blocks.push(block);
+    triangles.push(readable ? triangle : []);
     total += block.length;
+    indexTotal += readable ? triangle.length : 0;
     offsets.push(total);
-    stripped[id] = readable === void 0 ? mesh : { ...mesh, coordinates: void 0 };
+    indexOffsets.push(indexTotal);
+    if (!keepUnreadable) stripped[id] = { ...mesh, coordinates: void 0 };
   }
-  const bytes = new Uint8Array(total * 8);
-  const view = new DataView(bytes.buffer);
-  let at = 0;
-  for (const block of blocks) {
-    for (const value of block) {
-      view.setFloat64(at, value, true);
-      at += 8;
-    }
-  }
-  return { ids, bytes, offsets: Uint32Array.from(offsets), document: JSON.stringify(stripped) };
-}
-
-// src/area/site-terrain.ts
-var freed = /* @__PURE__ */ new WeakSet();
-function release2(terrain) {
-  freed.add(terrain);
-  terrain.free();
-}
-function liveTerrain(terrain) {
-  return terrain === void 0 || freed.has(terrain) ? void 0 : terrain;
-}
-var MAX_TERRAINS = 2;
-var byDigest = /* @__PURE__ */ new Map();
-function terrainDigest(siteKey) {
-  return siteKey?.match(/^ground-geometry=(.+)$/m)?.[1];
-}
-function siteTerrain(value, digest, texts) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
-  if (digest === void 0 || Object.keys(value).length === 0) return void 0;
-  let terrain = byDigest.get(digest);
-  if (terrain === void 0) {
-    try {
-      terrain = new (requireCore()).SiteTerrain(texts?.get(value) ?? JSON.stringify(value));
-    } catch {
-      return void 0;
-    }
-  }
-  byDigest.delete(digest);
-  byDigest.set(digest, terrain);
-  for (const [key, old] of byDigest) {
-    if (byDigest.size <= MAX_TERRAINS) break;
-    byDigest.delete(key);
-    release2(old);
-  }
-  return terrain;
-}
-
-// src/area/site-kernel.ts
-function document(value, texts) {
-  if (value === void 0) return void 0;
-  const known = value !== null && typeof value === "object" ? texts?.get(value) : void 0;
-  return known ?? JSON.stringify(value);
-}
-function kernelSite(inputs, texts) {
-  const { groups, tiles, polygon } = inputs;
-  const buildings = pack(asMap(groups.geometries), false);
-  const context = pack(asMap(groups["context-geometry"]), true);
-  const config = getTilingConfig(inputs.analysisType);
-  const origin = kernelPolygonOrigin(polygon);
-  const terrain = liveTerrain(inputs.terrain);
-  if (terrain !== void 0) {
-    return requireCore().Site.withTerrain(
-      buildings.ids,
-      buildings.bytes,
-      buildings.offsets,
-      context.ids,
-      context.bytes,
-      context.offsets,
-      Uint32Array.from(tiles, (tile) => tile.row),
-      Uint32Array.from(tiles, (tile) => tile.col),
-      tiles.map((tile) => tile.tileId),
-      config.inferenceSizeM,
-      config.contextSizeM,
-      config.stepM,
-      origin.lon,
-      origin.lat,
-      groups.geometries === void 0 ? void 0 : buildings.document,
-      groups["context-geometry"] === void 0 ? void 0 : context.document,
-      document(groups.vegetation, texts),
-      document(groups["ground-materials"], texts),
-      JSON.stringify(polygon),
-      inputs.terrainContextMarginM,
-      terrain
-    );
-  }
-  return new (requireCore()).Site(
-    buildings.ids,
-    buildings.bytes,
-    buildings.offsets,
-    context.ids,
-    context.bytes,
-    context.offsets,
-    Uint32Array.from(tiles, (tile) => tile.row),
-    Uint32Array.from(tiles, (tile) => tile.col),
-    tiles.map((tile) => tile.tileId),
-    config.inferenceSizeM,
-    config.contextSizeM,
-    config.stepM,
-    origin.lon,
-    origin.lat,
-    groups.geometries === void 0 ? void 0 : buildings.document,
-    groups["context-geometry"] === void 0 ? void 0 : context.document,
-    document(groups["ground-geometry"], texts),
-    document(groups.vegetation, texts),
-    document(groups["ground-materials"], texts),
-    JSON.stringify(polygon),
-    inputs.terrainContextMarginM
-  );
-}
-var release3 = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((inner) => inner.free()) : void 0;
-function asMap(value) {
-  if (value === null || value === void 0 || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value;
-}
-
-// src/area/site-facade-scene.ts
-function mapFacadeScenes(raw) {
-  const scenes = raw.scenes.map((scene) => ({
-    archive: scene.archive,
-    artifactDigest: scene.artifactDigest,
-    geometryContentDigest: scene.contentDigest,
-    encoding: scene.encoding
-  }));
-  const jobs = raw.jobs.map((job) => {
-    if (job.error !== void 0) return { error: job.error };
-    if (job.targets !== void 0) return { targets: job.targets, targetIds: job.targetIds ?? [] };
-    const artifact = job.artifact;
-    return {
-      artifact: {
-        archive: artifact.archive,
-        artifactDigest: artifact.artifactDigest,
-        geometryContentDigest: artifact.contentDigest,
-        encoding: artifact.encoding,
-        targetIds: artifact.targetIds
-      }
-    };
+  const coordinates = new Float64Array(total);
+  const indices2 = new Uint32Array(indexTotal);
+  blocks.forEach((block, mesh) => {
+    coordinates.set(block, offsets[mesh]);
+    indices2.set(triangles[mesh], indexOffsets[mesh]);
   });
-  return { scenes, jobs };
-}
-
-// src/area/site-assign.ts
-var ARENA_GROUPS = [
-  "geometries",
-  "context-geometry",
-  "ground-geometry",
-  "vegetation",
-  "ground-materials"
-];
-var SiteAssignment = class _SiteAssignment {
-  constructor(tiles, unowned, arena, present2, carried, inner, inputs) {
-    this.tiles = tiles;
-    this.unowned = unowned;
-    this.arena = arena;
-    this.present = present2;
-    this.carried = carried;
-    this.inner = inner;
-    this.inputs = inputs;
-  }
-  artifacts = /* @__PURE__ */ new Map();
-  /**
-   * Keep the kernel site from now on, reading it once more when a JSON run
-   * built this answer without it. A facade run asks the kept site for its
-   * batches and its selected bodies (`area/site-facade.ts`).
-   */
-  keepKernel() {
-    if (this.inner !== void 0) return true;
-    if (release3 === void 0 || this.inputs === void 0) return false;
-    this.inner = kernelSite(this.inputs);
-    release3.register(this, this.inner);
-    this.inputs = void 0;
-    return true;
-  }
-  /** Run `use` on the kept kernel site, or on a fresh read that is freed after. */
-  withKernel(use) {
-    const inner = this.inner ?? kernelSite(this.inputs);
-    try {
-      return use(inner);
-    } finally {
-      if (this.inner === void 0) inner.free();
-    }
-  }
-  /**
-   * Read the site once: the kernel prepares every layer in one crossing and
-   * answers the membership and the bodies from them.
-   *
-   * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it
-   * will encode at submit time, and a FACADE run for its batches and bodies
-   * (`area/site-facade.ts`), freed with this object. A grid JSON run frees it
-   * before this returns — a run that never encodes holds no wasm memory. A
-   * realm without `FinalizationRegistry` always frees it here.
-   */
-  static read(groups, tiles, polygon, analysisType, terrainContextMarginM, keepKernelSite = false, texts, terrain) {
-    const inputs = {
-      groups,
-      tiles,
-      polygon,
-      analysisType,
-      terrainContextMarginM,
-      ...terrain === void 0 ? {} : { terrain }
-    };
-    const inner = kernelSite(inputs, texts);
-    let kept = false;
-    try {
-      const answers = JSON.parse(inner.allTileIds()).map((ids) => ({
-        members: ids.members,
-        core: ids.core,
-        shrinkBand: ids.shrink_band,
-        demoted: ids.demoted,
-        context: ids.context
-      }));
-      const present2 = new Set(ARENA_GROUPS.filter((group) => groups[group] !== void 0));
-      const carried = Object.keys(groups).filter((group) => present2.has(group));
-      const keep = keepKernelSite && release3 !== void 0;
-      const site = keep ? new _SiteAssignment(answers, inner.unowned(), void 0, present2, carried, inner, void 0) : new _SiteAssignment(
-        answers,
-        inner.unowned(),
-        inner.bodies(0, tiles.length),
-        present2,
-        carried,
-        void 0,
-        inputs
-      );
-      if (keep && release3 !== void 0) {
-        release3.register(site, inner);
-        kept = true;
-      }
-      return site;
-    } finally {
-      if (!kept) inner.free();
-    }
-  }
-  /** One tile's group, or `undefined` when the run does not carry it. */
-  group(tile, name) {
-    if (!this.present.has(name)) return void 0;
-    const arena = this.arena ??= this.withKernel((inner) => inner.bodies(0, this.tiles.length));
-    const slot = tile * ARENA_GROUPS.length + ARENA_GROUPS.indexOf(name);
-    const hash = arena.hashes[slot];
-    return {
-      bytes: arena.bytes.subarray(arena.offsets[slot], arena.offsets[slot + 1]),
-      hash: hash === "" ? void 0 : hash
-    };
-  }
-  /**
-   * Every tile's presence mask (bit `i` for `ARENA_GROUPS[i]`, set when the
-   * tile carries the group AND it holds something) and its `geometries` /
-   * `context-geometry` group hashes, two per tile, `""` for none — without
-   * writing a body. Read once and kept.
-   */
-  identity() {
-    return this.#identity ??= this.withKernel((inner) => inner.identity(0, this.tiles.length));
-  }
-  #identity;
-  /**
-   * One tile's artifact (D101), encoded on the first ask for THAT tile and
-   * kept: one kernel crossing per tile (#816, D277), so the first job uploads
-   * after its own encode, not after the encode of every tile. Never a facade
-   * batch's (D156).
-   */
-  tileArtifact(index2, limits) {
-    if (!Number.isSafeInteger(index2) || index2 < 0 || index2 >= this.tiles.length) {
-      throw new RangeError(`tile index ${index2} is outside the site`);
-    }
-    const key = [
-      limits.maxGeometryBytes,
-      limits.maxMetadataBytes,
-      limits.maxMeshes,
-      limits.maxInstances
-    ].join("\n");
-    let tiles = this.artifacts.get(key);
-    if (tiles === void 0) {
-      tiles = /* @__PURE__ */ new Map();
-      this.artifacts.set(key, tiles);
-    }
-    let artifact = tiles.get(index2);
-    if (artifact === void 0) {
-      artifact = this.encode(index2, limits);
-      tiles.set(index2, artifact);
-    }
-    return artifact;
-  }
-  /**
-   * The parts of every facade batch of tile `index`, from ONE kernel call
-   * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
-   * in `geometries`, the rest of the tile in `context-geometry` (D156).
-   * Nothing is kept here — `area/site-facade.ts` hands each part out once.
-   */
-  facadeFrames(index2, batches, parts) {
-    const limits = parts.artifact?.limits;
-    const raw = this.withKernel((inner) => inner.facadeFrames(
-      Uint32Array.from(batches, () => index2),
-      Uint32Array.from(batches, (ids) => ids.length),
-      batches.flatMap((ids) => [...ids]),
-      parts.body === true,
-      false,
-      parts.capture !== void 0,
-      parts.capture?.alignment ?? void 0,
-      parts.artifact !== void 0,
-      BigInt(limits?.maxGeometryBytes ?? 0),
-      limits?.maxMetadataBytes ?? 0,
-      BigInt(limits?.maxMeshes ?? 0),
-      BigInt(limits?.maxInstances ?? 0)
-    ));
-    return raw.map((frame) => {
-      if (frame.error !== void 0) return { error: frame.error };
-      const { body, capture, artifact } = frame;
-      return {
-        ...body === void 0 ? {} : { body },
-        ...capture === void 0 ? {} : { capture },
-        ...artifact === void 0 ? {} : {
-          artifact: {
-            archive: artifact.archive,
-            artifactDigest: artifact.artifactDigest,
-            geometryContentDigest: artifact.contentDigest,
-            encoding: artifact.encoding,
-            targetIds: artifact.targetIds
-          }
-        }
-      };
-    });
-  }
-  /**
-   * One tile's facade scenes (#602): one shared frame for every batch of
-   * `batches`, and each batch's job as a range into it, or its own frame.
-   * `site-facade-scene.ts` shapes the kernel's raw answer.
-   */
-  facadeScenes(index2, batches, limits) {
-    const raw = this.withKernel((inner) => inner.facadeScenes(
-      Uint32Array.from(batches, () => index2),
-      Uint32Array.from(batches, (ids) => ids.length),
-      batches.flatMap((ids) => [...ids]),
-      BigInt(limits.maxGeometryBytes),
-      limits.maxMetadataBytes,
-      BigInt(limits.maxMeshes),
-      BigInt(limits.maxInstances)
-    ));
-    return mapFacadeScenes(raw);
-  }
-  encode(index2, limits) {
-    const encoded = this.withKernel((inner) => inner.artifacts(
-      index2,
-      index2 + 1,
-      BigInt(limits.maxGeometryBytes),
-      limits.maxMetadataBytes,
-      BigInt(limits.maxMeshes),
-      BigInt(limits.maxInstances)
-    ));
-    return {
-      archive: encoded.bytes.subarray(encoded.offsets[0], encoded.offsets[1]),
-      artifactDigest: encoded.artifactDigests[0],
-      geometryContentDigest: encoded.contentDigests[0],
-      encoding: encoded.encodings[0]
-    };
-  }
-};
-
-// src/area/site-facade-scene-frames.ts
-function pickSceneArtifact(cache2, fetched, key, wanted, index2, fetch2) {
-  let ready = cache2.get(key);
-  if (ready === void 0 && !fetched.has(key) && wanted.includes(index2)) {
-    ready = fetch2(wanted);
-    cache2.set(key, ready);
-    fetched.add(key);
-  }
-  let result = ready?.get(index2);
-  if (result === void 0) {
-    const indices2 = wanted.includes(index2) ? wanted : [index2];
-    result = fetch2(indices2).get(index2);
-  }
-  ready?.delete(index2);
-  if (ready?.size === 0) cache2.delete(key);
-  if (result === void 0) throw new Error(`facade scene: no job for batch ${index2}`);
-  if (result instanceof Error) throw result;
-  return result;
-}
-
-// src/area/site-facade.ts
-function savedBatches(schedule2, tiles) {
-  const index2 = new Map(tiles.map((tile, position) => [tile.tileId, position]));
-  const records = [];
-  for (const [key, activeIds] of Object.entries(schedule2.batchMembership ?? {})) {
-    const tileId = key.split("#batch")[0] ?? key;
-    const tileIndex = index2.get(tileId);
-    if (tileIndex === void 0) throw new Error(`retry schedule batch ${key} names no tile of this grid`);
-    const count2 = schedule2.batchSensorCounts?.[key];
-    records.push({
-      tile_index: tileIndex,
-      key,
-      active_ids: [...activeIds],
-      ...count2 === void 0 ? {} : { sensor_count: count2 }
-    });
-  }
-  return records;
-}
-var CALLER_FIELDS = [
-  ["surface-grid-size", "grid_size"],
-  ["surface-offset", "offset"],
-  ["partial-cells", "partial_cells"],
-  ["min-coverage", "min_coverage"],
-  // #555: the plan counts with the same cleaning the server runs.
-  ["mesh-cleaning", "mesh_cleaning"]
-];
-function facadeRequest(payload, tiles, retryFrom, maxSensorsPerJob) {
-  const request = {
-    policy_version: 2,
-    mode: payload["analysis-surfaces"],
-    auto_align: payload["terrain-alignment"] === "auto-align"
-  };
-  for (const [wire2, key] of CALLER_FIELDS) {
-    if (payload[wire2] !== void 0 && payload[wire2] !== null) request[key] = payload[wire2];
-  }
-  request.saved = retryFrom === void 0 ? null : savedBatches(retryFrom, tiles);
-  if (maxSensorsPerJob !== void 0) request.max_sensors_per_job = maxSensorsPerJob;
-  return request;
-}
-var plans = /* @__PURE__ */ new WeakMap();
-var MAX_PLANS = 4;
-function kernelOf(site) {
-  if (site.withKernel === void 0) throw new Error("facade planning needs the kernel site");
-  site.keepKernel?.();
-  return site;
-}
-async function planFacadeRecords(site, tileCount, selected, request, slice) {
-  const text = JSON.stringify(request);
-  const fresh = request.saved === null;
-  const byRequest = plans.get(site) ?? /* @__PURE__ */ new Map();
-  const kept = fresh ? byRequest.get(text) : void 0;
-  const out = /* @__PURE__ */ new Map();
-  if (kept !== void 0) {
-    for (const index2 of selected) out.set(index2, kept[index2] ?? []);
-    return out;
-  }
-  const kernel = kernelOf(site);
-  const all = [];
-  const every = fresh && selected.size === tileCount;
-  for (let index2 = 0; index2 < tileCount; index2 += 1) {
-    if (!selected.has(index2)) continue;
-    await slice.tick();
-    const records = JSON.parse(kernel.withKernel((inner) => inner.facadeBatches(index2, index2 + 1, text)));
-    out.set(index2, records);
-    all[index2] = records;
-  }
-  if (every) {
-    byRequest.set(text, all);
-    for (const key of byRequest.keys()) {
-      if (byRequest.size <= MAX_PLANS) break;
-      if (key !== text) byRequest.delete(key);
-    }
-    plans.set(site, byRequest);
-  }
-  return out;
-}
-var TARGET_GROUPS = /* @__PURE__ */ new Set(["geometries", "context-geometry"]);
-var TileFrames = class {
-  constructor(site, tile, records, submits) {
-    this.site = site;
-    this.tile = tile;
-    this.records = records;
-    this.wanted = records.flatMap((record3, at) => submits(record3) ? [at] : []);
-  }
-  shared = /* @__PURE__ */ new Map();
-  written;
-  handed = /* @__PURE__ */ new Map();
-  /** Scene-mode (#602) answers, by limits key, handed out once like `handed`. */
-  scenes = /* @__PURE__ */ new Map();
-  /** Keys `scenes` already fetched the full `wanted` list for once (#602 review). */
-  scenesFetched = /* @__PURE__ */ new Set();
-  /** The batches the plan submits, by index: only these are written ahead. */
-  wanted;
-  batch(index2, group) {
-    if (this.written?.[index2] !== void 0) return this.read(index2, group);
-    const indices2 = this.wanted.includes(index2) ? this.wanted : [index2];
-    const answered = this.frames(indices2, { body: true });
-    this.written ??= [];
-    for (const [at, frame] of answered.entries()) {
-      if (this.written[indices2[at]] !== void 0) continue;
-      this.written[indices2[at]] = this.texts(frame);
-    }
-    return this.read(index2, group);
-  }
-  read(index2, group) {
-    const texts = this.written[index2];
-    if (texts instanceof Error) throw texts;
-    if (TARGET_GROUPS.has(group)) return texts.get(group);
-    return this.shared.get(group);
-  }
-  texts(frame) {
-    if (frame.error !== void 0) return new Error(frame.error);
-    const arena = frame.body;
-    const texts = /* @__PURE__ */ new Map();
-    for (const [slot, name] of ARENA_GROUPS.entries()) {
-      const start = arena.offsets[slot];
-      const end = arena.offsets[slot + 1];
-      if (!TARGET_GROUPS.has(name) && this.shared.has(name)) continue;
-      const hash = arena.hashes[slot];
-      const text = end > start ? { bytes: arena.bytes.slice(start, end), hash: hash === "" ? void 0 : hash } : { bytes: new TextEncoder().encode("{}"), hash: void 0 };
-      if (TARGET_GROUPS.has(name)) texts.set(name, text);
-      else this.shared.set(name, text);
-    }
-    return texts;
-  }
-  tileGroup(group) {
-    if (!this.shared.has(group)) this.batch(this.wanted[0] ?? 0, group);
-    return this.shared.get(group);
-  }
-  capture(index2, alignment) {
-    return this.once(index2, `capture
-${alignment}`, { capture: { alignment } }).capture;
-  }
-  /**
-   * The batch's binary artifact. With `limits.facadeTargets` (#602), scene
-   * mode: the tile's jobs share ONE uploaded scene and each carries its own
-   * target range. Without it (an old server, no `facadeTargets`), one
-   * artifact per batch, as before.
-   */
-  artifact(index2, limits) {
-    if ((limits.facadeTargets ?? 0) >= 1) return this.sceneArtifact(index2, limits);
-    const key = [
-      "artifact",
-      limits.maxGeometryBytes,
-      limits.maxMetadataBytes,
-      limits.maxMeshes,
-      limits.maxInstances
-    ].join("\n");
-    return this.once(index2, key, { artifact: { limits } }).artifact;
-  }
-  /** Batch `index`'s facade-scene artifact (#602); the cache logic is
-   * {@link pickSceneArtifact} (`site-facade-scene-frames.ts`). */
-  sceneArtifact(index2, limits) {
-    const key = [
-      "scene",
-      limits.maxGeometryBytes,
-      limits.maxMetadataBytes,
-      limits.maxMeshes,
-      limits.maxInstances
-    ].join("\n");
-    return pickSceneArtifact(
-      this.scenes,
-      this.scenesFetched,
-      key,
-      this.wanted,
-      index2,
-      (indices2) => this.scenesFor(indices2, limits)
-    );
-  }
-  /** One `facadeScenes` call over `indices`, mapped to this batch's artifact.
-   * A tile answer is uniform (D218): every job `targets` (scene), every job
-   * `artifact`, or every job `error` (a refusal). The first job's shape
-   * decides which of the three this answer is. */
-  scenesFor(indices2, limits) {
-    if (this.site.facadeScenes === void 0) throw new Error("facade scenes need the kernel site");
-    const active3 = indices2.map((at) => this.records[at].active_ids);
-    const answer = this.site.facadeScenes(this.tile, active3, limits);
-    const out = /* @__PURE__ */ new Map();
-    if (answer.jobs[0]?.error !== void 0) {
-      indices2.forEach((at, position) => out.set(at, new Error(answer.jobs[position].error)));
-      return out;
-    }
-    if (answer.jobs[0]?.targets !== void 0) {
-      const scene = answer.scenes[0];
-      indices2.forEach((at, position) => {
-        const job = answer.jobs[position];
-        out.set(at, {
-          archive: scene.archive,
-          artifactDigest: scene.artifactDigest,
-          geometryContentDigest: scene.geometryContentDigest,
-          encoding: scene.encoding,
-          targetIds: job.targetIds ?? [],
-          targets: { start: job.targets.start, count: job.targets.count }
-        });
-      });
-      return out;
-    }
-    indices2.forEach((at, position) => out.set(at, answer.jobs[position].artifact));
-    return out;
-  }
-  /**
-   * Batch `index`'s part under `key`. The first ask writes it for every
-   * batch of the tile that the plan submits (a retry's other batches are not
-   * written); each is handed out once and then dropped, so an artifact or a
-   * capture is not kept after its job took it. What a stopped run leaves is
-   * at most the untaken parts of the tiles it had started.
-   */
-  once(index2, key, parts) {
-    let ready = this.handed.get(key);
-    if (ready === void 0 && this.wanted.includes(index2)) {
-      const wanted = this.wanted;
-      ready = new Map(this.frames(wanted, parts).map((frame2, at) => [wanted[at], frame2]));
-      this.handed.set(key, ready);
-    }
-    let frame = ready?.get(index2);
-    if (frame === void 0) frame = this.frames([index2], parts)[0];
-    ready?.delete(index2);
-    if (ready?.size === 0) this.handed.delete(key);
-    if (frame.error !== void 0) throw new Error(frame.error);
-    return frame;
-  }
-  frames(indices2, parts) {
-    if (this.site.facadeFrames === void 0) throw new Error("facade jobs need the kernel site");
-    return this.site.facadeFrames(this.tile, indices2.map((at) => this.records[at].active_ids), parts);
-  }
-};
-function facadeTileBase(base, carried, location) {
-  const value = { ...base };
-  for (const group of carried) value[group] = void 0;
-  if (location !== void 0) {
-    value.latitude = location.latitude;
-    value.longitude = location.longitude;
-  }
-  return value;
-}
-function facadeBatchesForTile(value, tileId, tileIndex, records, site, answer, present2, submits = () => true) {
-  if (records.length === 0) return [];
-  site.withKernel((inner) => inner.checkTerrain(tileIndex, tileIndex + 1));
-  const bodies = new TileFrames(site, tileIndex, records, submits);
-  const carried = site.carried ?? [];
-  const tileGroups = /* @__PURE__ */ new Map();
-  for (const [slot, group] of ARENA_GROUPS.entries()) {
-    if (TARGET_GROUPS.has(group) || !carried.includes(group)) continue;
-    tileGroups.set(group, new KernelGroup(() => bodies.tileGroup(group), (present2 & 1 << slot) === 0));
-  }
-  return records.map((record3, index2) => {
-    const count2 = record3.sensor_count;
-    if (count2 === null || !Number.isSafeInteger(count2) || count2 < 1) throw new Error("invalid exact sensor count");
-    if (record3.active_ids.length === 0) throw new Error(`exact batch membership does not match tile ${tileId}`);
-    const payload = { ...value };
-    for (const [group, kernel] of tileGroups) payload[group] = kernel;
-    payload.geometries = new KernelGroup(() => bodies.batch(index2, "geometries"), false, record3.active_ids);
-    const moved = answer.members.length > record3.active_ids.length;
-    payload["context-geometry"] = new KernelGroup(
-      () => bodies.batch(index2, "context-geometry"),
-      !(answer.context.length > 0 || moved)
-    );
-    return {
-      key: record3.key,
-      buildingIds: [...record3.active_ids],
-      sensorCount: count2,
-      payload,
-      capture: (alignment) => bodies.capture(index2, alignment),
-      ...site.facadeFrames === void 0 ? {} : {
-        artifact: (limits) => bodies.artifact(index2, limits)
-      }
-    };
-  });
-}
-
-// src/area/retry-plan.ts
-function planAreaRetry(input) {
-  const raw = requireCore().planAreaRetry(JSON.stringify(input));
-  return JSON.parse(raw);
-}
-function areaIdempotencyKey(runId, jobKey, attempt) {
-  return requireCore().areaIdempotencyKey(runId, jobKey, attempt);
-}
-function freshRunId() {
-  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-}
-
-// src/area/plan-entries.ts
-function retryIncludesTile(tileId, retry) {
-  if (retry === void 0 || retry.has(tileId)) return true;
-  for (const key of retry) if (key.startsWith(`${tileId}#batch`)) return true;
-  return false;
-}
-async function buildEntries(tiles, input, slice) {
-  const { service, options, analysisType, base, composed, byId, ownership, site, surfaceFields } = input;
-  const retryFrom = options.retryFrom;
-  const entries3 = [];
-  const batchMembership = { ...retryFrom?.batchMembership ?? {} };
-  const batchSensorCounts = { ...retryFrom?.batchSensorCounts ?? {} };
-  const extraPositions = [];
-  const tileLocation = requireCore().tileLocationApplies(analysisType);
-  const facadeRecords = surfaceFields ? await planFacadeRecords(site, tiles.length, new Set(tiles.flatMap((tile, index2) => retryIncludesTile(tile.tileId, input.retry) ? [index2] : [])), input.facadeRequest, slice) : void 0;
-  for (const [index2, tile] of tiles.entries()) {
-    if (!retryIncludesTile(tile.tileId, input.retry)) continue;
-    await slice.tick();
-    const detail = byId.get(tile.tileId);
-    const location = detail && tileLocation ? detail.centroid : void 0;
-    const answer = site.tiles[index2];
-    if (surfaceFields && answer === void 0) {
-      throw new Error(`tile ${JSON.stringify(tile.tileId)} has no site assignment`);
-    }
-    let payloads;
-    if (surfaceFields && answer !== void 0) {
-      const records = facadeRecords?.get(index2) ?? [];
-      ownership.observe(tile.tileId, answer, records.flatMap((record3) => record3.active_ids));
-      const value = facadeTileBase(base, site.carried ?? [], location);
-      payloads = facadeBatchesForTile(
-        value,
-        tile.tileId,
-        index2,
-        records,
-        site,
-        answer,
-        site.identity().present[index2] ?? 0,
-        (record3) => input.retry === void 0 || input.retry.has(record3.key)
-      );
-    } else {
-      const value = { ...base };
-      if (composed === void 0) Object.assign(value, kernelGroups(site, index2));
-      else Object.assign(value, composed[tile.tileId] ?? {});
-      if (location !== void 0) {
-        value.latitude = location.latitude;
-        value.longitude = location.longitude;
-      }
-      payloads = [{ key: tile.tileId, payload: value }];
-    }
-    for (const batch of payloads) {
-      const targets = "buildingIds" in batch ? batch.buildingIds : void 0;
-      if ("buildingIds" in batch) {
-        batchMembership[batch.key] = batch.buildingIds;
-        batchSensorCounts[batch.key] = batch.sensorCount;
-        if (retryFrom === void 0 && batch.key !== tile.tileId) {
-          extraPositions.push({ ...tile, tileId: batch.key });
-        }
-      }
-      if (input.retry !== void 0 && !input.retry.has(batch.key)) continue;
-      const prepared = service.prepareSubmission(analysisType, batch.payload, {
-        transport: areaTransport(options, analysisType),
-        ...options.webhookUrl === void 0 ? {} : { webhookUrl: options.webhookUrl },
-        ...options.webhookEvents === void 0 ? {} : { webhookEvents: options.webhookEvents }
-      });
-      entries3.push({
-        key: batch.key,
-        row: tile.row,
-        col: tile.col,
-        idempotencyKey: areaIdempotencyKey(input.runId, batch.key, input.attemptFor(batch.key)),
-        prepared: {
-          ...prepared,
-          reuseScope: input.reuseScope(batch.key),
-          // A facade batch uploads ITS OWN selection (D156): its targets in
-          // `geometries`, the rest of the tile as context — the body the plan
-          // counted sensors for. The unsplit tile artifact (D101) made the
-          // server synthesize sensors on every member of the tile. Grid
-          // tiles keep the shared tile artifact.
-          ..."artifact" in batch && batch.artifact !== void 0 ? { artifact: batch.artifact } : targets === void 0 ? tileArtifactFor(site, index2) : {}
-        },
-        ..."capture" in batch ? { capture: batch.capture } : {}
-      });
-    }
-  }
-  return { entries: entries3, batchMembership, batchSensorCounts, extraPositions };
-}
-function kernelGroups(site, index2) {
-  const answer = site.tiles[index2];
-  const groups = {};
-  for (const group of site.carried ?? []) {
-    const slot = ARENA_GROUPS.indexOf(group);
-    const empty = group === "geometries" && answer !== void 0 ? answer.members.length === 0 : group === "context-geometry" && answer !== void 0 ? answer.context.length === 0 : () => ((site.identity().present[index2] ?? 0) & 1 << slot) === 0;
-    groups[group] = new KernelGroup(() => site.group(index2, group), empty);
-  }
-  return groups;
-}
-function tileArtifactFor(site, index2) {
-  return site.tileArtifact === void 0 ? {} : {
-    artifact: (limits) => site.tileArtifact(index2, limits)
+  return {
+    ids,
+    coordinates,
+    bytes: new Uint8Array(coordinates.buffer),
+    offsets: Uint32Array.from(offsets),
+    indices: indices2,
+    indexOffsets: Uint32Array.from(indexOffsets),
+    document: keepUnreadable ? "" : JSON.stringify(stripped, typedAsArray)
   };
 }
 
@@ -6172,6 +5483,858 @@ function contentFingerprint(value) {
     return void 0;
   }
   return `${(lane1 >>> 0).toString(16)}:${(lane2 >>> 0).toString(16)}`;
+}
+
+// src/area/site-terrain.ts
+var freed = /* @__PURE__ */ new WeakSet();
+function release2(terrain) {
+  freed.add(terrain);
+  terrain.free();
+}
+function liveTerrain(terrain) {
+  return terrain === void 0 || freed.has(terrain) ? void 0 : terrain;
+}
+var MAX_TERRAINS = 2;
+var byKey = /* @__PURE__ */ new Map();
+var keyMemo = /* @__PURE__ */ new WeakMap();
+function terrainKey(value, texts) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
+  if (Object.keys(value).length === 0) return void 0;
+  const cached2 = keyMemo.get(value);
+  const fingerprint = cached2 === void 0 ? void 0 : contentFingerprint(value);
+  if (fingerprint !== void 0 && cached2?.fingerprint === fingerprint) return cached2.key;
+  const text = JSON.stringify(value, typedAsArray);
+  texts?.set(value, text);
+  const key = requireCore().terrainContentKey(text);
+  keyMemo.set(value, { fingerprint, key });
+  return key;
+}
+function siteTerrain(value, key, texts) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
+  if (key === void 0 || Object.keys(value).length === 0) return void 0;
+  let terrain = byKey.get(key);
+  if (terrain === void 0) {
+    try {
+      terrain = new (requireCore()).SiteTerrain(texts?.get(value) ?? JSON.stringify(value, typedAsArray));
+    } catch {
+      return void 0;
+    }
+  }
+  byKey.delete(key);
+  byKey.set(key, terrain);
+  for (const [key2, old] of byKey) {
+    if (byKey.size <= MAX_TERRAINS) break;
+    byKey.delete(key2);
+    release2(old);
+  }
+  return terrain;
+}
+
+// src/area/site-kernel.ts
+function document(value, texts) {
+  if (value === void 0) return void 0;
+  const known = value !== null && typeof value === "object" ? texts?.get(value) : void 0;
+  return known ?? JSON.stringify(value, typedAsArray);
+}
+var NO_BUFFER = new Uint32Array(0);
+function kernelSite(inputs, texts) {
+  const { groups, tiles, polygon } = inputs;
+  const buildings = pack(asMap(groups.geometries), false);
+  const context = pack(asMap(groups["context-geometry"]), true);
+  const contextIndices = groups["context-geometry"] === void 0 ? NO_BUFFER : context.indices;
+  const contextIndexOffsets = groups["context-geometry"] === void 0 ? NO_BUFFER : context.indexOffsets;
+  const config = getTilingConfig(inputs.analysisType);
+  const origin = kernelPolygonOrigin(polygon);
+  const terrain = liveTerrain(inputs.terrain);
+  if (terrain !== void 0) {
+    return requireCore().Site.withTerrain(
+      buildings.ids,
+      buildings.bytes,
+      buildings.offsets,
+      context.ids,
+      context.bytes,
+      context.offsets,
+      Uint32Array.from(tiles, (tile) => tile.row),
+      Uint32Array.from(tiles, (tile) => tile.col),
+      tiles.map((tile) => tile.tileId),
+      config.inferenceSizeM,
+      config.contextSizeM,
+      config.stepM,
+      origin.lon,
+      origin.lat,
+      groups.geometries === void 0 ? void 0 : buildings.document,
+      void 0,
+      document(groups.vegetation, texts),
+      document(groups["ground-materials"], texts),
+      JSON.stringify(polygon),
+      terrain,
+      contextIndices,
+      contextIndexOffsets,
+      siteOptions(inputs)
+    );
+  }
+  return new (requireCore()).Site(
+    buildings.ids,
+    buildings.bytes,
+    buildings.offsets,
+    context.ids,
+    context.bytes,
+    context.offsets,
+    Uint32Array.from(tiles, (tile) => tile.row),
+    Uint32Array.from(tiles, (tile) => tile.col),
+    tiles.map((tile) => tile.tileId),
+    config.inferenceSizeM,
+    config.contextSizeM,
+    config.stepM,
+    origin.lon,
+    origin.lat,
+    groups.geometries === void 0 ? void 0 : buildings.document,
+    void 0,
+    document(groups["ground-geometry"], texts),
+    document(groups.vegetation, texts),
+    document(groups["ground-materials"], texts),
+    JSON.stringify(polygon),
+    contextIndices,
+    contextIndexOffsets,
+    siteOptions(inputs)
+  );
+}
+function siteOptions(inputs) {
+  return siteOptionsJson({
+    terrainMarginM: inputs.terrainContextMarginM,
+    contextReachM: inputs.contextReachM,
+    contextBufferM: inputs.contextBufferM
+  });
+}
+var release3 = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((inner) => inner.free()) : void 0;
+function asMap(value) {
+  if (value === null || value === void 0 || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value;
+}
+
+// src/internal/pool-task.ts
+async function settled(task) {
+  if (task.done) return;
+  const words2 = new Int32Array(requireCoreMemory().buffer);
+  const alive = setInterval(() => {
+  }, 1 << 30);
+  try {
+    while (!task.done) {
+      const wait = Atomics.waitAsync(words2, task.flag >>> 2, 0);
+      if (wait.async) await wait.value;
+    }
+  } finally {
+    clearInterval(alive);
+  }
+}
+var MAX_IN_FLIGHT = 1;
+var inFlight = 0;
+var waiting3 = [];
+async function poolCall(start, end) {
+  if (inFlight >= MAX_IN_FLIGHT) await new Promise((resolve) => waiting3.push(resolve));
+  inFlight += 1;
+  try {
+    const task = start();
+    try {
+      await settled(task);
+      return end(task);
+    } finally {
+      task.free();
+    }
+  } finally {
+    inFlight -= 1;
+    waiting3.shift()?.();
+  }
+}
+function poolCallSync(start, end) {
+  const task = start();
+  try {
+    if (!task.done) {
+      const words2 = new Int32Array(requireCoreMemory().buffer);
+      while (!task.done) Atomics.wait(words2, task.flag >>> 2, 0);
+    }
+    return end(task);
+  } finally {
+    task.free();
+  }
+}
+
+// src/area/site-facade-calls.ts
+function facadeFramesCall(withKernel, index2, batches, parts) {
+  const limits = parts.artifact?.limits;
+  const tiles = Uint32Array.from(batches, () => index2);
+  const counts = Uint32Array.from(batches, (ids2) => ids2.length);
+  const ids = batches.flatMap((group) => [...group]);
+  const site = requireCore().Site;
+  const capture = parts.capture;
+  if (capture !== void 0) {
+    return {
+      start: () => withKernel((inner) => inner.facadeCapturesStart(
+        tiles,
+        counts,
+        ids,
+        capture.alignment ?? void 0,
+        capture.store
+      )),
+      end: (task) => site.facadeCapturesEnd(task).map((item) => {
+        const error = item.error;
+        return error === void 0 ? { capture: item } : { error };
+      })
+    };
+  }
+  return {
+    start: () => withKernel((inner) => inner.facadeFramesStart(
+      tiles,
+      counts,
+      ids,
+      parts.body === true,
+      false,
+      false,
+      void 0,
+      parts.artifact !== void 0,
+      BigInt(limits?.maxGeometryBytes ?? 0),
+      limits?.maxMetadataBytes ?? 0,
+      BigInt(limits?.maxMeshes ?? 0),
+      BigInt(limits?.maxInstances ?? 0)
+    )),
+    end: (task) => site.facadeFramesEnd(task).map((frame) => {
+      if (frame.error !== void 0) return { error: frame.error };
+      const { body, artifact } = frame;
+      return {
+        ...body === void 0 ? {} : { body },
+        ...artifact === void 0 ? {} : {
+          artifact: {
+            archive: artifact.archive,
+            artifactDigest: artifact.artifactDigest,
+            geometryContentDigest: artifact.contentDigest,
+            encoding: artifact.encoding,
+            targetIds: artifact.targetIds
+          }
+        }
+      };
+    })
+  };
+}
+
+// src/area/site-facade-scene.ts
+function mapFacadeScenes(raw) {
+  const scenes = raw.scenes.map((scene) => ({
+    archive: scene.archive,
+    artifactDigest: scene.artifactDigest,
+    geometryContentDigest: scene.contentDigest,
+    encoding: scene.encoding
+  }));
+  const jobs = raw.jobs.map((job) => {
+    if (job.error !== void 0) return { error: job.error };
+    if (job.targets !== void 0) return { targets: job.targets, targetIds: job.targetIds ?? [] };
+    const artifact = job.artifact;
+    return {
+      artifact: {
+        archive: artifact.archive,
+        artifactDigest: artifact.artifactDigest,
+        geometryContentDigest: artifact.contentDigest,
+        encoding: artifact.encoding,
+        targetIds: artifact.targetIds
+      }
+    };
+  });
+  return { scenes, jobs };
+}
+
+// src/area/site-assign.ts
+var ARENA_GROUPS = [
+  "geometries",
+  "context-geometry",
+  "ground-geometry",
+  "vegetation",
+  "ground-materials"
+];
+var SiteAssignment = class _SiteAssignment {
+  constructor(tiles, arena, present2, carried, inner, inputs) {
+    this.tiles = tiles;
+    this.arena = arena;
+    this.present = present2;
+    this.carried = carried;
+    this.inner = inner;
+    this.inputs = inputs;
+  }
+  artifacts = /* @__PURE__ */ new Map();
+  /** The kernel's warning for the context hole (D293). */
+  contextWarning;
+  /** Point trees without z when the site has terrain, else 0. */
+  treesWithoutZ = 0;
+  /**
+   * Keep the kernel site from now on, reading it once more when a JSON run
+   * built this answer without it. A facade run asks the kept site for its
+   * batches and its selected bodies (`area/site-facade.ts`).
+   */
+  keepKernel() {
+    if (this.inner !== void 0) return true;
+    if (release3 === void 0 || this.inputs === void 0) return false;
+    this.inner = kernelSite(this.inputs);
+    release3.register(this, this.inner);
+    this.inputs = void 0;
+    return true;
+  }
+  shareFacadeParts(analyses) {
+    this.inner?.shareFacadeParts(analyses);
+  }
+  /** Run `use` on the kept kernel site, or on a fresh read that is freed after. */
+  withKernel(use) {
+    const inner = this.inner ?? kernelSite(this.inputs);
+    try {
+      return use(inner);
+    } finally {
+      if (this.inner === void 0) inner.free();
+    }
+  }
+  /**
+   * Read the site once: the kernel prepares every layer in one crossing and
+   * answers the membership and the bodies from them.
+   *
+   * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it will encode at
+   * submit time, and a FACADE run for its batches and bodies (`area/site-facade.ts`), freed
+   * with this object. A grid JSON run frees it before this returns — a run that never encodes
+   * holds no wasm memory. A realm without `FinalizationRegistry` always frees it here.
+   */
+  static read(groups, tiles, polygon, analysisType2, terrainContextMarginM, keepKernelSite = false, texts, terrain, contextReachM, contextBufferM) {
+    const inputs = {
+      groups,
+      tiles,
+      polygon,
+      analysisType: analysisType2,
+      terrainContextMarginM,
+      contextReachM,
+      contextBufferM,
+      ...terrain === void 0 ? {} : { terrain }
+    };
+    const inner = kernelSite(inputs, texts);
+    let kept = false;
+    try {
+      const answers = JSON.parse(inner.allTileIds()).map((ids) => ({
+        members: ids.members,
+        core: ids.core,
+        shrinkBand: ids.shrink_band,
+        demoted: ids.demoted,
+        context: ids.context
+      }));
+      const present2 = new Set(ARENA_GROUPS.filter((group) => groups[group] !== void 0));
+      const carried = Object.keys(groups).filter((group) => present2.has(group));
+      const keep = keepKernelSite && release3 !== void 0;
+      const site = keep ? new _SiteAssignment(answers, void 0, present2, carried, inner, void 0) : new _SiteAssignment(
+        answers,
+        inner.bodies(0, tiles.length),
+        present2,
+        carried,
+        void 0,
+        inputs
+      );
+      site.contextWarning = inner.contextWarning();
+      site.treesWithoutZ = inner.treesWithoutZ();
+      if (keep && release3 !== void 0) {
+        release3.register(site, inner);
+        kept = true;
+      }
+      return site;
+    } finally {
+      if (!kept) inner.free();
+    }
+  }
+  /** One tile's group, or `undefined` when the run does not carry it. */
+  group(tile, name) {
+    if (!this.present.has(name)) return void 0;
+    const arena = this.arena ??= this.withKernel((inner) => inner.bodies(0, this.tiles.length));
+    const slot = tile * ARENA_GROUPS.length + ARENA_GROUPS.indexOf(name);
+    const hash = arena.hashes[slot];
+    return {
+      bytes: arena.bytes.subarray(arena.offsets[slot], arena.offsets[slot + 1]),
+      hash: hash === "" ? void 0 : hash
+    };
+  }
+  /**
+   * Every tile's presence mask (bit `i` for `ARENA_GROUPS[i]`: carried AND not
+   * empty) and its `geometries` / `context-geometry` group hashes, two per
+   * tile, `""` for none, without writing a body. Read once and kept.
+   */
+  identity() {
+    return this.#identity ??= this.withKernel((inner) => inner.identity(0, this.tiles.length));
+  }
+  #identity;
+  /**
+   * One tile's artifact (D101), encoded on the first ask for THAT tile and
+   * kept: one kernel crossing per tile (#816, D277), so the first job uploads
+   * after its own encode, not after the encode of every tile. Never a facade
+   * batch's (D156).
+   */
+  tileArtifact(index2, limits) {
+    if (!Number.isSafeInteger(index2) || index2 < 0 || index2 >= this.tiles.length) {
+      throw new RangeError(`tile index ${index2} is outside the site`);
+    }
+    const key = [
+      limits.maxGeometryBytes,
+      limits.maxMetadataBytes,
+      limits.maxMeshes,
+      limits.maxInstances
+    ].join("\n");
+    let tiles = this.artifacts.get(key);
+    if (tiles === void 0) {
+      tiles = /* @__PURE__ */ new Map();
+      this.artifacts.set(key, tiles);
+    }
+    let artifact = tiles.get(index2);
+    if (artifact === void 0) {
+      const encoding = this.encode(index2, limits);
+      artifact = encoding;
+      tiles.set(index2, encoding);
+      encoding.catch(() => {
+        if (tiles.get(index2) === encoding) tiles.delete(index2);
+      });
+    }
+    return artifact;
+  }
+  /**
+   * The parts of every facade batch of tile `index`, from ONE kernel call
+   * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
+   * in `geometries`, the rest of the tile in `context-geometry` (D156).
+   * Nothing is kept here — `area/site-facade.ts` hands each part out once.
+   */
+  facadeFrames(index2, batches, parts) {
+    const call = facadeFramesCall((use) => this.withKernel(use), index2, batches, parts);
+    return poolCall(call.start, call.end);
+  }
+  /** The bodies of `batches`, now: a JSON body is read synchronously (blocks in the threaded core). */
+  facadeBodies(index2, batches) {
+    const call = facadeFramesCall((use) => this.withKernel(use), index2, batches, { body: true });
+    return poolCallSync(call.start, call.end);
+  }
+  /**
+   * One tile's facade scenes (#602): one shared frame for every batch of
+   * `batches`, and each batch's job as a range into it, or its own frame.
+   * `site-facade-scene.ts` shapes the kernel's raw answer.
+   */
+  async facadeScenes(index2, batches, limits) {
+    const raw = await poolCall(() => this.withKernel((inner) => inner.facadeScenesStart(
+      Uint32Array.from(batches, () => index2),
+      Uint32Array.from(batches, (ids) => ids.length),
+      batches.flatMap((ids) => [...ids]),
+      BigInt(limits.maxGeometryBytes),
+      limits.maxMetadataBytes,
+      BigInt(limits.maxMeshes),
+      BigInt(limits.maxInstances)
+    )), (task) => requireCore().Site.facadeScenesEnd(task));
+    return mapFacadeScenes(raw);
+  }
+  async encode(index2, limits) {
+    const encoded = await poolCall(() => this.withKernel((inner) => inner.artifactsStart(
+      index2,
+      index2 + 1,
+      BigInt(limits.maxGeometryBytes),
+      limits.maxMetadataBytes,
+      BigInt(limits.maxMeshes),
+      BigInt(limits.maxInstances)
+    )), (task) => requireCore().Site.artifactsEnd(task));
+    return {
+      archive: encoded.bytes.subarray(encoded.offsets[0], encoded.offsets[1]),
+      artifactDigest: encoded.artifactDigests[0],
+      geometryContentDigest: encoded.contentDigests[0],
+      encoding: encoded.encodings[0]
+    };
+  }
+};
+
+// src/area/site-facade-scene-frames.ts
+async function pickSceneArtifact(cache2, fetched, key, wanted, index2, fetch2) {
+  let pending2 = cache2.get(key);
+  if (pending2 === void 0 && !fetched.has(key) && wanted.includes(index2)) {
+    pending2 = fetch2(wanted);
+    cache2.set(key, pending2);
+    fetched.add(key);
+    pending2.catch(() => {
+      if (cache2.get(key) === pending2) cache2.delete(key);
+      fetched.delete(key);
+    });
+  }
+  const ready = pending2 === void 0 ? void 0 : await pending2;
+  let result2 = ready?.get(index2);
+  if (result2 === void 0) {
+    const indices2 = wanted.includes(index2) ? wanted : [index2];
+    result2 = (await fetch2(indices2)).get(index2);
+  }
+  ready?.delete(index2);
+  if (ready?.size === 0 && cache2.get(key) === pending2) cache2.delete(key);
+  if (result2 === void 0) throw new Error(`facade scene: no job for batch ${index2}`);
+  if (result2 instanceof Error) throw result2;
+  return result2;
+}
+
+// src/area/site-facade.ts
+function savedBatches(schedule2, tiles) {
+  const index2 = new Map(tiles.map((tile, position) => [tile.tileId, position]));
+  const records = [];
+  for (const [key, activeIds] of Object.entries(schedule2.batchMembership ?? {})) {
+    const tileId = key.split("#batch")[0] ?? key;
+    const tileIndex = index2.get(tileId);
+    if (tileIndex === void 0) throw new Error(`retry schedule batch ${key} names no tile of this grid`);
+    const count2 = schedule2.batchSensorCounts?.[key];
+    records.push({
+      tile_index: tileIndex,
+      key,
+      active_ids: [...activeIds],
+      ...count2 === void 0 ? {} : { sensor_count: count2 }
+    });
+  }
+  return records;
+}
+var CALLER_FIELDS = [
+  ["surface-grid-size", "grid_size"],
+  ["surface-offset", "offset"],
+  ["partial-cells", "partial_cells"],
+  ["min-coverage", "min_coverage"],
+  // #555: the plan counts with the same cleaning the server runs.
+  ["mesh-cleaning", "mesh_cleaning"]
+];
+function facadeRequest(payload, tiles, retryFrom, maxSensorsPerJob, packing) {
+  const request = {
+    policy_version: 2,
+    mode: payload["analysis-surfaces"],
+    auto_align: payload["terrain-alignment"] === "auto-align"
+  };
+  for (const [wire2, key] of CALLER_FIELDS) {
+    if (payload[wire2] !== void 0 && payload[wire2] !== null) request[key] = payload[wire2];
+  }
+  request.saved = retryFrom === void 0 ? null : savedBatches(retryFrom, tiles);
+  if (maxSensorsPerJob !== void 0) request.max_sensors_per_job = maxSensorsPerJob;
+  if (packing !== void 0 && packing !== "regular") request.packing = packing;
+  return request;
+}
+function kernelOf(site) {
+  if (site.withKernel === void 0) throw new Error("facade planning needs the kernel site");
+  site.keepKernel?.();
+  return site;
+}
+async function planFacadeRecords(site, tileCount, selected, request, slice) {
+  const text = JSON.stringify(request);
+  const kernel = kernelOf(site);
+  const out = /* @__PURE__ */ new Map();
+  for (let index2 = 0; index2 < tileCount; index2 += 1) {
+    if (!selected.has(index2)) continue;
+    await slice.tick();
+    const records = await poolCall(() => kernel.withKernel((inner) => inner.facadeBatchesStart(index2, index2 + 1, text)), (task) => requireCore().Site.facadeBatchesEnd(task));
+    out.set(index2, JSON.parse(records));
+  }
+  return out;
+}
+var TARGET_GROUPS = /* @__PURE__ */ new Set(["geometries", "context-geometry"]);
+var TileFrames = class {
+  constructor(site, tile, records, submits) {
+    this.site = site;
+    this.tile = tile;
+    this.records = records;
+    this.wanted = records.flatMap((record3, at) => submits(record3) ? [at] : []);
+  }
+  shared = /* @__PURE__ */ new Map();
+  written;
+  handed = /* @__PURE__ */ new Map();
+  /** Scene-mode (#602) answers, by limits key, handed out once like `handed`. */
+  scenes = /* @__PURE__ */ new Map();
+  /** Keys `scenes` already fetched the full `wanted` list for once (#602 review). */
+  scenesFetched = /* @__PURE__ */ new Set();
+  /** The batches the plan submits, by index: only these are written ahead. */
+  wanted;
+  batch(index2, group) {
+    if (this.written?.[index2] !== void 0) return this.read(index2, group);
+    const indices2 = this.wanted.includes(index2) ? this.wanted : [index2];
+    if (this.site.facadeBodies === void 0) throw new Error("facade jobs need the kernel site");
+    const answered = this.site.facadeBodies(this.tile, indices2.map((at) => this.records[at].active_ids));
+    this.written ??= [];
+    for (const [at, frame] of answered.entries()) {
+      if (this.written[indices2[at]] !== void 0) continue;
+      this.written[indices2[at]] = this.texts(frame);
+    }
+    return this.read(index2, group);
+  }
+  read(index2, group) {
+    const texts = this.written[index2];
+    if (texts instanceof Error) throw texts;
+    if (TARGET_GROUPS.has(group)) return texts.get(group);
+    return this.shared.get(group);
+  }
+  texts(frame) {
+    if (frame.error !== void 0) return new Error(frame.error);
+    const arena = frame.body;
+    const texts = /* @__PURE__ */ new Map();
+    for (const [slot, name] of ARENA_GROUPS.entries()) {
+      const start = arena.offsets[slot];
+      const end = arena.offsets[slot + 1];
+      if (!TARGET_GROUPS.has(name) && this.shared.has(name)) continue;
+      const hash = arena.hashes[slot];
+      const text = end > start ? { bytes: arena.bytes.slice(start, end), hash: hash === "" ? void 0 : hash } : { bytes: new TextEncoder().encode("{}"), hash: void 0 };
+      if (TARGET_GROUPS.has(name)) texts.set(name, text);
+      else this.shared.set(name, text);
+    }
+    return texts;
+  }
+  tileGroup(group) {
+    if (!this.shared.has(group)) this.batch(this.wanted[0] ?? 0, group);
+    return this.shared.get(group);
+  }
+  async capture(index2, alignment, store) {
+    return (await this.once(index2, `capture
+${alignment}`, { capture: { alignment, store } })).capture;
+  }
+  /**
+   * The batch's binary artifact. With `limits.facadeTargets` (#602), scene
+   * mode: the tile's jobs share ONE uploaded scene and each carries its own
+   * target range. Without it (an old server, no `facadeTargets`), one
+   * artifact per batch, as before.
+   */
+  async artifact(index2, limits) {
+    if ((limits.facadeTargets ?? 0) >= 1) return this.sceneArtifact(index2, limits);
+    const key = [
+      "artifact",
+      limits.maxGeometryBytes,
+      limits.maxMetadataBytes,
+      limits.maxMeshes,
+      limits.maxInstances
+    ].join("\n");
+    return (await this.once(index2, key, { artifact: { limits } })).artifact;
+  }
+  /** Batch `index`'s facade-scene artifact (#602); the cache logic is
+   * {@link pickSceneArtifact} (`site-facade-scene-frames.ts`). */
+  sceneArtifact(index2, limits) {
+    const key = [
+      "scene",
+      limits.maxGeometryBytes,
+      limits.maxMetadataBytes,
+      limits.maxMeshes,
+      limits.maxInstances
+    ].join("\n");
+    return pickSceneArtifact(
+      this.scenes,
+      this.scenesFetched,
+      key,
+      this.wanted,
+      index2,
+      (indices2) => this.scenesFor(indices2, limits)
+    );
+  }
+  /** One `facadeScenes` call over `indices`, mapped to this batch's artifact.
+   * A tile answer is uniform (D218): every job `targets` (scene), every job
+   * `artifact`, or every job `error` (a refusal). The first job's shape
+   * decides which of the three this answer is. */
+  async scenesFor(indices2, limits) {
+    if (this.site.facadeScenes === void 0) throw new Error("facade scenes need the kernel site");
+    const active3 = indices2.map((at) => this.records[at].active_ids);
+    const answer = await this.site.facadeScenes(this.tile, active3, limits);
+    const out = /* @__PURE__ */ new Map();
+    if (answer.jobs[0]?.error !== void 0) {
+      indices2.forEach((at, position) => out.set(at, new Error(answer.jobs[position].error)));
+      return out;
+    }
+    if (answer.jobs[0]?.targets !== void 0) {
+      const scene = answer.scenes[0];
+      indices2.forEach((at, position) => {
+        const job = answer.jobs[position];
+        out.set(at, {
+          archive: scene.archive,
+          artifactDigest: scene.artifactDigest,
+          geometryContentDigest: scene.geometryContentDigest,
+          encoding: scene.encoding,
+          targetIds: job.targetIds ?? [],
+          targets: { start: job.targets.start, count: job.targets.count }
+        });
+      });
+      return out;
+    }
+    indices2.forEach((at, position) => out.set(at, answer.jobs[position].artifact));
+    return out;
+  }
+  /**
+   * Batch `index`'s part under `key`. The first ask writes it for every
+   * batch of the tile that the plan submits (a retry's other batches are not
+   * written); each is handed out once and then dropped, so an artifact or a
+   * capture is not kept after its job took it. What a stopped run leaves is
+   * at most the untaken parts of the tiles it had started.
+   */
+  async once(index2, key, parts) {
+    let pending2 = this.handed.get(key);
+    if (pending2 === void 0 && this.wanted.includes(index2)) {
+      const wanted = this.wanted;
+      pending2 = this.frames(wanted, parts).then((frames) => new Map(frames.map((frame2, at) => [wanted[at], frame2])));
+      this.handed.set(key, pending2);
+      pending2.catch(() => {
+        if (this.handed.get(key) === pending2) this.handed.delete(key);
+      });
+    }
+    const ready = pending2 === void 0 ? void 0 : await pending2;
+    let frame = ready?.get(index2);
+    if (frame === void 0) frame = (await this.frames([index2], parts))[0];
+    ready?.delete(index2);
+    if (ready?.size === 0 && this.handed.get(key) === pending2) this.handed.delete(key);
+    if (frame.error !== void 0) throw new Error(frame.error);
+    return frame;
+  }
+  frames(indices2, parts) {
+    if (this.site.facadeFrames === void 0) throw new Error("facade jobs need the kernel site");
+    return this.site.facadeFrames(this.tile, indices2.map((at) => this.records[at].active_ids), parts);
+  }
+};
+function facadeTileBase(base, carried, location) {
+  const value = { ...base };
+  for (const group of carried) value[group] = void 0;
+  if (location !== void 0) {
+    value.latitude = location.latitude;
+    value.longitude = location.longitude;
+  }
+  return value;
+}
+function facadeBatchesForTile(value, tileId, tileIndex, records, site, answer, present2, submits = () => true) {
+  if (records.length === 0) return [];
+  site.withKernel((inner) => inner.checkTerrain(tileIndex, tileIndex + 1));
+  const bodies = new TileFrames(site, tileIndex, records, submits);
+  const carried = site.carried ?? [];
+  const tileGroups = /* @__PURE__ */ new Map();
+  for (const [slot, group] of ARENA_GROUPS.entries()) {
+    if (TARGET_GROUPS.has(group) || !carried.includes(group)) continue;
+    tileGroups.set(group, new KernelGroup(() => bodies.tileGroup(group), (present2 & 1 << slot) === 0));
+  }
+  return records.map((record3, index2) => {
+    const count2 = record3.sensor_count;
+    if (count2 === null || !Number.isSafeInteger(count2) || count2 < 1) throw new Error("invalid exact sensor count");
+    if (record3.active_ids.length === 0) throw new Error(`exact batch membership does not match tile ${tileId}`);
+    const payload = { ...value };
+    for (const [group, kernel] of tileGroups) payload[group] = kernel;
+    payload.geometries = new KernelGroup(() => bodies.batch(index2, "geometries"), false, record3.active_ids);
+    const moved = answer.members.length > record3.active_ids.length;
+    payload["context-geometry"] = new KernelGroup(
+      () => bodies.batch(index2, "context-geometry"),
+      !(answer.context.length > 0 || moved)
+    );
+    return {
+      key: record3.key,
+      buildingIds: [...record3.active_ids],
+      sensorCount: count2,
+      payload,
+      capture: (alignment, store) => bodies.capture(index2, alignment, store),
+      ...site.facadeFrames === void 0 ? {} : {
+        artifact: (limits) => bodies.artifact(index2, limits)
+      }
+    };
+  });
+}
+
+// src/area/retry-plan.ts
+function planAreaRetry(input) {
+  const raw = requireCore().planAreaRetry(JSON.stringify(input));
+  return JSON.parse(raw);
+}
+function areaIdempotencyKey(runId, jobKey, attempt) {
+  return requireCore().areaIdempotencyKey(runId, jobKey, attempt);
+}
+function freshRunId() {
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+}
+
+// src/area/plan-entries.ts
+function retryIncludesTile(tileId, retry) {
+  if (retry === void 0 || retry.has(tileId)) return true;
+  for (const key of retry) if (key.startsWith(`${tileId}#batch`)) return true;
+  return false;
+}
+async function buildEntries(tiles, input, slice) {
+  const { service, options, analysisType: analysisType2, base, composed, byId, site, surfaceFields } = input;
+  const retryFrom = options.retryFrom;
+  const entries3 = [];
+  const batchMembership = { ...retryFrom?.batchMembership ?? {} };
+  const batchSensorCounts = { ...retryFrom?.batchSensorCounts ?? {} };
+  const extraPositions = [];
+  const tileLocation = requireCore().tileLocationApplies(analysisType2);
+  const facadeRecords = surfaceFields ? await planFacadeRecords(site, tiles.length, new Set(tiles.flatMap((tile, index2) => retryIncludesTile(tile.tileId, input.retry) ? [index2] : [])), input.facadeRequest, slice) : void 0;
+  for (const [index2, tile] of tiles.entries()) {
+    if (!retryIncludesTile(tile.tileId, input.retry)) continue;
+    await slice.tick();
+    const detail = byId.get(tile.tileId);
+    const location = detail && tileLocation ? detail.centroid : void 0;
+    const answer = site.tiles[index2];
+    if (surfaceFields && answer === void 0) {
+      throw new Error(`tile ${JSON.stringify(tile.tileId)} has no site assignment`);
+    }
+    let payloads;
+    if (surfaceFields && answer !== void 0) {
+      const records = facadeRecords?.get(index2) ?? [];
+      const value = facadeTileBase(base, site.carried ?? [], location);
+      payloads = facadeBatchesForTile(
+        value,
+        tile.tileId,
+        index2,
+        records,
+        site,
+        answer,
+        site.identity().present[index2] ?? 0,
+        (record3) => input.retry === void 0 || input.retry.has(record3.key)
+      );
+    } else {
+      const value = { ...base };
+      if (composed === void 0) Object.assign(value, kernelGroups(site, index2));
+      else Object.assign(value, composed[tile.tileId] ?? {});
+      if (location !== void 0) {
+        value.latitude = location.latitude;
+        value.longitude = location.longitude;
+      }
+      payloads = [{ key: tile.tileId, payload: value }];
+    }
+    for (const batch of payloads) {
+      const targets = "buildingIds" in batch ? batch.buildingIds : void 0;
+      if ("buildingIds" in batch) {
+        batchMembership[batch.key] = batch.buildingIds;
+        batchSensorCounts[batch.key] = batch.sensorCount;
+        if (retryFrom === void 0 && batch.key !== tile.tileId) {
+          extraPositions.push({ ...tile, tileId: batch.key });
+        }
+      }
+      if (input.retry !== void 0 && !input.retry.has(batch.key)) continue;
+      const prepared = service.prepareSubmission(analysisType2, batch.payload, {
+        transport: areaTransport(options, analysisType2),
+        ...options.webhookUrl === void 0 ? {} : { webhookUrl: options.webhookUrl },
+        ...options.webhookEvents === void 0 ? {} : { webhookEvents: options.webhookEvents }
+      });
+      entries3.push({
+        key: batch.key,
+        row: tile.row,
+        col: tile.col,
+        idempotencyKey: areaIdempotencyKey(input.runId, batch.key, input.attemptFor(batch.key)),
+        prepared: {
+          ...prepared,
+          reuseScope: input.reuseScope(batch.key),
+          // A facade batch uploads ITS OWN selection (D156): its targets in
+          // `geometries`, the rest of the tile as context — the body the plan
+          // counted sensors for. The unsplit tile artifact (D101) made the
+          // server synthesize sensors on every member of the tile. Grid
+          // tiles keep the shared tile artifact.
+          ..."artifact" in batch && batch.artifact !== void 0 ? { artifact: batch.artifact } : targets === void 0 ? tileArtifactFor(site, index2) : {}
+        },
+        ..."capture" in batch ? { capture: batch.capture } : {}
+      });
+    }
+  }
+  return { entries: entries3, batchMembership, batchSensorCounts, extraPositions };
+}
+function kernelGroups(site, index2) {
+  const answer = site.tiles[index2];
+  const groups = {};
+  for (const group of site.carried ?? []) {
+    const slot = ARENA_GROUPS.indexOf(group);
+    const empty = group === "geometries" && answer !== void 0 ? answer.members.length === 0 : group === "context-geometry" && answer !== void 0 ? answer.context.length === 0 : () => ((site.identity().present[index2] ?? 0) & 1 << slot) === 0;
+    groups[group] = new KernelGroup(() => site.group(index2, group), empty);
+  }
+  return groups;
+}
+function tileArtifactFor(site, index2) {
+  return site.tileArtifact === void 0 ? {} : {
+    artifact: (limits) => site.tileArtifact(index2, limits)
+  };
 }
 
 // src/internal/geometry-reuse/identity.ts
@@ -6269,7 +6432,7 @@ async function prepareGeometryGroups(body) {
   }
   return { body: ownedBody, identities, bytes };
 }
-var encoder4 = new TextEncoder();
+var encoder5 = new TextEncoder();
 var OPEN = Uint8Array.of(123);
 var CLOSE = Uint8Array.of(125);
 function selectedDocumentParts(prepared, groups) {
@@ -6277,7 +6440,7 @@ function selectedDocumentParts(prepared, groups) {
   for (const name of Object.keys(groups).sort()) {
     const value = prepared.bytes[name];
     if (value === void 0) return void 0;
-    parts.push(encoder4.encode(`${parts.length === 1 ? "" : ","}${JSON.stringify(name)}:`), value);
+    parts.push(encoder5.encode(`${parts.length === 1 ? "" : ","}${JSON.stringify(name)}:`), value);
   }
   parts.push(CLOSE);
   return parts;
@@ -6309,96 +6472,6 @@ function bodyWithReference(body, groups, url) {
     });
   }
   return output;
-}
-
-// src/internal/wire-json.ts
-var remembered = /* @__PURE__ */ new WeakMap();
-function rememberWireText(value, bytes) {
-  remembered.set(value, { bytes });
-}
-var QUOTE = 34;
-var COLON = 58;
-function hasDigitKey(bytes) {
-  let at = bytes.indexOf(COLON);
-  while (at !== -1) {
-    let back = at - 1;
-    if (back >= 0 && bytes[back] === QUOTE) {
-      back -= 1;
-      let digits = 0;
-      while (back >= 0 && bytes[back] >= 48 && bytes[back] <= 57) {
-        back -= 1;
-        digits += 1;
-      }
-      if (digits > 0 && back >= 0 && bytes[back] === QUOTE) return true;
-    }
-    at = bytes.indexOf(COLON, at + 1);
-  }
-  return false;
-}
-function spliceText(value) {
-  if (value === null || typeof value !== "object") return void 0;
-  const entry = remembered.get(value);
-  if (entry === void 0) return void 0;
-  entry.spliceable ??= !hasDigitKey(entry.bytes);
-  return entry.spliceable ? entry.bytes : void 0;
-}
-function hasToJson(value) {
-  return value !== null && typeof value === "object" && typeof value.toJSON === "function";
-}
-var encoder5 = new TextEncoder();
-var sequence = 0;
-function jsonWireBytes(body, replacer) {
-  return spliceJsonBytes(body, spliceText, replacer);
-}
-function spliceJsonBytes(body, known, replacer) {
-  const plain = () => {
-    const text = JSON.stringify(body, replacer);
-    return text === void 0 ? void 0 : encoder5.encode(text);
-  };
-  if (body === null || typeof body !== "object" || Array.isArray(body)) return plain();
-  if (hasToJson(body)) return plain();
-  const entries3 = Object.entries(body);
-  const texts = [];
-  const stand = {};
-  sequence = (sequence + 1) % Number.MAX_SAFE_INTEGER;
-  const tag = `\0ir-wire-${sequence}-${Math.random().toString(36).slice(2)}-`;
-  for (const [key, value] of entries3) {
-    const text = value instanceof KernelGroup ? value.text().bytes : hasToJson(value) ? void 0 : known(value);
-    let written = value;
-    if (text !== void 0) {
-      written = `${tag}${texts.length}`;
-      texts.push(text);
-    }
-    Object.defineProperty(stand, key, {
-      value: written,
-      enumerable: true,
-      writable: true,
-      configurable: true
-    });
-  }
-  if (texts.length === 0) return plain();
-  const outer = JSON.stringify(stand, replacer);
-  if (outer === void 0) return plain();
-  const pieces = [];
-  let from = 0;
-  for (let index2 = 0; index2 < texts.length; index2 += 1) {
-    const marker = JSON.stringify(`${tag}${index2}`);
-    const at2 = outer.indexOf(marker, from);
-    if (at2 === -1 || outer.indexOf(marker, at2 + marker.length) !== -1) return plain();
-    pieces.push(encoder5.encode(outer.slice(from, at2)), texts[index2]);
-    from = at2 + marker.length;
-  }
-  if (outer.indexOf(JSON.stringify(tag).slice(1, -1), from) !== -1) return plain();
-  pieces.push(encoder5.encode(outer.slice(from)));
-  let total = 0;
-  for (const piece of pieces) total += piece.byteLength;
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const piece of pieces) {
-    out.set(piece, at);
-    at += piece.byteLength;
-  }
-  return out;
 }
 
 // src/area/composition.ts
@@ -6471,7 +6544,9 @@ function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = fal
     options.terrainContext?.margin_m,
     keepKernelSite,
     texts,
-    terrain
+    terrain,
+    options.contextReachM,
+    options.contextBufferM
   );
   const payloads = {};
   return {
@@ -6484,9 +6559,13 @@ function beginCompose(groups, tiles, polygon, options = {}, keepKernelSite = fal
       for (const group of present2) {
         const written = site.group(index2, group);
         if (written === void 0) continue;
+        if (rememberWire) {
+          const text = { bytes: written.bytes, hash: written.hash };
+          payload[group] = new KernelGroup(() => text, written.bytes.length === 2);
+          continue;
+        }
         const value = JSON.parse(decoder4.decode(written.bytes));
         rememberGroup(group, value, written.bytes, written.hash);
-        if (rememberWire) rememberWireText(value, written.bytes);
         payload[group] = value;
       }
       payloads[tile.tileId] = payload;
@@ -6556,7 +6635,9 @@ async function composeTiles(groups, tiles, polygon, options, slice) {
   await slice.pause();
   const run = beginCompose(groups, tiles, polygon, {
     analysisType: options.analysisType,
-    terrainContext: { margin_m: options.terrainContextMarginM }
+    terrainContext: { margin_m: options.terrainContextMarginM },
+    ...options.contextReachM === void 0 ? {} : { contextReachM: options.contextReachM },
+    ...options.contextBufferM === void 0 ? {} : { contextBufferM: options.contextBufferM }
   }, options.keepKernelSite ?? false, options.texts, true, options.terrain);
   let parsed;
   const composed = (tileSlice) => parsed ??= (async () => {
@@ -6582,8 +6663,8 @@ function rejectFullyDroppedTargets(groups, site) {
 // src/to-grade.ts
 var TO_GROUND = "to-ground";
 var AS_IS = "as-is";
-function takesGradeDrop(analysisType) {
-  return typeof analysisType === "string" && WIND_ANALYSIS_TYPES.has(analysisType);
+function takesGradeDrop(analysisType2) {
+  return typeof analysisType2 === "string" && WIND_ANALYSIS_TYPES.has(analysisType2);
 }
 function dropMeshesToGrade(meshes) {
   const ids = Object.keys(meshes);
@@ -6635,39 +6716,6 @@ function dropSiteToGrade(groups, chosen) {
 
 // src/area/prepared-site.ts
 var MAX_SITES = 4;
-var encoder6 = new TextEncoder();
-var groupDigestMemo = /* @__PURE__ */ new WeakMap();
-function sourceBytes(source, inner, texts) {
-  if (texts === void 0) return encoder6.encode(JSON.stringify(source));
-  const record3 = source;
-  const document2 = inner === void 0 ? void 0 : record3[inner];
-  if (document2 === null || typeof document2 !== "object" || Array.isArray(source)) {
-    const text = JSON.stringify(source);
-    texts.set(source, text);
-    return encoder6.encode(text);
-  }
-  let innerBytes;
-  const bytes = spliceJsonBytes(record3, (value) => {
-    if (value !== document2) return void 0;
-    const text = JSON.stringify(document2);
-    texts.set(document2, text);
-    innerBytes ??= encoder6.encode(text);
-    return innerBytes;
-  });
-  return bytes ?? encoder6.encode(JSON.stringify(source));
-}
-async function sourceDigest(source, inner, texts) {
-  if (source === null || typeof source !== "object") {
-    return sha256Hex(encoder6.encode(JSON.stringify(source)));
-  }
-  const cached2 = groupDigestMemo.get(source);
-  const fingerprint = cached2 === void 0 ? void 0 : contentFingerprint(source);
-  if (fingerprint !== void 0 && cached2?.fingerprint === fingerprint) return cached2.digest;
-  const digest = await sha256Hex(sourceBytes(source, inner, texts));
-  if (digest === void 0) groupDigestMemo.delete(source);
-  else groupDigestMemo.set(source, { fingerprint, digest });
-  return digest;
-}
 function acquisitionContent(name, value, inner) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
   const record3 = value;
@@ -6682,39 +6730,108 @@ function acquisitionContent(name, value, inner) {
   }
   return { document: document2, meta: JSON.stringify(margin) };
 }
-async function preparedSiteKey(inputs, texts, legacy = false) {
+function preparedSiteKey(inputs, texts, ground = terrainKey(inputs.payload["ground-geometry"], texts), memo2) {
   const { payload, options, polygon, config } = inputs;
-  const sources = [
-    ...GROUP_KEYS.map((key) => [key, payload[key], void 0]),
-    ["buildings", options.buildings, void 0],
-    ["vegetation", options.vegetation, "features"],
-    ["groundMaterials", options.groundMaterials, "layers"]
-  ];
-  const parts = [legacy ? "prepared-site-v1" : "prepared-site-v2"];
-  for (const [name, given, inner] of sources) {
-    if (given === void 0) continue;
-    const content = legacy ? void 0 : acquisitionContent(name, given, inner);
-    const keep = name === "buildings" || name === "geometries" || name === "context-geometry" ? void 0 : texts;
-    const digest = content === void 0 ? await sourceDigest(given, inner, keep) : await sourceDigest(content.document, void 0, keep);
-    if (digest === void 0) return void 0;
-    parts.push(`${name}=${digest}`);
-    if (content !== void 0) parts.push(`${name}:meta=${content.meta}`);
+  const meta = [];
+  const layer = (name, given, inner) => {
+    if (given === void 0) return void 0;
+    const content = acquisitionContent(name, given, inner);
+    if (content !== void 0) meta.push(content.meta);
+    const document2 = content?.document ?? given;
+    const text = JSON.stringify(document2, typedAsArray);
+    if (document2 !== null && typeof document2 === "object") texts?.set(document2, text);
+    return text;
+  };
+  let source = payload.geometries;
+  if (options.buildings !== void 0) {
+    const acquired = acquisitionContent("buildings", options.buildings, void 0);
+    if (acquired !== void 0) meta.push(acquired.meta);
+    source = acquired?.document ?? options.buildings;
   }
-  parts.push(
+  const vegetation = layer("vegetation", options.vegetation ?? payload.vegetation, "features");
+  const materials = layer("groundMaterials", options.groundMaterials ?? payload["ground-materials"], "layers");
+  const family = JSON.stringify([
+    config.inferenceSizeM,
+    config.contextSizeM,
+    config.stepM,
+    inputs.terrainContextMarginM,
+    options.maxTilesOverride ?? null,
+    inputs.grade ?? null,
+    meta,
+    payload["context-geometry"] === void 0 ? null : contextKey(options)
+    // D293
+  ]);
+  const groups = [meshDigest(source, memo2?.meshes), contextDigest(payload, memo2?.groups)];
+  return requireCore().siteKey(
+    "[]",
+    NO_F64,
+    ZERO,
+    NO_U32,
+    ZERO,
+    "[]",
+    NO_F64,
+    ZERO,
+    NO_U32,
+    ZERO,
+    JSON.stringify(groups),
+    void 0,
+    ground,
+    vegetation,
+    materials,
+    NO_U32,
+    NO_U32,
+    "[]",
+    NO_F64,
     JSON.stringify(polygon),
-    String(config.inferenceSizeM),
-    String(config.contextSizeM),
-    String(config.stepM),
-    String(inputs.terrainContextMarginM),
-    String(options.maxTilesOverride),
-    String(inputs.grade)
+    family
   );
-  return parts.join("\n");
 }
-async function buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain) {
+function siteKeyMemo() {
+  return { meshes: /* @__PURE__ */ new WeakMap(), groups: /* @__PURE__ */ new WeakMap() };
+}
+function contextDigest(payload, memo2) {
+  const context = payload["context-geometry"];
+  if (context === null || typeof context !== "object" || Array.isArray(context)) return null;
+  return `${kernelGroupHashOnce(String(payload["analysis-type"]), "context-geometry", context, memo2)}:${JSON.stringify(Object.keys(context))}`;
+}
+var NO_F64 = new Float64Array(0);
+var NO_U32 = new Uint32Array(0);
+var ZERO = Uint32Array.of(0);
+function meshDigest(source, memo2) {
+  if (source === null || typeof source !== "object" || Array.isArray(source)) return null;
+  const known = memo2?.get(source);
+  if (known !== void 0) return known;
+  const group = pack(source, false);
+  const digest = requireCore().siteKey(
+    JSON.stringify(group.ids),
+    group.coordinates,
+    group.offsets,
+    NO_U32,
+    ZERO,
+    "[]",
+    NO_F64,
+    ZERO,
+    NO_U32,
+    ZERO,
+    group.document,
+    void 0,
+    void 0,
+    void 0,
+    void 0,
+    NO_U32,
+    NO_U32,
+    "[]",
+    NO_F64,
+    "null",
+    "buildings"
+  );
+  memo2?.set(source, digest);
+  return digest;
+}
+async function buildPreparedSite(inputs, analysisType2, tiles, slice, texts, terrain) {
   const { payload, options, polygon } = inputs;
   const groups = dropSiteToGrade(
-    geometryGroups(payload, options, polygon, [analysisType]),
+    geometryGroups(payload, options, polygon, [analysisType2]),
     inputs.grade
   );
   const { composed, site } = await composeTiles(
@@ -6722,18 +6839,19 @@ async function buildPreparedSite(inputs, analysisType, tiles, slice, texts, terr
     tiles,
     polygon,
     {
-      analysisType,
+      analysisType: analysisType2,
       terrainContextMarginM: inputs.terrainContextMarginM,
-      // A binary run encodes artifacts from the kernel site (WS2, D136); a
-      // facade run plans its batches and writes its bodies from it
-      // (`area/site-facade.ts`).
-      keepKernelSite: areaTransport(options, analysisType) === "binary" || payload["analysis-surfaces"] != null,
+      ...contextOptions(options),
+      // A binary run encodes artifacts from the kernel site (WS2, D136); a facade
+      // run plans its batches and writes its bodies from it (`area/site-facade.ts`).
+      keepKernelSite: areaTransport(options, analysisType2) === "binary" || payload["analysis-surfaces"] != null,
       ...texts === void 0 ? {} : { texts },
       ...terrain === void 0 ? {} : { terrain }
     },
     slice
   );
   rejectFullyDroppedTargets(groups, site);
+  warnContextHole(site.contextWarning, options.logger);
   return { composed, answers: site };
 }
 function abortReason(signal) {
@@ -6812,24 +6930,30 @@ function freePreparedSites() {
 // src/area/site-identity-guard.ts
 var MISMATCH = "retryFrom site identity mismatch: geometry or layer inputs changed. Retry with the original immutable inputs or start a fresh run.";
 var UNVERIFIABLE = "retryFrom cannot verify site identity in this runtime (the current site inputs cannot be hashed, for example no crypto.subtle). Run in a runtime that can hash them, or start a fresh run.";
+var SITE_IDENTITY_PREFIX = "site2:";
+var OLD_KEY = "retryFrom site identity: the schedule was written by an older SDK, whose site key this SDK no longer computes (D297). Start a fresh run.";
+function refuseOldSiteIdentity(...identities) {
+  if (identities.some((id) => id !== void 0 && !id.startsWith(SITE_IDENTITY_PREFIX))) throw new Error(OLD_KEY);
+}
 var LEGACY_SCHEDULE_EVENT = "area.resume.site_identity_missing";
 var legacyWarned = false;
-function warnLegacyScheduleOnce() {
+function warnLegacyScheduleOnce(logger) {
   if (legacyWarned) return;
   legacyWarned = true;
   const message = "retryFrom schedule has no site identity (written by an older SDK), so the SDK cannot prove that trees, ground materials and per-building overrides are unchanged. Resuming without that check.";
   if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
     process.emitWarning(message, { type: "Warning", code: LEGACY_SCHEDULE_EVENT });
   } else {
-    console.warn(`${LEGACY_SCHEDULE_EVENT}: ${message}`);
+    logger.warn(`${LEGACY_SCHEDULE_EVENT}: ${message}`);
   }
 }
-function checkPaidRetrySiteIdentity(prior, current, willSubmit) {
+function checkPaidRetrySiteIdentity(prior, current, willSubmit, logger = consoleLogger) {
   if (prior === void 0) return;
   if (!willSubmit) {
-    if (prior.siteIdentity === void 0) warnLegacyScheduleOnce();
+    if (prior.siteIdentity === void 0) warnLegacyScheduleOnce(logger);
     if (prior.siteIdentity !== void 0) {
       if (current === void 0) throw new Error(UNVERIFIABLE);
+      refuseOldSiteIdentity(prior.siteIdentity);
       if (prior.siteIdentity !== current) throw new Error(MISMATCH);
     }
     return;
@@ -6837,6 +6961,7 @@ function checkPaidRetrySiteIdentity(prior, current, willSubmit) {
   if (prior.siteIdentity === void 0 || current === void 0) {
     throw new Error("retryFrom schedule has no provable site identity; old schedules may be polled and merged, but failed tiles cannot be retried safely. Start a fresh run.");
   }
+  refuseOldSiteIdentity(prior.siteIdentity);
   if (prior.siteIdentity !== current) {
     throw new Error(MISMATCH);
   }
@@ -6844,560 +6969,231 @@ function checkPaidRetrySiteIdentity(prior, current, willSubmit) {
 
 // src/area/sensor-cap.ts
 function checkFacadeSensorCap(options) {
-  const cap = options.maxSensorsPerJob;
-  if (cap === void 0) return;
-  if (typeof cap !== "number") {
-    throw new TypeError("maxSensorsPerJob must be a number of retained sensors");
-  }
   try {
-    requireCore().checkMaxSensorsPerJob(cap);
+    requireCore().checkSensorCap(
+      options.maxSensorsPerJob,
+      options.retryFrom !== void 0,
+      options.retryFrom?.maxSensorsPerJob
+    );
   } catch (error) {
     throw new RangeError(`maxSensorsPerJob: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const saved = options.retryFrom?.maxSensorsPerJob;
-  if (options.retryFrom !== void 0 && saved !== cap) {
-    throw new Error(
-      `retryFrom maxSensorsPerJob mismatch: the original run planned at ${saved ?? "the default target"}, this retry passes ${cap}. Omit maxSensorsPerJob to replay the saved batches.`
-    );
-  }
 }
 
-// src/internal/job-response.ts
-function requiredString(value) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new TypeError("invalid job response");
+// src/client-types.ts
+var AreaTimeoutError = class extends Error {
+  /** The run's counts at the moment it timed out. */
+  areaState;
+  /**
+   * @param message - The error message.
+   * @param areaState - The run's counts at the moment it timed out.
+   */
+  constructor(message, areaState) {
+    super(message);
+    this.name = "AreaTimeoutError";
+    this.areaState = areaState;
   }
-  return value;
-}
-function optionalString(value) {
-  return typeof value === "string" ? value : void 0;
-}
-function binaryAcknowledgement(value) {
-  if (value === void 0) return void 0;
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("invalid binary acknowledgement");
-  }
-  const raw = value;
-  const resultFormat = raw.resultFormat;
-  if (raw.inputFormat !== "irbf" || resultFormat !== "irbf" && resultFormat !== "json" || raw.wireVersion !== 1) {
-    throw new TypeError("invalid binary acknowledgement");
-  }
-  return {
-    inputFormat: "irbf",
-    resultFormat,
-    wireVersion: 1,
-    artifactDigest: requiredString(raw.artifactDigest),
-    contentDigest: requiredString(raw.contentDigest)
-  };
-}
-function parseJobStatus(value) {
-  switch (value.toLowerCase()) {
-    case "pending":
-      return "pending";
-    case "running":
-      return "running";
-    case "succeeded":
-    case "succeded":
-      return "succeeded";
-    case "failed":
-      return "failed";
-    default:
-      return "unknown";
-  }
-}
-function jobFromResponse(input) {
-  if (input === null || typeof input !== "object" || Array.isArray(input)) {
-    throw new TypeError("invalid job response");
-  }
-  const value = input;
-  const statusValue = value.jobStatus ?? value.status;
-  if (statusValue !== void 0 && statusValue !== null && typeof statusValue !== "string") {
-    throw new TypeError("invalid job response");
-  }
-  const startedAt = optionalString(value.startedAt);
-  const finishedAt = optionalString(value.finishedAt);
-  const resultsUrl = optionalString(value.resultsUrl ?? value.results);
-  const error = optionalString(value.error);
-  const binary = binaryAcknowledgement(value.binary);
-  return {
-    jobId: requiredString(value.jobId),
-    modelName: optionalString(value.modelName) ?? "",
-    status: parseJobStatus(optionalString(statusValue) ?? "Unknown"),
-    requestedAt: optionalString(value.requestedAt) ?? "",
-    ...startedAt === void 0 ? {} : { startedAt },
-    ...finishedAt === void 0 ? {} : { finishedAt },
-    ...resultsUrl === void 0 ? {} : { resultsUrl },
-    ...error === void 0 ? {} : { error },
-    ...binary === void 0 ? {} : { binary }
-  };
-}
+};
 
-// src/internal/poll-notify.ts
-async function notifyPoll(deadline, callback, job, attempt, elapsed, nextDelay) {
-  if (callback === void 0) return void 0;
-  try {
-    return await deadline.wait(() => Promise.resolve(callback(job, attempt, elapsed, nextDelay)));
-  } catch (error) {
-    if (deadline.reason() !== void 0) throw error;
-    return void 0;
+// src/area/run-errors.ts
+var AreaRunError = class extends Error {
+  /**
+   * @param message - The error message.
+   * @param failedKeys - Tiles with no job, and tiles whose job failed on the server.
+   * @param lostKeys - Tiles whose job succeeded and whose result did not download.
+   * @param uncertainKeys - Tiles that may have a job the SDK cannot name.
+   * @param failedJobs - The job ids of the failed and the lost tiles that have one.
+   * @param totalJobs - The number of jobs the run made.
+   */
+  constructor(message, failedKeys, lostKeys, uncertainKeys, failedJobs, totalJobs) {
+    super(message);
+    this.failedKeys = failedKeys;
+    this.lostKeys = lostKeys;
+    this.uncertainKeys = uncertainKeys;
+    this.failedJobs = failedJobs;
+    this.totalJobs = totalJobs;
   }
-}
-
-// src/internal/poll-engine.ts
-function defaultPollTimeoutS() {
-  return requireCore().pollDefaultTimeoutSeconds();
-}
-function isTransientStatusError(error) {
-  if (!(error instanceof TransportError)) return false;
-  if (error.reason === "network" || error.reason === "timeout") return true;
-  return error.reason === "http" && error.status !== void 0 && (error.status === 429 || error.status >= 500);
-}
-async function poll(sweep, options) {
-  const now2 = options.now ?? (() => performance.now());
-  const random = options.random ?? Math.random;
-  const started = now2();
-  const deadline = started + options.timeoutS * 1e3;
-  let errors = 0;
-  const firstS = Math.min(
-    requireCore().pollFirstDelaySeconds(),
-    options.timeoutS,
-    options.fixedIntervalS ?? Infinity,
-    options.maxIntervalS ?? Infinity
+  name = "AreaRunError";
+};
+var JobPollError = class extends Error {
+  /**
+   * @param message - The error message.
+   * @param status - The HTTP status of the refused status request.
+   */
+  constructor(message, status2) {
+    super(message);
+    this.status = status2;
+  }
+  name = "JobPollError";
+};
+function finalError(outcome, facts, analysisType2, areaTimeoutS, state) {
+  const text = requireCore().areaFinalError(outcome, JSON.stringify(facts), analysisType2, areaTimeoutS);
+  if (text === void 0 || text === null) return void 0;
+  const error = JSON.parse(text);
+  if (error.kind === "area_timeout") return new AreaTimeoutError(error.message, state());
+  return new AreaRunError(
+    error.message,
+    error.failed_keys,
+    error.lost_keys,
+    error.uncertain_keys,
+    error.failed_jobs,
+    error.total_jobs
   );
-  if (options.firstSweepNow !== true) await options.sleep(firstS * 1e3);
-  for (let attempt = 0; ; attempt += 1) {
-    const outcome = await sweep();
-    const elapsedS = (now2() - started) / 1e3;
-    let delayS = 0;
-    if (outcome.done) {
-      delayS = 0;
-    } else if (outcome.failed === true) {
-      errors += 1;
-      delayS = Math.max(
-        requireCore().pollErrorDelaySeconds(errors, random(), outcome.retryAfterS),
-        requireCore().pollIntervalSeconds(elapsedS, Math.max(1, outcome.nextRequests ?? 1))
-      );
-    } else {
-      errors = 0;
-      delayS = options.fixedIntervalS ?? requireCore().pollIntervalSeconds(elapsedS, Math.max(1, outcome.nextRequests ?? 1));
-      if (options.maxIntervalS !== void 0) delayS = Math.min(delayS, options.maxIntervalS);
-    }
-    if (options.observe !== void 0 && await options.observe(outcome, attempt, elapsedS, delayS) === false) return outcome;
-    if (outcome.done) return outcome;
-    const remainingMs = deadline - now2();
-    if (remainingMs <= 0) throw options.onTimeout(elapsedS);
-    await options.sleep(Math.min(delayS * 1e3, remainingMs));
-  }
+}
+function engineStopError(error, pollError) {
+  const stop = JSON.parse(requireCore().engineStop(String(error?.message ?? error)));
+  if (stop.kind === "poll_refused") return new JobPollError(stop.message, stop.status ?? 0);
+  if (stop.kind === "host_poll_error" && pollError !== void 0) return pollError.error;
+  return error;
 }
 
-// src/job-errors.ts
-var JobFailedError = class extends Error {
-  /**
-   * @param jobId - Id of the job that failed.
-   * @param errorMessage - The failure message reported for the job; may be empty.
-   */
-  constructor(jobId, errorMessage) {
-    super("job failed");
-    this.jobId = jobId;
-    this.errorMessage = errorMessage;
-  }
-  name = "JobFailedError";
-};
-var JobTimeoutError = class extends Error {
-  /** @param jobId - Id of the job that was being waited on. */
-  constructor(jobId) {
-    super("job polling timed out");
-    this.jobId = jobId;
-  }
-  name = "JobTimeoutError";
-};
-var JobAbortedError = class extends Error {
-  /** @param jobId - Id of the job that was being waited on. */
-  constructor(jobId) {
-    super("job polling was aborted");
-    this.jobId = jobId;
-  }
-  name = "JobAbortedError";
-};
-var JobNotCompletedError = class extends Error {
-  /**
-   * @param jobId - Id of the job.
-   * @param status - The status the job had when results were requested.
-   */
-  constructor(jobId, status) {
-    super("job is not completed");
-    this.jobId = jobId;
-    this.status = status;
-  }
-  name = "JobNotCompletedError";
-};
-
-// src/job-model.ts
-var JobStatus = {
-  Pending: "pending",
-  Running: "running",
-  Succeeded: "succeeded",
-  Failed: "failed",
-  Unknown: "unknown"
-};
-function requireJobId(jobId) {
-  if (typeof jobId !== "string" || jobId.length === 0) throw new TypeError("jobId must be a non-empty string");
-  return jobId;
+// src/area/run-engine.ts
+function us(seconds) {
+  return seconds === void 0 || !Number.isFinite(seconds) || seconds < 0 ? {} : { retry_after_us: Math.round(seconds * 1e6) };
 }
-
-// src/internal/wait-job.ts
-async function waitForJob(id, options, deps) {
-  const timeoutSeconds = options.timeout ?? defaultPollTimeoutS();
-  requireTimeout(timeoutSeconds * 1e3);
-  const deadline = new Deadline(options.signal, timeoutSeconds * 1e3);
-  let last;
-  let stopped = false;
-  try {
-    await poll(async () => {
-      try {
-        last = await deadline.wait(() => deps.status(id, deadline.controller.signal));
-      } catch (error) {
-        if (deadline.reason() === void 0 && isTransientStatusError(error)) {
-          return { done: false, failed: true, retryAfterS: error.retryAfterS };
-        }
-        throw error;
-      }
-      return { done: last.status === JobStatus.Succeeded || last.status === JobStatus.Failed };
-    }, {
-      timeoutS: timeoutSeconds,
-      sleep: (ms) => deadline.wait(() => delay(ms, deadline.controller.signal)),
-      onTimeout: () => new JobTimeoutError(id),
-      observe: async (outcome, attempt, elapsed, nextDelay) => {
-        if (outcome.failed === true || last === void 0) return true;
-        const keepGoing = await notifyPoll(deadline, options.onPoll, last, attempt, elapsed, nextDelay);
-        if (keepGoing === false) stopped = true;
-        return keepGoing !== false;
-      },
-      fixedIntervalS: deps.fixedIntervalS,
-      maxIntervalS: deps.maxIntervalS
-    });
-  } catch (error) {
-    const reason2 = deadline.reason();
-    if (reason2 !== void 0) {
-      throw reason2 === "timeout" ? new JobTimeoutError(id) : new JobAbortedError(id);
-    }
-    throw error;
-  } finally {
-    deadline.close();
-  }
-  const job = last;
-  if (!stopped && job.status === JobStatus.Failed) throw new JobFailedError(id, job.error ?? "");
-  return job;
-}
-
-// src/internal/download.ts
-async function downloadPresigned(input, options = {}) {
-  let url;
-  try {
-    url = new URL(input);
-  } catch {
-    throw new TypeError("presigned download URL must be an absolute HTTPS URL");
-  }
-  if (url.protocol !== "https:" || url.username || url.password) {
-    throw new TypeError("presigned download URL must be uncredentialed HTTPS");
-  }
-  const fetcher = resolveFetch(options.fetch);
-  if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
-  const timeoutMs = options.timeoutMs ?? 18e4;
-  requireTimeout(timeoutMs);
-  const deadline = new Deadline(options.signal, timeoutMs);
-  let dispatched = false;
-  try {
-    const response = await deadline.wait(() => {
-      dispatched = true;
-      return fetcher(url.href, {
-        method: "GET",
-        credentials: "omit",
-        redirect: "manual",
-        signal: deadline.controller.signal
-      });
-    });
-    if (response.status >= 300 && response.status < 400) {
-      cancelResponseBody(response);
-      throw new TransportError("presigned download received a redirect", "response", "http", "GET", response.status);
-    }
-    if (!response.ok) {
-      cancelResponseBody(response);
-      throw new TransportError(`presigned download received HTTP ${response.status}`, "response", "http", "GET", response.status);
-    }
-    return {
-      content: new Uint8Array(await deadline.wait(() => response.arrayBuffer())),
-      contentType: response.headers.get("Content-Type") ?? ""
-    };
-  } catch (error) {
-    if (error instanceof TransportError) throw error;
-    const reason2 = deadline.reason() ?? (dispatched ? "network" : "validation");
-    const phase = dispatched ? "after-dispatch" : "pre-dispatch";
-    const message = reason2 === "timeout" ? "presigned download timed out" : reason2 === "aborted" ? "presigned download was aborted" : "presigned download failed";
-    throw new TransportError(message, phase, reason2, "GET");
-  } finally {
-    deadline.close();
-  }
-}
-
-// src/internal/download-retry.ts
-function isRetryableDownloadError(error) {
-  if (!(error instanceof TransportError)) return false;
-  if (error.status === void 0) return error.reason === "network";
-  return error.status === 403 || error.status === 429 || error.status >= 500 && error.status < 600;
-}
-function shouldRetryDownload(error, sendsDone) {
-  if (!isRetryableDownloadError(error)) return false;
-  const status = error.status;
-  const next = status === 429 || status !== void 0 && status >= 500 ? requireCore().classifySubmitSend("status", sendsDone, status) : requireCore().classifySubmitSend("after_send", sendsDone);
-  return next === "resend";
-}
-async function pauseBeforeRetry(sendsDone, error, signal) {
-  const retryAfterS = error instanceof TransportError ? error.retryAfterS : void 0;
-  const seconds = requireCore().submitResendDelaySeconds(sendsDone, Math.random(), retryAfterS);
-  try {
-    await delay(seconds * 1e3, signal ?? new AbortController().signal);
-  } catch {
-    throw new TransportError(
-      "presigned download was aborted",
-      "after-dispatch",
-      "aborted",
-      "GET"
-    );
-  }
-}
-
-// src/internal/link.ts
-var TOKEN = /[!#$%&'*+\-.^_`|~0-9A-Za-z]/;
-function splitLinkValues(header) {
-  const values = [];
-  let start = 0;
-  let quoted = false;
-  let escaped = false;
-  let angled = false;
-  for (let index2 = 0; index2 < header.length; index2 += 1) {
-    const character = header[index2];
-    if (escaped) {
-      escaped = false;
-    } else if (quoted) {
-      if (character === "\\") escaped = true;
-      else if (character === '"') quoted = false;
-    } else if (angled) {
-      if (character === ">") angled = false;
-      else if (character === "<" || character === '"') return void 0;
-    } else if (character === '"') {
-      quoted = true;
-    } else if (character === "<") {
-      angled = true;
-    } else if (character === ">") {
-      return void 0;
-    } else if (character === ",") {
-      const value = header.slice(start, index2).trim();
-      if (value.length === 0) return void 0;
-      values.push(value);
-      start = index2 + 1;
-    }
-  }
-  if (quoted || escaped || angled) return void 0;
-  const last = header.slice(start).trim();
-  if (last.length === 0) return void 0;
-  values.push(last);
-  return values;
-}
-function readParameters(input) {
-  let index2 = 0;
-  let relations;
-  const skipWhitespace = () => {
-    while (input[index2] === " " || input[index2] === "	") index2 += 1;
+var now2 = () => Math.round(performance.now() * 1e3);
+var MAX_TIMER_MS = 2 ** 31 - 1;
+var EngineDriver = class {
+  handle;
+  inbox = [];
+  kick = () => {
   };
-  while (index2 < input.length) {
-    skipWhitespace();
-    if (index2 === input.length) break;
-    if (input[index2] !== ";") return null;
-    index2 += 1;
-    skipWhitespace();
-    const nameStart = index2;
-    while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
-    if (nameStart === index2) return null;
-    const name = input.slice(nameStart, index2).toLowerCase();
-    skipWhitespace();
-    if (input[index2] !== "=") return null;
-    index2 += 1;
-    skipWhitespace();
-    let parameter = "";
-    if (input[index2] === '"') {
-      index2 += 1;
-      let closed = false;
-      while (index2 < input.length) {
-        const character = input[index2++];
-        if (character === "\\") {
-          if (index2 === input.length) return null;
-          parameter += input[index2++];
-        } else if (character === '"') {
-          closed = true;
-          break;
-        } else {
-          parameter += character;
+  inFlight = /* @__PURE__ */ new Set();
+  stopped = false;
+  /** Records a job a batch submit accepted (the engine's `accepted`), before any other action. */
+  onAccepted = () => {
+  };
+  constructor(config) {
+    this.handle = new (requireCore()).RunEngine(JSON.stringify({
+      ...config,
+      seed: Math.floor(Math.random() * 2 ** 32) >>> 0
+    }));
+  }
+  /** The error of the last status request that had no request outcome. */
+  pollError;
+  /**
+   * One engine step. An error of the engine is classified by the kernel
+   * (`engineStop`): a refused status request is a `JobPollError`, a status
+   * request with no outcome throws that request's own error.
+   */
+  step(events) {
+    try {
+      return this.handle.step(now2(), JSON.stringify(events));
+    } catch (error) {
+      throw engineStopError(error, this.pollError);
+    }
+  }
+  /** An event for the next wake (`taken` from the consumer). */
+  push(event) {
+    this.inbox.push(event);
+    this.kick();
+  }
+  /** Stop the run: no new request; the requests in flight end and their answers count. */
+  stop() {
+    this.stopped = true;
+    this.kick();
+  }
+  /** The facts of analysis `a` now. */
+  facts(a) {
+    return JSON.parse(this.handle.facts(a));
+  }
+  /**
+   * Run until every analysis is finished or `signal` aborts. `io` does one
+   * action's IO with the action's own signal (aborted when `signal` aborts)
+   * and resolves with its raw answer; `onFinish` hands an
+   * analysis over; `onSweep` runs after each status answer. The handle is
+   * freed after every IO has settled.
+   */
+  async run(plans, signal, io, onFinish, onSweep) {
+    for (const plan of plans) this.inbox.push({ kind: "planned", ...plan });
+    let open = plans.length;
+    const children = /* @__PURE__ */ new Set();
+    const wake = () => {
+      for (const child of children) child.abort(signal.reason);
+      this.kick();
+    };
+    signal.addEventListener("abort", wake, { once: true });
+    let thrown = true;
+    try {
+      while (open > 0 && !signal.aborted && !this.stopped) {
+        const events = this.inbox.splice(0);
+        const step2 = JSON.parse(this.step(events));
+        if (onSweep !== void 0 && events.some((e) => e.kind === "sweep")) onSweep();
+        for (const act of step2.actions) {
+          if (act.kind === "finish") {
+            open -= 1;
+            onFinish(act);
+            continue;
+          }
+          if (act.kind === "accepted") {
+            this.onAccepted(act);
+            continue;
+          }
+          const child = new AbortController();
+          if (signal.aborted) child.abort(signal.reason);
+          children.add(child);
+          const work = io(act, child.signal).then((event) => this.push(event), (error) => {
+            if (act.kind === "poll") this.pollError = { error };
+            this.push({ kind: "host_error", action: act, message: String(error) });
+          });
+          this.inFlight.add(work);
+          void work.finally(() => {
+            this.inFlight.delete(work);
+            children.delete(child);
+          });
         }
+        if (this.inbox.length > 0 || open === 0) continue;
+        let timer;
+        await new Promise((resolve) => {
+          this.kick = resolve;
+          if (step2.wake_at_us !== null) {
+            timer = setTimeout(resolve, Math.min(MAX_TIMER_MS, Math.max(0, step2.wake_at_us / 1e3 - performance.now())));
+          }
+        });
+        clearTimeout(timer);
+        this.kick = () => {
+        };
       }
-      if (!closed) return null;
-    } else {
-      const valueStart = index2;
-      while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
-      if (valueStart === index2) return null;
-      parameter = input.slice(valueStart, index2);
+      thrown = false;
+    } finally {
+      signal.removeEventListener("abort", wake);
+      while (this.inFlight.size > 0) await Promise.allSettled([...this.inFlight]);
+      if (thrown) this.handle.free();
     }
-    skipWhitespace();
-    if (index2 < input.length && input[index2] !== ";") return null;
-    if (name === "rel") {
-      if (relations !== void 0) return null;
-      relations = parameter.split(/[ \t]+/).filter((item) => item.length > 0);
-    }
-  }
-  return relations;
-}
-function parseResultsLink(header) {
-  const values = header === null ? void 0 : splitLinkValues(header);
-  if (values === void 0) throw new Error("results response has no usable Link header");
-  const matches = [];
-  let unqualified;
-  for (const value of values) {
-    if (!value.startsWith("<")) {
-      if (values.length === 1 && value.startsWith("https://")) unqualified = value;
-      else throw new Error("results response has no usable Link header");
-      continue;
-    }
-    const end = value.indexOf(">");
-    if (end <= 1) throw new Error("results response has no usable Link header");
-    const url = value.slice(1, end);
-    const relations = readParameters(value.slice(end + 1));
-    if (relations === null) throw new Error("results response has no usable Link header");
-    if (relations?.some((item) => item.toLowerCase() === "results")) matches.push(url);
-    else if (relations === void 0 && values.length === 1) unqualified = url;
-  }
-  const selected = matches.length === 1 ? matches[0] : matches.length === 0 ? unqualified : void 0;
-  if (selected === void 0 || !selected.startsWith("https://")) {
-    throw new Error("results response has no usable Link header");
-  }
-  return selected;
-}
-
-// src/internal/submit-body.ts
-var UNSUPPORTED_TOP_LEVEL_ALIASES = /* @__PURE__ */ new Set([
-  "analysisType",
-  "analysis_type",
-  "analysisSurfaces",
-  "analysis_surfaces",
-  "binaryResults",
-  "binary_results",
-  "contextGeometry",
-  "context_geometry",
-  "emitCellTris",
-  "emit_cell_tris",
-  "groundMaterials",
-  "ground_materials",
-  "groundGeometry",
-  "ground_geometry",
-  "meshCleaning",
-  "mesh_cleaning",
-  "sensorSurfaces",
-  "sensor_surfaces",
-  "surfaceGridSize",
-  "surface_grid_size",
-  "surfaceOffset",
-  "surface_offset",
-  "surfgridVersion",
-  "surfgrid_version",
-  "terrainAlignment",
-  "terrain_alignment",
-  "webhookEvents",
-  "webhook_events",
-  "webhookUrl",
-  "webhook_url"
-]);
-function prepareSubmissionBody(analysisType, payload, options) {
-  if (typeof analysisType !== "string" || analysisType.length === 0) {
-    throw new TypeError("analysisType must be a non-empty string");
-  }
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new TypeError("analysis payload must be an object");
-  }
-  for (const name of UNSUPPORTED_TOP_LEVEL_ALIASES) {
-    if (Object.prototype.hasOwnProperty.call(payload, name)) {
-      throw new TypeError(`analysis payload must use wire-keyed fields; unsupported ${name}`);
+    try {
+      try {
+        const last = JSON.parse(this.handle.step(now2(), JSON.stringify([
+          ...this.inbox.splice(0),
+          { kind: "abort" }
+        ])));
+        for (const act of last.actions) if (act.kind === "accepted") this.onAccepted(act);
+      } catch {
+      }
+      return plans.map((_, a) => this.facts(a));
+    } finally {
+      this.handle.free();
     }
   }
-  const bodyType = payload["analysis-type"];
-  if (bodyType !== void 0 && bodyType !== analysisType) {
-    throw new TypeError("payload analysis-type does not match analysisType");
-  }
-  if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
-    throw new TypeError("unsupported option binaryResults; use transport instead");
-  }
-  if (Object.prototype.hasOwnProperty.call(payload, "binary-results")) {
-    throw new TypeError("unsupported payload field binary-results; use transport instead");
-  }
-  const supplied = suppliedSceneAlignment(analysisType, payload);
-  const body = { ...payload, "analysis-type": analysisType };
-  validatePreparedAnalysisRequest(body, { enforceTerrainTriangleLimit: true });
-  if (body["analysis-surfaces"] != null && body["surfgrid-version"] == null) {
-    body["surfgrid-version"] = requireCore().surfgridVersion();
-  }
-  if (takesGradeDrop(analysisType)) delete body["terrain-alignment"];
-  if (options.webhookUrl !== void 0) body["webhook-url"] = options.webhookUrl;
-  if (options.webhookEvents !== void 0) body["webhook-events"] = [...options.webhookEvents];
-  if (supplied !== void 0) body["terrain-alignment"] = supplied;
-  return body;
+};
+function retryPolicy() {
+  const raw = JSON.parse(requireCore().retryPolicy());
+  return {
+    submitMaxSends: raw.submit_max_sends,
+    maxAttempts: raw.max_attempts,
+    failureAdvice: raw.failure_advice
+  };
 }
 
 // src/internal/idempotent-dispatch.ts
-function unreadableBody(response) {
-  try {
-    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(response.content));
-    return false;
-  } catch {
-    return true;
-  }
-}
-async function resendDelay(sendsDone, retryAfterS, signal) {
-  const seconds = requireCore().submitResendDelaySeconds(sendsDone, Math.random(), retryAfterS);
-  try {
-    await delay(seconds * 1e3, signal ?? new AbortController().signal);
-  } catch {
-    throw new SubmissionUncertainError([]);
-  }
-}
 async function dispatchKeyed(options) {
-  const keyed = options.idempotencyKey !== void 0;
-  const core2 = requireCore();
-  for (let sendsDone = 1; ; sendsDone += 1) {
-    let response;
-    try {
-      response = await options.gateway.requestBytesWithHeaders(options.endpointPath, {
-        method: "POST",
-        headers: options.headers,
-        body: options.body,
-        acceptHttpErrors: true,
-        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
-        ...options.signal === void 0 ? {} : { signal: options.signal }
-      });
-    } catch (error) {
-      if (!keyed || !(error instanceof TransportError)) throw error;
-      if (error.reason === "aborted") throw sendsDone > 1 ? new SubmissionUncertainError([]) : error;
-      const answer = error.phase === "pre-dispatch" ? "before_send" : "after_send";
-      const next2 = core2.classifySubmitSend(answer, sendsDone);
-      if (next2 === "uncertain") throw new SubmissionUncertainError([]);
-      if (next2 !== "resend") throw error;
-      await resendDelay(sendsDone, void 0, options.signal);
-      continue;
-    }
-    if (!keyed) return response;
-    const ok2xx = response.status >= 200 && response.status < 300;
-    const next = ok2xx && unreadableBody(response) ? core2.classifySubmitSend("unreadable_2xx", sendsDone) : core2.classifySubmitSend("status", sendsDone, response.status);
-    if (next === "uncertain") throw new SubmissionUncertainError([], response.status);
-    if (next !== "resend") return response;
-    await resendDelay(sendsDone, retryAfterSeconds(response.headers), options.signal);
-  }
+  return options.gateway.requestBytesWithHeaders(options.endpointPath, {
+    method: "POST",
+    headers: options.headers,
+    body: options.body,
+    acceptHttpErrors: true,
+    ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+    ...options.signal === void 0 ? {} : { signal: options.signal }
+  });
 }
 
 // src/internal/upload.ts
@@ -7456,10 +7252,10 @@ async function uploadPresignedZip(input, content, options) {
 
 // src/internal/submission.ts
 var SubmissionUncertainError = class extends Error {
-  constructor(acceptedJobIds2, status) {
-    super(status === void 0 ? "job submission returned an invalid accepted response" : `job submission received HTTP ${status}; the job may already exist`);
+  constructor(acceptedJobIds2, status2) {
+    super(status2 === void 0 ? "job submission returned an invalid accepted response" : `job submission received HTTP ${status2}; the job may already exist`);
     this.acceptedJobIds = acceptedJobIds2;
-    this.status = status;
+    this.status = status2;
   }
   name = "SubmissionUncertainError";
   /** Always `"unknown-acceptance"`. */
@@ -7611,19 +7407,540 @@ async function post(options, body, contentType, allowExpired, allowGatewaySizeFa
 }
 async function submitArchive(options) {
   if (options.archive.byteLength <= options.thresholdBytes) {
-    const result2 = await post(options, options.archive, "application/zip", false, true);
-    if (result2.kind === "expired") throw new Error("unreachable inline reference state");
-    if (result2.kind === "accepted") return result2.value;
+    const result3 = await post(options, options.archive, "application/zip", false, true);
+    if (result3.kind === "expired") throw new Error("unreachable inline reference state");
+    if (result3.kind === "accepted") return result3.value;
   }
   let getUrl = await presignAndUpload(options);
   let envelope = new TextEncoder().encode(JSON.stringify({ $ref: getUrl }));
-  let result = await post(options, envelope, "application/json", true, false);
-  if (result.kind === "accepted") return result.value;
+  let result2 = await post(options, envelope, "application/json", true, false);
+  if (result2.kind === "accepted") return result2.value;
   getUrl = await presignAndUpload(options);
   envelope = new TextEncoder().encode(JSON.stringify({ $ref: getUrl }));
-  result = await post(options, envelope, "application/json", false, false);
-  if (result.kind !== "accepted") throw new Error("unreachable reference retry state");
-  return result.value;
+  result2 = await post(options, envelope, "application/json", false, false);
+  if (result2.kind !== "accepted") throw new Error("unreachable reference retry state");
+  return result2.value;
+}
+
+// src/internal/geometry-reuse/errors.ts
+function unique(ids) {
+  return Object.freeze([...new Set(ids.filter((value) => typeof value === "string" && value.length > 0))]);
+}
+var GeometryReferenceSubmissionError = class extends AcceptedResponseError {
+  constructor(acceptedJobIds2 = [], reason2 = "geometry-reference-outcome-uncertain", message = "geometry-reference submission cannot be used or retried safely") {
+    super(message);
+    this.reason = reason2;
+    this.acceptedJobIds = unique(acceptedJobIds2);
+  }
+  name = "GeometryReferenceSubmissionError";
+  /** Ids of the jobs the API reported as accepted, without duplicates. */
+  acceptedJobIds;
+  /** Always `true`: the reference or its outcome cannot be used. */
+  invalidReference = true;
+  /** Always `true`: repeating the submission is not safe. */
+  nonRetryable = true;
+};
+var GeometryReferenceAcknowledgementError = class extends GeometryReferenceSubmissionError {
+  name = "GeometryReferenceAcknowledgementError";
+  constructor(acceptedJobIds2 = [], reason2 = "invalid-geometry-acknowledgement") {
+    super(
+      acceptedJobIds2,
+      reason2,
+      "accepted geometry-reference submission had no valid acknowledgement"
+    );
+  }
+};
+
+// src/internal/submission-stopped.ts
+var SubmissionStoppedError = class extends TransportError {
+  constructor(message = "submission stopped after an invalid geometry reference") {
+    super(message, "pre-dispatch", "aborted", "POST");
+  }
+};
+
+// src/internal/job-response.ts
+function requiredString(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError("invalid job response");
+  }
+  return value;
+}
+function optionalString(value) {
+  return typeof value === "string" ? value : void 0;
+}
+function binaryAcknowledgement(value) {
+  if (value === void 0) return void 0;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("invalid binary acknowledgement");
+  }
+  const raw = value;
+  const resultFormat = raw.resultFormat;
+  if (raw.inputFormat !== "irbf" || resultFormat !== "irbf" && resultFormat !== "json" || raw.wireVersion !== 1) {
+    throw new TypeError("invalid binary acknowledgement");
+  }
+  return {
+    inputFormat: "irbf",
+    resultFormat,
+    wireVersion: 1,
+    artifactDigest: requiredString(raw.artifactDigest),
+    contentDigest: requiredString(raw.contentDigest)
+  };
+}
+function parseJobStatus(value) {
+  switch (value.toLowerCase()) {
+    case "pending":
+      return "pending";
+    case "running":
+      return "running";
+    case "succeeded":
+    case "succeded":
+      return "succeeded";
+    case "failed":
+      return "failed";
+    default:
+      return "unknown";
+  }
+}
+function jobFromResponse(input) {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new TypeError("invalid job response");
+  }
+  const value = input;
+  const statusValue = value.jobStatus ?? value.status;
+  if (statusValue !== void 0 && statusValue !== null && typeof statusValue !== "string") {
+    throw new TypeError("invalid job response");
+  }
+  const startedAt = optionalString(value.startedAt);
+  const finishedAt = optionalString(value.finishedAt);
+  const resultsUrl = optionalString(value.resultsUrl ?? value.results);
+  const error = optionalString(value.error);
+  const binary = binaryAcknowledgement(value.binary);
+  return {
+    jobId: requiredString(value.jobId),
+    modelName: optionalString(value.modelName) ?? "",
+    status: parseJobStatus(optionalString(statusValue) ?? "Unknown"),
+    requestedAt: optionalString(value.requestedAt) ?? "",
+    ...startedAt === void 0 ? {} : { startedAt },
+    ...finishedAt === void 0 ? {} : { finishedAt },
+    ...resultsUrl === void 0 ? {} : { resultsUrl },
+    ...error === void 0 ? {} : { error },
+    ...binary === void 0 ? {} : { binary }
+  };
+}
+var JobResponseMismatchError = class extends Error {
+  constructor() {
+    super("job response ID does not match requested jobId");
+  }
+};
+
+// src/area/raw-answer.ts
+function rawAnswer(error) {
+  if (error instanceof JobResponseMismatchError) return { phase: "after_send", unreadable_2xx: true };
+  if (error instanceof SubmissionUncertainError) {
+    return error.status === void 0 ? { phase: "after_send", unreadable_2xx: true } : { phase: "after_send", status: error.status };
+  }
+  if (!(error instanceof TransportError)) throw error;
+  if (error.phase === "pre-dispatch") return { phase: "before_send" };
+  return error.status === void 0 ? { phase: "after_send" } : { phase: "after_send", status: error.status };
+}
+
+// src/internal/poll-notify.ts
+async function notifyPoll(deadline, callback, job, attempt, elapsed, nextDelay) {
+  if (callback === void 0) return void 0;
+  try {
+    return await deadline.wait(() => Promise.resolve(callback(job, attempt, elapsed, nextDelay)));
+  } catch (error) {
+    if (deadline.reason() !== void 0) throw error;
+    return void 0;
+  }
+}
+
+// src/job-errors.ts
+var JobFailedError = class extends Error {
+  /**
+   * @param jobId - Id of the job that failed.
+   * @param errorMessage - The failure message reported for the job; may be empty.
+   */
+  constructor(jobId, errorMessage2) {
+    super("job failed");
+    this.jobId = jobId;
+    this.errorMessage = errorMessage2;
+  }
+  name = "JobFailedError";
+};
+var JobTimeoutError = class extends Error {
+  /** @param jobId - Id of the job that was being waited on. */
+  constructor(jobId) {
+    super("job polling timed out");
+    this.jobId = jobId;
+  }
+  name = "JobTimeoutError";
+};
+var JobAbortedError = class extends Error {
+  /** @param jobId - Id of the job that was being waited on. */
+  constructor(jobId) {
+    super("job polling was aborted");
+    this.jobId = jobId;
+  }
+  name = "JobAbortedError";
+};
+var JobNotCompletedError = class extends Error {
+  /**
+   * @param jobId - Id of the job.
+   * @param status - The status the job had when results were requested.
+   */
+  constructor(jobId, status2) {
+    super("job is not completed");
+    this.jobId = jobId;
+    this.status = status2;
+  }
+  name = "JobNotCompletedError";
+};
+
+// src/internal/wait-job.ts
+function statusAnswer(job) {
+  return JSON.stringify({ status: { status: job.status, error: job.error || null } });
+}
+function failureAnswer(error) {
+  if (!(error instanceof TransportError)) return JSON.stringify({ host_error: { message: "host error" } });
+  const after = error.retryAfterS;
+  return JSON.stringify({ failure: {
+    failure: rawAnswer(error),
+    retry_after_us: after === void 0 || !Number.isFinite(after) ? null : Math.round(after * 1e6)
+  } });
+}
+async function waitForJob(id, options, deps) {
+  const timeoutSeconds = options.timeout ?? requireCore().pollDefaultTimeoutSeconds();
+  requireTimeout(timeoutSeconds * 1e3);
+  const deadline = new Deadline(options.signal, timeoutSeconds * 1e3);
+  const wait = new (requireCore()).JobWait(
+    id,
+    Math.round(timeoutSeconds * 1e6),
+    Math.floor(Math.random() * 2 ** 32) >>> 0,
+    deps.intervalUs,
+    deps.intervalCapUs
+  );
+  const t0 = performance.now();
+  const clockUs = () => Math.round((performance.now() - t0) * 1e3);
+  let job;
+  let failure2;
+  let answer = "";
+  let attempt = -1;
+  try {
+    for (; ; ) {
+      let step2;
+      try {
+        step2 = JSON.parse(wait.next(clockUs(), answer));
+      } catch (error) {
+        throw engineStopError(error, failure2);
+      }
+      if (step2.notify === true && job !== void 0) {
+        const nextS = step2.kind === "sleep" ? step2.us / 1e6 : 0;
+        if (await notifyPoll(deadline, options.onPoll, job, attempt, clockUs() / 1e6, nextS) === false) return job;
+      }
+      answer = "";
+      if (step2.kind === "sleep") {
+        await deadline.wait(() => delay(step2.us / 1e3, deadline.controller.signal));
+      } else if (step2.kind === "get") {
+        attempt += 1;
+        failure2 = void 0;
+        try {
+          job = await deadline.wait(() => deps.status(id, deadline.controller.signal));
+          answer = statusAnswer(job);
+        } catch (error) {
+          if (deadline.reason() !== void 0) throw error;
+          failure2 = { error };
+          answer = failureAnswer(error);
+        }
+      } else if (step2.outcome === "timeout") {
+        throw new JobTimeoutError(id);
+      } else if (step2.outcome === "failed") {
+        throw new JobFailedError(id, job?.error ?? "");
+      } else {
+        return job;
+      }
+    }
+  } catch (error) {
+    const reason2 = deadline.reason();
+    if (reason2 !== void 0) throw reason2 === "timeout" ? new JobTimeoutError(id) : new JobAbortedError(id);
+    throw error;
+  } finally {
+    deadline.close();
+    wait.free();
+  }
+}
+
+// src/internal/poll-interval-deprecation.ts
+var warned = false;
+function warnPollIntervalDeprecated(logger) {
+  if (warned) return;
+  warned = true;
+  logger.warn("DeprecationWarning: pollIntervalMs is deprecated and will be removed in 2.0. The SDK sets the poll interval.");
+}
+
+// src/internal/download.ts
+async function downloadPresigned(input, options = {}) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new TypeError("presigned download URL must be an absolute HTTPS URL");
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new TypeError("presigned download URL must be uncredentialed HTTPS");
+  }
+  const fetcher = resolveFetch(options.fetch);
+  if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
+  const timeoutMs = options.timeoutMs ?? 18e4;
+  requireTimeout(timeoutMs);
+  const deadline = new Deadline(options.signal, timeoutMs);
+  let dispatched = false;
+  try {
+    const response = await deadline.wait(() => {
+      dispatched = true;
+      return fetcher(url.href, {
+        method: "GET",
+        credentials: "omit",
+        redirect: "manual",
+        signal: deadline.controller.signal
+      });
+    });
+    if (response.status >= 300 && response.status < 400) {
+      cancelResponseBody(response);
+      throw new TransportError("presigned download received a redirect", "response", "http", "GET", response.status);
+    }
+    if (!response.ok) {
+      cancelResponseBody(response);
+      throw new TransportError(`presigned download received HTTP ${response.status}`, "response", "http", "GET", response.status);
+    }
+    return {
+      content: new Uint8Array(await deadline.wait(() => response.arrayBuffer())),
+      contentType: response.headers.get("Content-Type") ?? ""
+    };
+  } catch (error) {
+    if (error instanceof TransportError) throw error;
+    const reason2 = deadline.reason() ?? (dispatched ? "network" : "validation");
+    const phase = dispatched ? "after-dispatch" : "pre-dispatch";
+    const message = reason2 === "timeout" ? "presigned download timed out" : reason2 === "aborted" ? "presigned download was aborted" : "presigned download failed";
+    throw new TransportError(message, phase, reason2, "GET");
+  } finally {
+    deadline.close();
+  }
+}
+
+// src/internal/download-retry.ts
+async function downloadWithRetries(jobId, once, signal) {
+  const own2 = signal ?? new AbortController().signal;
+  let result2;
+  let last;
+  const driver = new EngineDriver({ retries: 0, area_timeout_us: 36e8, goal: "available" });
+  await driver.run(
+    [{ keys: ["k"], run_id: "", jobs: { k: jobId }, states: { [jobId]: "succeeded" } }],
+    own2,
+    async (act, request) => {
+      if (act.kind !== "download") throw new Error(`unexpected engine action ${act.kind}`);
+      try {
+        result2 = { value: await once(request) };
+        return { kind: "download_done", job: jobId };
+      } catch (error) {
+        last = error;
+        if (error instanceof TransportError && (error.reason === "timeout" || error.reason === "aborted")) {
+          throw error;
+        }
+        return {
+          kind: "download_failed",
+          job: jobId,
+          answer: rawAnswer(error),
+          ...us(error.retryAfterS)
+        };
+      }
+    },
+    () => {
+    }
+  );
+  if (result2 !== void 0) return result2.value;
+  throw last ?? new TransportError("presigned download was aborted", "after-dispatch", "aborted", "GET");
+}
+
+// src/internal/link.ts
+var TOKEN = /[!#$%&'*+\-.^_`|~0-9A-Za-z]/;
+function splitLinkValues(header2) {
+  const values = [];
+  let start = 0;
+  let quoted = false;
+  let escaped = false;
+  let angled = false;
+  for (let index2 = 0; index2 < header2.length; index2 += 1) {
+    const character = header2[index2];
+    if (escaped) {
+      escaped = false;
+    } else if (quoted) {
+      if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+    } else if (angled) {
+      if (character === ">") angled = false;
+      else if (character === "<" || character === '"') return void 0;
+    } else if (character === '"') {
+      quoted = true;
+    } else if (character === "<") {
+      angled = true;
+    } else if (character === ">") {
+      return void 0;
+    } else if (character === ",") {
+      const value = header2.slice(start, index2).trim();
+      if (value.length === 0) return void 0;
+      values.push(value);
+      start = index2 + 1;
+    }
+  }
+  if (quoted || escaped || angled) return void 0;
+  const last = header2.slice(start).trim();
+  if (last.length === 0) return void 0;
+  values.push(last);
+  return values;
+}
+function readParameters(input) {
+  let index2 = 0;
+  let relations;
+  const skipWhitespace = () => {
+    while (input[index2] === " " || input[index2] === "	") index2 += 1;
+  };
+  while (index2 < input.length) {
+    skipWhitespace();
+    if (index2 === input.length) break;
+    if (input[index2] !== ";") return null;
+    index2 += 1;
+    skipWhitespace();
+    const nameStart = index2;
+    while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
+    if (nameStart === index2) return null;
+    const name = input.slice(nameStart, index2).toLowerCase();
+    skipWhitespace();
+    if (input[index2] !== "=") return null;
+    index2 += 1;
+    skipWhitespace();
+    let parameter = "";
+    if (input[index2] === '"') {
+      index2 += 1;
+      let closed = false;
+      while (index2 < input.length) {
+        const character = input[index2++];
+        if (character === "\\") {
+          if (index2 === input.length) return null;
+          parameter += input[index2++];
+        } else if (character === '"') {
+          closed = true;
+          break;
+        } else {
+          parameter += character;
+        }
+      }
+      if (!closed) return null;
+    } else {
+      const valueStart = index2;
+      while (index2 < input.length && TOKEN.test(input[index2])) index2 += 1;
+      if (valueStart === index2) return null;
+      parameter = input.slice(valueStart, index2);
+    }
+    skipWhitespace();
+    if (index2 < input.length && input[index2] !== ";") return null;
+    if (name === "rel") {
+      if (relations !== void 0) return null;
+      relations = parameter.split(/[ \t]+/).filter((item) => item.length > 0);
+    }
+  }
+  return relations;
+}
+function parseResultsLink(header2) {
+  const values = header2 === null ? void 0 : splitLinkValues(header2);
+  if (values === void 0) throw new Error("results response has no usable Link header");
+  const matches = [];
+  let unqualified;
+  for (const value of values) {
+    if (!value.startsWith("<")) {
+      if (values.length === 1 && value.startsWith("https://")) unqualified = value;
+      else throw new Error("results response has no usable Link header");
+      continue;
+    }
+    const end = value.indexOf(">");
+    if (end <= 1) throw new Error("results response has no usable Link header");
+    const url = value.slice(1, end);
+    const relations = readParameters(value.slice(end + 1));
+    if (relations === null) throw new Error("results response has no usable Link header");
+    if (relations?.some((item) => item.toLowerCase() === "results")) matches.push(url);
+    else if (relations === void 0 && values.length === 1) unqualified = url;
+  }
+  const selected = matches.length === 1 ? matches[0] : matches.length === 0 ? unqualified : void 0;
+  if (selected === void 0 || !selected.startsWith("https://")) {
+    throw new Error("results response has no usable Link header");
+  }
+  return selected;
+}
+
+// src/internal/submit-body.ts
+var UNSUPPORTED_TOP_LEVEL_ALIASES = /* @__PURE__ */ new Set([
+  "analysisType",
+  "analysis_type",
+  "analysisSurfaces",
+  "analysis_surfaces",
+  "binaryResults",
+  "binary_results",
+  "contextGeometry",
+  "context_geometry",
+  "emitCellTris",
+  "emit_cell_tris",
+  "groundMaterials",
+  "ground_materials",
+  "groundGeometry",
+  "ground_geometry",
+  "meshCleaning",
+  "mesh_cleaning",
+  "sensorSurfaces",
+  "sensor_surfaces",
+  "surfaceGridSize",
+  "surface_grid_size",
+  "surfaceOffset",
+  "surface_offset",
+  "surfgridVersion",
+  "surfgrid_version",
+  "terrainAlignment",
+  "terrain_alignment",
+  "webhookEvents",
+  "webhook_events",
+  "webhookUrl",
+  "webhook_url"
+]);
+function prepareSubmissionBody(analysisType2, payload, options) {
+  if (typeof analysisType2 !== "string" || analysisType2.length === 0) {
+    throw new TypeError("analysisType must be a non-empty string");
+  }
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new TypeError("analysis payload must be an object");
+  }
+  for (const name of UNSUPPORTED_TOP_LEVEL_ALIASES) {
+    if (Object.prototype.hasOwnProperty.call(payload, name)) {
+      throw new TypeError(`analysis payload must use wire-keyed fields; unsupported ${name}`);
+    }
+  }
+  const bodyType = payload["analysis-type"];
+  if (bodyType !== void 0 && bodyType !== analysisType2) {
+    throw new TypeError("payload analysis-type does not match analysisType");
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
+    throw new TypeError("unsupported option binaryResults; use transport instead");
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "binary-results")) {
+    throw new TypeError("unsupported payload field binary-results; use transport instead");
+  }
+  const supplied = suppliedSceneAlignment(analysisType2, payload);
+  const body = { ...payload, "analysis-type": analysisType2 };
+  validatePreparedAnalysisRequest(body, { enforceTerrainTriangleLimit: true });
+  pinSurfaceFields(body, WIRE_SURFACE_FIELDS);
+  if (takesGradeDrop(analysisType2)) delete body["terrain-alignment"];
+  if (options.webhookUrl !== void 0) body["webhook-url"] = options.webhookUrl;
+  if (options.webhookEvents !== void 0) body["webhook-events"] = [...options.webhookEvents];
+  if (supplied !== void 0) body["terrain-alignment"] = supplied;
+  return body;
 }
 
 // src/internal/prepared-json.ts
@@ -7638,11 +7955,40 @@ function preparedJsonBytes(prepared) {
   }
 }
 
+// src/internal/per-turn.ts
+var later = typeof setImmediate === "function" ? (run) => {
+  setImmediate(run);
+} : (run) => {
+  setTimeout(run, 0);
+};
+function perTurn(flush, limit3 = () => Number.POSITIVE_INFINITY) {
+  const queue = [];
+  const run = () => {
+    const batch = queue.splice(0, Math.max(1, limit3()));
+    if (queue.length > 0) later(run);
+    flush(batch.map((waiting5) => waiting5.item)).then((results) => {
+      for (const [index2, waiting5] of batch.entries()) waiting5.resolve(results[index2]);
+    }, (error) => {
+      for (const waiting5 of batch) waiting5.reject(error);
+    });
+  };
+  return (item) => new Promise((resolve, reject) => {
+    if (queue.length === 0) later(run);
+    queue.push({ item, resolve, reject });
+  });
+}
+
+// src/internal/zip-payload.ts
+var zipPayload = perTurn(async (items) => {
+  const core2 = requireCore();
+  return poolCall(() => core2.zipPayloadJsonManyStart([...items]), (task) => core2.zipPayloadJsonManyEnd(task));
+}, () => 16 * coreThreads());
+
 // src/internal/geometry-reuse/expiry.ts
 var DEFAULT_REF_TTL_MS = 24 * 60 * 60 * 1e3;
 var EXPIRY_MARGIN_MS = 15 * 60 * 1e3;
-function expiryFromUrl(value, now2 = Date.now()) {
-  let signedAt = now2;
+function expiryFromUrl(value, now3 = Date.now()) {
+  let signedAt = now3;
   let ttl = DEFAULT_REF_TTL_MS;
   try {
     const url = new URL(value);
@@ -7680,13 +8026,13 @@ function cloneSnapshot(scope) {
     urls: { ...scope.urls }
   };
 }
-function liveCapability(value, now2) {
+function liveCapability(value, now3) {
   if (value === void 0) return void 0;
-  return value.expiresAt === void 0 || now2 < value.expiresAt ? value.outcome : void 0;
+  return value.expiresAt === void 0 || now3 < value.expiresAt ? value.outcome : void 0;
 }
 var GeometryReuseCache = class {
-  constructor(now2 = Date.now) {
-    this.now = now2;
+  constructor(now3 = Date.now) {
+    this.now = now3;
   }
   partitions = /* @__PURE__ */ new Map();
   firstUses = /* @__PURE__ */ new Map();
@@ -7702,9 +8048,9 @@ var GeometryReuseCache = class {
     return outcome;
   }
   setCapability(partitionKey, outcome) {
-    const now2 = this.now();
-    const partition = this.partition(partitionKey, now2);
-    partition.capability = outcome === "supported" ? { outcome } : { outcome, expiresAt: now2 + UNSUPPORTED_TTL_MS };
+    const now3 = this.now();
+    const partition = this.partition(partitionKey, now3);
+    partition.capability = outcome === "supported" ? { outcome } : { outcome, expiresAt: now3 + UNSUPPORTED_TTL_MS };
   }
   /**
    * Single-flight the FIRST reference-carrying submission of a partition.
@@ -7733,30 +8079,30 @@ var GeometryReuseCache = class {
     return { owned: true, value: await pending2 };
   }
   snapshot(partitionKey, scopeKey) {
-    const now2 = this.now();
+    const now3 = this.now();
     const partition = this.partitions.get(partitionKey);
     const scope = partition?.scopes.get(scopeKey);
     if (scope === void 0) return cloneSnapshot(void 0);
-    const documents = scope.state.documents.filter((item) => now2 / 1e3 < item.expires_at && scope.urls[item.key] !== void 0);
+    const documents = scope.state.documents.filter((item) => now3 / 1e3 < item.expires_at && scope.urls[item.key] !== void 0);
     if (documents.length !== scope.state.documents.length) {
       const keys = new Set(documents.map((item) => item.key));
       scope.state = { ...scope.state, documents };
       scope.urls = Object.fromEntries(Object.entries(scope.urls).filter(([key]) => keys.has(key)));
     }
-    scope.touchedAt = now2;
-    if (partition !== void 0) partition.touchedAt = now2;
+    scope.touchedAt = now3;
+    if (partition !== void 0) partition.touchedAt = now3;
     return cloneSnapshot(scope);
   }
   acknowledge(partitionKey, scopeKey, value) {
-    const now2 = this.now();
-    if (!Number.isFinite(value.expiresAt) || value.expiresAt <= now2) return;
-    const partition = this.partition(partitionKey, now2);
+    const now3 = this.now();
+    if (!Number.isFinite(value.expiresAt) || value.expiresAt <= now3) return;
+    const partition = this.partition(partitionKey, now3);
     const prior = partition.scopes.get(scopeKey);
     const documents = (prior?.state.documents ?? []).filter((item) => item.key !== value.key);
     const document2 = {
       key: value.key,
       groups: { ...value.groups },
-      acknowledged_at: now2 / 1e3,
+      acknowledged_at: now3 / 1e3,
       expires_at: value.expiresAt / 1e3
     };
     partition.scopes.delete(scopeKey);
@@ -7767,7 +8113,7 @@ var GeometryReuseCache = class {
         documents: [...documents, document2]
       },
       urls: { ...prior?.urls ?? {}, [value.key]: value.url },
-      touchedAt: now2
+      touchedAt: now3
     });
     this.trim();
   }
@@ -7899,15 +8245,15 @@ ${scopeKey}`;
       documents: scopes.reduce((sum, item) => sum + item.state.documents.length, 0)
     };
   }
-  partition(key, now2) {
+  partition(key, now3) {
     const found = this.partitions.get(key);
     if (found !== void 0) {
-      found.touchedAt = now2;
+      found.touchedAt = now3;
       this.partitions.delete(key);
       this.partitions.set(key, found);
       return found;
     }
-    const created = { scopes: /* @__PURE__ */ new Map(), touchedAt: now2 };
+    const created = { scopes: /* @__PURE__ */ new Map(), touchedAt: now3 };
     this.partitions.set(key, created);
     this.trim();
     return created;
@@ -7985,35 +8331,6 @@ function normalizeAuthHeaders(headers) {
   return Object.fromEntries(normalized.entries());
 }
 
-// src/internal/geometry-reuse/errors.ts
-function unique(ids) {
-  return Object.freeze([...new Set(ids.filter((value) => typeof value === "string" && value.length > 0))]);
-}
-var GeometryReferenceSubmissionError = class extends AcceptedResponseError {
-  constructor(acceptedJobIds2 = [], reason2 = "geometry-reference-outcome-uncertain", message = "geometry-reference submission cannot be used or retried safely") {
-    super(message);
-    this.reason = reason2;
-    this.acceptedJobIds = unique(acceptedJobIds2);
-  }
-  name = "GeometryReferenceSubmissionError";
-  /** Ids of the jobs the API reported as accepted, without duplicates. */
-  acceptedJobIds;
-  /** Always `true`: the reference or its outcome cannot be used. */
-  invalidReference = true;
-  /** Always `true`: repeating the submission is not safe. */
-  nonRetryable = true;
-};
-var GeometryReferenceAcknowledgementError = class extends GeometryReferenceSubmissionError {
-  name = "GeometryReferenceAcknowledgementError";
-  constructor(acceptedJobIds2 = [], reason2 = "invalid-geometry-acknowledgement") {
-    super(
-      acceptedJobIds2,
-      reason2,
-      "accepted geometry-reference submission had no valid acknowledgement"
-    );
-  }
-};
-
 // src/internal/geometry-reuse/observer.ts
 function safeLog(logger, level, event, reason2) {
   try {
@@ -8074,12 +8391,12 @@ function bound(options, partitionKey, signal, beforeDispatch, idempotencyKey) {
     ...idempotencyKey === void 0 ? {} : { idempotencyKey }
   };
 }
-async function submitBody(analysisType, body, transport3, groups = []) {
+async function submitBody(analysisType2, body, transport3, groups = []) {
   const json = jsonWireBytes(body);
   if (json === void 0) throw new TypeError("request has no JSON wire form");
   return submitArchive({
-    endpointPath: `/async/${encodeURIComponent(analysisType)}`,
-    archive: requireCore().zipPayloadJson(json),
+    endpointPath: `/async/${encodeURIComponent(analysisType2)}`,
+    archive: await zipPayload(json),
     gateway: transport3.gateway,
     uploadGateway: transport3.uploadGateway,
     fetch: transport3.fetch,
@@ -8093,7 +8410,7 @@ async function submitBody(analysisType, body, transport3, groups = []) {
 }
 async function uploadGeometry(bytes, transport3) {
   return uploadArchive({
-    archive: requireCore().zipPayloadJson(bytes),
+    archive: await zipPayload(bytes),
     uploadGateway: transport3.uploadGateway,
     fetch: transport3.fetch,
     timeoutMs: transport3.timeoutMs,
@@ -8104,6 +8421,7 @@ async function uploadGeometry(bytes, transport3) {
 // src/internal/geometry-url-store.ts
 var STORED_URL_LIFETIME_MS = 23 * 60 * 60 * 1e3;
 var MAX_STORE_WAIT_MS = 2e3;
+var MAX_CLAIM_WAIT_MS = 6e4;
 function signedUrlEnd(raw) {
   let url;
   try {
@@ -8137,10 +8455,11 @@ function within(work, ms) {
   });
 }
 var GeometryUrlStoreGate = class {
-  constructor(store, logger, timeoutMs, now2 = Date.now) {
+  constructor(store, logger, timeoutMs, now3 = Date.now, claimWaitMs = MAX_CLAIM_WAIT_MS) {
     this.store = store;
     this.logger = logger;
-    this.now = now2;
+    this.now = now3;
+    this.claimWaitMs = claimWaitMs;
     this.waitMs = Math.min(MAX_STORE_WAIT_MS, timeoutMs);
   }
   warned = false;
@@ -8160,12 +8479,55 @@ var GeometryUrlStoreGate = class {
     const end = Math.min(expiresAt, signedUrlEnd(url) ?? Infinity);
     return this.now() < end ? { url, expiresAt: end } : void 0;
   }
-  /** Keep `url`, uploaded now. Not awaited: a slow store never slows a run. */
+  /** Keep `url`, uploaded now. The promise settles when the store's write
+   * settles and never rejects; a run never awaits it (a claim holder releases
+   * when it settles). */
   set(key, url) {
     const expiresAt = Math.min(this.now() + STORED_URL_LIFETIME_MS, signedUrlEnd(url) ?? Infinity);
-    within(Promise.resolve().then(() => this.store.set(key, url, expiresAt)), this.waitMs).catch((error) => {
+    return Promise.resolve().then(() => this.store.set(key, url, expiresAt)).then(() => void 0, (error) => {
       this.warn("set", error);
     });
+  }
+  /** The store's claim on `key` ({@link GeometryUrlStore.claim}), held until
+   * the returned release runs; `undefined` without a claim, when it fails or
+   * after {@link MAX_CLAIM_WAIT_MS}. A claim that arrives after the wait
+   * ended is released at once. No caller's signal: the claim belongs to the
+   * shared upload, and each caller stops waiting on its own abort. */
+  async claim(key) {
+    if (this.store.claim === void 0) return void 0;
+    let abandoned = false;
+    const claimed = Promise.resolve().then(() => this.store.claim(key));
+    claimed.then((release4) => {
+      if (abandoned) this.release(release4);
+    }, () => void 0);
+    let timer;
+    const stop = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        this.warn("claim", new Error(`no claim in ${this.claimWaitMs} ms`));
+        resolve(void 0);
+      }, this.claimWaitMs);
+      timer.unref?.();
+    });
+    try {
+      const release4 = await Promise.race([claimed, stop]);
+      if (release4 === void 0) abandoned = true;
+      return release4 === void 0 ? void 0 : () => {
+        this.release(release4);
+      };
+    } catch (error) {
+      abandoned = true;
+      this.warn("claim", error);
+      return void 0;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  release(release4) {
+    try {
+      release4();
+    } catch (error) {
+      this.warn("claim", error);
+    }
   }
   warn(verb, error) {
     if (this.warned) return;
@@ -8229,7 +8591,7 @@ async function referenceFromPlan(planValue, prepared, snapshot) {
   const digest = await sha256HexParts(parts);
   return digest === void 0 ? void 0 : { key: `gref1:${digest}`, groups: selected, parts, cached: false };
 }
-function unsafeCandidate(error) {
+function unsafeCandidate(error, keyed) {
   if (error instanceof GeometryReferenceAcknowledgementError) throw error;
   if (error instanceof GeometryReferenceRejectedError) throw error;
   if (error instanceof TransportError && error.reason === "aborted") throw error;
@@ -8239,6 +8601,7 @@ function unsafeCandidate(error) {
       error.status === void 0 ? "accepted-response-invalid" : "endpoint-response-uncertain"
     );
   }
+  if (keyed && error instanceof TransportError && error.phase === "unknown-acceptance" && error.status === void 0) throw error;
   if (error instanceof TransportError && error.phase === "unknown-acceptance") {
     throw new GeometryReferenceSubmissionError([], "endpoint-post-failed");
   }
@@ -8247,7 +8610,7 @@ function unsafeCandidate(error) {
   }
   throw error;
 }
-async function executePlan(prepared, analysisType, partitionKey, scopeKey, transport3, recover, options) {
+async function executePlan(prepared, analysisType2, partitionKey, scopeKey, transport3, recover, options) {
   const cache2 = getGeometryReuseCache();
   const logger = options.logger;
   try {
@@ -8294,7 +8657,7 @@ ${planned.key}`);
       while (true) {
         try {
           const job = await submitBody(
-            analysisType,
+            analysisType2,
             bodyWithReference(prepared.body, reference.groups, referenceUrl),
             transport3,
             Object.keys(reference.groups).sort()
@@ -8316,7 +8679,9 @@ ${planned.key}`);
             cache2.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
             await cache2.dropUpload(partitionKey, reference.key, referenceUrl);
           }
-          if (!(error instanceof GeometryReferenceRejectedError)) unsafeCandidate(error);
+          if (!(error instanceof GeometryReferenceRejectedError)) {
+            unsafeCandidate(error, transport3.idempotencyKey !== void 0);
+          }
           if (!recover) return { kind: "ref-rejected", code: error.code };
           if (reference.cached && !refreshed && DEAD_REF_CODES.has(error.code)) {
             cache2.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
@@ -8471,11 +8836,11 @@ function bodyArtifact(body, limits) {
 
 // src/internal/facade-artifact-guard.ts
 var FacadeArtifactMismatchError = class extends Error {
-  constructor(analysisType, missing, unplanned) {
+  constructor(analysisType2, missing, unplanned) {
     super(
-      `binary ${analysisType}: the facade artifact does not carry exactly the batch's planned target buildings (${missing.length} missing, ${unplanned.length} unplanned); refused before any paid submission`
+      `binary ${analysisType2}: the facade artifact does not carry exactly the batch's planned target buildings (${missing.length} missing, ${unplanned.length} unplanned); refused before any paid submission`
     );
-    this.analysisType = analysisType;
+    this.analysisType = analysisType2;
     this.missing = missing;
     this.unplanned = unplanned;
   }
@@ -8484,17 +8849,66 @@ var FacadeArtifactMismatchError = class extends Error {
 function isSurfaceBody(body) {
   return typeof body["analysis-surfaces"] === "string";
 }
-function checkFacadeArtifact(analysisType, body, artifact) {
+function checkFacadeArtifact(analysisType2, body, artifact) {
   const geometries = body.geometries;
   const planned = geometries instanceof KernelGroup ? [...geometries.ids ?? []] : geometries !== null && typeof geometries === "object" && !Array.isArray(geometries) ? Object.keys(geometries) : [];
   const carried = artifact.targetIds;
-  if (carried === void 0) throw new FacadeArtifactMismatchError(analysisType, planned, ["<unsplit tile>"]);
+  if (carried === void 0) throw new FacadeArtifactMismatchError(analysisType2, planned, ["<unsplit tile>"]);
   const have = new Set(carried);
   const want = new Set(planned);
   const missing = planned.filter((id) => !have.has(id));
   const unplanned = carried.filter((id) => !want.has(id));
   if (missing.length > 0 || unplanned.length > 0 || have.size !== carried.length) {
-    throw new FacadeArtifactMismatchError(analysisType, missing, unplanned);
+    throw new FacadeArtifactMismatchError(analysisType2, missing, unplanned);
+  }
+}
+
+// src/internal/host-retry.ts
+function factsOf(error) {
+  if (error instanceof TransportError) {
+    if (error.phase === "pre-dispatch") return { phase: "before_send" };
+    return {
+      phase: "after_send",
+      ...error.status === void 0 ? {} : { status: error.status },
+      ...error.retryAfterS === void 0 ? {} : { retryAfterS: error.retryAfterS }
+    };
+  }
+  if (error instanceof GeodataFetchError && (error.status !== void 0 || error.cause !== void 0)) {
+    return { phase: "after_send", ...error.status === void 0 ? {} : { status: error.status } };
+  }
+  return void 0;
+}
+async function withHostRetry(request, call, options = {}) {
+  for (let tries = 1; ; tries += 1) {
+    try {
+      return await call();
+    } catch (error) {
+      const facts = options.signal?.aborted === true ? void 0 : factsOf(error);
+      if (facts === void 0) throw error;
+      const waitS = requireCore().hostRetryWaitSeconds(
+        request,
+        facts.phase,
+        facts.status,
+        tries,
+        Math.random(),
+        facts.retryAfterS
+      );
+      if (waitS === void 0) throw error;
+      options.logger?.warn(`${request} retry ${tries + 1}: wait ${waitS.toFixed(2)} s`);
+      try {
+        await delay(waitS * 1e3, options.signal ?? new AbortController().signal);
+      } catch {
+        if (error instanceof TransportError) {
+          throw new TransportError(
+            "request was aborted while waiting to retry",
+            "pre-dispatch",
+            "aborted",
+            error.method
+          );
+        }
+        throw error;
+      }
+    }
   }
 }
 
@@ -8539,18 +8953,19 @@ async function capability(gateway, signal) {
     geometrySchemas,
     models,
     limits: parsedLimits,
-    ...facadeTargets === void 0 ? {} : { facadeTargets }
+    ...facadeTargets === void 0 ? {} : { facadeTargets },
+    ...value.batchSubmit === void 0 ? {} : { batchSubmit: value.batchSubmit }
   };
 }
-function checkBinaryRoute(analysisType, supported) {
+function checkBinaryRoute(analysisType2, supported) {
   const schema = requireCore().geometrySchemaVersion();
   const schemas = supported.geometrySchemas ?? [1];
   if (!schemas.includes(schema)) {
     throw new TypeError(`this endpoint reads binary geometry schema(s) ${JSON.stringify(schemas)}; this SDK writes schema ${schema}. The server needs the geometry schema ${schema} update.`);
   }
-  const model = supported.models[analysisType];
+  const model = supported.models[analysisType2];
   if (model === void 0 || !Array.isArray(model.geometryGroups) || !Array.isArray(model.resultFamilies) || model.resultFamilies.length === 0) {
-    throw new TypeError(`model ${analysisType} does not support binary transport`);
+    throw new TypeError(`model ${analysisType2} does not support binary transport`);
   }
   return model;
 }
@@ -8574,7 +8989,7 @@ async function prepareBinary(prepared, supported) {
     supported.limits.maxMetadataBytes,
     MAX_CONTROL_METADATA_BYTES
   ), "binary control");
-  const tile = prepared.artifact === void 0 ? bodyArtifact(prepared.body, supported.limits) : prepared.artifact({ ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
+  const tile = prepared.artifact === void 0 ? bodyArtifact(prepared.body, supported.limits) : await prepared.artifact({ ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
   if (prepared.artifact !== void 0 && isSurfaceBody(prepared.body)) {
     checkFacadeArtifact(prepared.analysisType, prepared.body, tile);
   }
@@ -8582,44 +8997,20 @@ async function prepareBinary(prepared, supported) {
   return { artifact, control, limits: supported.limits };
 }
 async function uploadGeometry2(uploadGateway, fetch2, prepared, timeoutMs, signal) {
-  const response = await resending(() => uploadGateway.requestJson("/uploads/presign", {
+  const response = await withHostRetry("upload", () => uploadGateway.requestJson("/uploads/presign", {
     method: "POST",
     body: { content_length: prepared.artifact.archive.byteLength },
     ...signal === void 0 ? {} : { signal }
-  }), signal);
+  }), { signal });
   const value = object(response, "presign response");
   const uploadUrl = https(value["upload-url"], "upload-url");
   const getUrl = https(value["get-url"], "get-url");
-  await resending(() => uploadPresignedZip(uploadUrl, prepared.artifact.archive, {
+  await withHostRetry("upload", () => uploadPresignedZip(uploadUrl, prepared.artifact.archive, {
     fetch: fetch2,
     timeoutMs,
     ...signal === void 0 ? {} : { signal }
-  }), signal);
+  }), { signal });
   return getUrl;
-}
-var RATE_LIMITED = 429;
-var UPLOAD_ATTEMPTS = 5;
-async function resending(send, signal) {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await send();
-    } catch (error) {
-      if (attempt >= UPLOAD_ATTEMPTS || !(error instanceof TransportError) || error.reason !== "http" || error.status !== RATE_LIMITED) throw error;
-      try {
-        await delay(
-          Math.min(4e3, 250 * 2 ** (attempt - 1)) * (0.5 + Math.random()),
-          signal ?? new AbortController().signal
-        );
-      } catch {
-        throw new TransportError(
-          "upload was aborted while waiting to send again",
-          "pre-dispatch",
-          "aborted",
-          error.method
-        );
-      }
-    }
-  }
 }
 function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
   return {
@@ -8636,7 +9027,7 @@ function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
     ...binary.artifact.targets === void 0 ? {} : { targets: binary.artifact.targets }
   };
 }
-async function submitBinary(gateway, prepared, binary, parseJob2, signal, beforeDispatch, idempotencyKey) {
+function binaryEnvelope(binary) {
   const envelope = JSON.stringify({
     inputFormat: "irbf",
     resultFormat: binary.resultFormat,
@@ -8645,7 +9036,7 @@ async function submitBinary(gateway, prepared, binary, parseJob2, signal, before
     control: binary.control,
     ...binary.targets === void 0 ? {} : { targets: binary.targets }
   });
-  const body = canonicalJsonBytes2(
+  return canonicalJsonBytes2(
     envelope,
     Math.min(
       binary.limits.maxMetadataBytes,
@@ -8653,6 +9044,9 @@ async function submitBinary(gateway, prepared, binary, parseJob2, signal, before
     ) + 65536,
     "binary submission envelope"
   );
+}
+async function submitBinary(gateway, prepared, binary, parseJob2, signal, beforeDispatch, idempotencyKey) {
+  const body = binaryEnvelope(binary);
   const endpointPath = `/binary/v1/async/${encodeURIComponent(prepared.analysisType)}`;
   const headers = {
     "Content-Type": "application/json",
@@ -8719,10 +9113,10 @@ async function submitBinary(gateway, prepared, binary, parseJob2, signal, before
   }
   return job;
 }
-function preacceptRejection(status, raw) {
-  if (![400, 401, 402, 404, 413, 415, 422, 429].includes(status) || raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
+function preacceptRejection(status2, raw) {
+  if (![400, 401, 402, 404, 413, 415, 422, 429].includes(status2) || raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
   const value = raw;
-  return Object.keys(value).sort().join() === "code,detail,status,title,type" && value.status === status && value.code === "JOB_BINARY_REJECTED" && [value.type, value.title, value.detail].every((item) => typeof item === "string");
+  return Object.keys(value).sort().join() === "code,detail,status,title,type" && value.status === status2 && value.code === "JOB_BINARY_REJECTED" && [value.type, value.title, value.detail].every((item) => typeof item === "string");
 }
 function validateAck(raw, geometry, resultFormat) {
   const value = object(raw, "binary acknowledgement");
@@ -8762,39 +9156,8 @@ function canonicalJsonBytes2(value, maxBytes, name) {
 
 // src/internal/capability-cache.ts
 var CAPABILITY_TTL_MS = 6e4;
-var CAPABILITY_MAX_ATTEMPTS = 3;
-var CAPABILITY_MIN_BACKOFF_MS = 250;
-var CAPABILITY_MAX_BACKOFF_MS = 1e3;
-function isRetryableCapabilityError(error) {
-  if (!(error instanceof TransportError)) return false;
-  if (error.reason === "network" || error.reason === "timeout") return true;
-  if (error.reason === "http" && error.status !== void 0) {
-    return error.status === 429 || error.status >= 500 && error.status < 600;
-  }
-  return false;
-}
-async function pauseBeforeCapabilityRetry(signal) {
-  const waitMs = CAPABILITY_MIN_BACKOFF_MS + Math.random() * (CAPABILITY_MAX_BACKOFF_MS - CAPABILITY_MIN_BACKOFF_MS);
-  try {
-    await delay(waitMs, signal ?? new AbortController().signal);
-  } catch {
-    throw new TransportError(
-      "binary capability GET was aborted while waiting to retry",
-      "pre-dispatch",
-      "aborted",
-      "GET"
-    );
-  }
-}
-async function fetchCapability(gateway, signal) {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await capability(gateway, signal);
-    } catch (error) {
-      if (attempt >= CAPABILITY_MAX_ATTEMPTS || !isRetryableCapabilityError(error)) throw error;
-    }
-    await pauseBeforeCapabilityRetry(signal);
-  }
+function fetchCapability(gateway, signal) {
+  return withHostRetry("capability", () => capability(gateway, signal), { signal });
 }
 var CapabilityCache = class {
   constructor(gateway) {
@@ -8802,13 +9165,13 @@ var CapabilityCache = class {
   }
   entry;
   get(signal) {
-    const now2 = Date.now();
-    if (this.entry !== void 0 && now2 - this.entry.at < CAPABILITY_TTL_MS) return this.entry.value;
+    const now3 = Date.now();
+    if (this.entry !== void 0 && now3 - this.entry.at < CAPABILITY_TTL_MS) return this.entry.value;
     const value = fetchCapability(this.gateway, signal).catch((error) => {
       if (this.entry?.value === value) this.entry = void 0;
       throw error;
     });
-    this.entry = { at: now2, value };
+    this.entry = { at: now3, value };
     return value;
   }
 };
@@ -8816,30 +9179,30 @@ var CapabilityCache = class {
 // src/internal/binary-admission.ts
 var limit = 2;
 var active2 = 0;
-var waiting3 = [];
+var waiting4 = [];
 async function withBinaryAdmission(operation, signal) {
   if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-  if (active2 < limit && waiting3.length === 0) active2 += 1;
+  if (active2 < limit && waiting4.length === 0) active2 += 1;
   else await new Promise((resolve, reject) => {
     const waiter = { resolve, reject, ...signal === void 0 ? {} : { signal } };
     if (signal !== void 0) {
       const abort = () => {
-        const index2 = waiting3.indexOf(waiter);
-        if (index2 >= 0) waiting3.splice(index2, 1);
+        const index2 = waiting4.indexOf(waiter);
+        if (index2 >= 0) waiting4.splice(index2, 1);
         reject(signal.reason ?? new DOMException("aborted", "AbortError"));
       };
       waiter.abort = abort;
       signal.addEventListener("abort", abort, { once: true });
     }
-    waiting3.push(waiter);
+    waiting4.push(waiter);
   });
   try {
     if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
     return await operation();
   } finally {
     active2 -= 1;
-    while (active2 < limit && waiting3.length > 0) {
-      const waiter = waiting3.shift();
+    while (active2 < limit && waiting4.length > 0) {
+      const waiter = waiting4.shift();
       if (waiter.signal !== void 0 && waiter.abort !== void 0) {
         waiter.signal.removeEventListener("abort", waiter.abort);
       }
@@ -8857,9 +9220,9 @@ var MAX_ENTRIES = 256;
 var entries2 = /* @__PURE__ */ new Map();
 var BinaryUrlCache = class {
   /** The caller's `geometryUrlStore`, read once per key before an upload. */
-  constructor(enabled, now2 = Date.now, store) {
+  constructor(enabled, now3 = Date.now, store) {
     this.enabled = enabled;
-    this.now = now2;
+    this.now = now3;
     this.store = store;
   }
   /** The uploads that run now, one per URL key, for this client only (T4).
@@ -8892,7 +9255,7 @@ var BinaryUrlCache = class {
     while (entries2.size > MAX_ENTRIES) entries2.delete(entries2.keys().next().value);
   }
 };
-function reusableUntil(raw, now2) {
+function reusableUntil(raw, now3) {
   let url;
   try {
     url = new URL(raw);
@@ -8901,7 +9264,7 @@ function reusableUntil(raw, now2) {
   }
   const date = url.searchParams.get("X-Amz-Date");
   const seconds = url.searchParams.get("X-Amz-Expires");
-  if (date === null && seconds === null) return now2 + FALLBACK_TTL_MS - SAFETY_MARGIN_MS;
+  if (date === null && seconds === null) return now3 + FALLBACK_TTL_MS - SAFETY_MARGIN_MS;
   if (date === null || seconds === null || !/^\d{8}T\d{6}Z$/.test(date) || !/^\d+$/.test(seconds)) {
     return void 0;
   }
@@ -8917,7 +9280,7 @@ function reusableUntil(raw, now2) {
   if (!Number.isSafeInteger(ttl) || ttl <= 0) return void 0;
   const canonical = new Date(signedAt).toISOString().replace(/[-:]/g, "").replace(".000", "");
   if (canonical !== date) return void 0;
-  return Math.min(signedAt + ttl, now2 + FALLBACK_TTL_MS) - SAFETY_MARGIN_MS;
+  return Math.min(signedAt + ttl, now3 + FALLBACK_TTL_MS) - SAFETY_MARGIN_MS;
 }
 
 // src/internal/binary-retention.ts
@@ -8950,6 +9313,11 @@ var BinaryRetention = class {
 };
 
 // src/internal/status-batch.ts
+function isTransientStatusError(error) {
+  if (!(error instanceof TransportError)) return false;
+  if (error.reason === "network" || error.reason === "timeout") return true;
+  return error.reason === "http" && error.status !== void 0 && (error.status === 429 || error.status >= 500);
+}
 var STATUS_BATCH_LIMIT = 50;
 function rejectsTheForm(error) {
   if (!(error instanceof TransportError) || error.status === void 0) return false;
@@ -9003,6 +9371,7 @@ async function fetchStatusBatch(gateway, jobIds2, options = {}) {
   let lacking = false;
   const failedIds = [];
   let retryAfterS;
+  let refusedStatus;
   if (jobIds2.length === 0) return { statuses, unanswered, batched: false, lacking: false };
   const chunks = chunk(jobIds2);
   const workers = Math.max(1, Math.min(options.maxWorkers ?? 5, chunks.length));
@@ -9016,10 +9385,13 @@ async function fetchStatusBatch(gateway, jobIds2, options = {}) {
         answer = await fetchChunk(gateway, ids, options.signal);
       } catch (error) {
         if (options.signal?.aborted === true) throw error;
-        if (isTransientStatusError(error) && (error.reason === "http" || options.routeProven === true)) {
+        if (isTransientStatusError(error) && error.reason === "http") {
           failedIds.push(...ids);
           if (error.retryAfterS !== void 0) retryAfterS = Math.max(retryAfterS ?? 0, error.retryAfterS);
           continue;
+        }
+        if (error instanceof TransportError && error.reason === "http" && error.status !== void 0) {
+          refusedStatus ??= error.status;
         }
         unanswered.push(...ids);
         continue;
@@ -9044,6 +9416,7 @@ async function fetchStatusBatch(gateway, jobIds2, options = {}) {
     batched: answered > 0,
     lacking,
     ...failedIds.length === 0 ? {} : { failedIds },
+    ...refusedStatus === void 0 ? {} : { refusedStatus },
     ...retryAfterS === void 0 ? {} : { retryAfterS }
   };
 }
@@ -9070,16 +9443,16 @@ function awaitAbortable(promise, signal) {
   });
 }
 async function sharedUpload(options, key, uploadGateway, prepared, keep, refresh = false) {
-  const inFlight = options.urlCache.inFlight;
-  let upload = inFlight.get(key);
+  const inFlight2 = options.urlCache.inFlight;
+  let upload = inFlight2.get(key);
   if (upload !== void 0) {
     options.stages?.uploaded();
     return awaitAbortable(upload, options.signal);
   }
   upload = (keep ? storedOrUploaded(options, key, uploadGateway, prepared, refresh) : uploadGeometry2(uploadGateway, options.fetch, prepared, options.timeoutMs, void 0).then((url) => ({ url, reused: false }))).finally(() => {
-    inFlight.delete(key);
+    inFlight2.delete(key);
   });
-  inFlight.set(key, upload);
+  inFlight2.set(key, upload);
   upload.catch(() => void 0);
   try {
     return await awaitAbortable(upload, options.signal);
@@ -9095,10 +9468,25 @@ async function storedOrUploaded(options, key, uploadGateway, prepared, refresh) 
     cache2.set(key, stored.url, stored.expiresAt);
     return { url: stored.url, reused: true };
   }
-  const url = await uploadGeometry2(uploadGateway, options.fetch, prepared, options.timeoutMs, void 0);
-  cache2.set(key, url);
-  cache2.store?.set(tagged, url);
-  return { url, reused: false };
+  const release4 = refresh ? void 0 : await cache2.store?.claim(tagged);
+  let held = release4;
+  try {
+    const claimed = release4 === void 0 ? void 0 : await cache2.store?.get(tagged);
+    if (claimed !== void 0) {
+      cache2.set(key, claimed.url, claimed.expiresAt);
+      return { url: claimed.url, reused: true };
+    }
+    const url = await uploadGeometry2(uploadGateway, options.fetch, prepared, options.timeoutMs, void 0);
+    cache2.set(key, url);
+    const written = cache2.store?.set(tagged, url);
+    if (release4 !== void 0 && written !== void 0) {
+      held = void 0;
+      void written.then(release4);
+    }
+    return { url, reused: false };
+  } finally {
+    held?.();
+  }
 }
 function refusedGeometry(error) {
   return error instanceof TransportError && error.phase === "response" && error.status !== void 0 && [400, 404, 410, 422].includes(error.status);
@@ -9169,23 +9557,29 @@ async function prepareUncached(options, fresh) {
     options.releasePrepared();
   }
 }
-async function uncached(options, fresh) {
+async function uncached(options, fresh, deliver) {
   const binary = await prepareUncached(options, fresh);
-  return post2(options, () => submitBinary(
-    options.gateway,
+  return deliver(options.gateway, binary, options.beforeDispatch);
+}
+function submitPreparedBinary(options) {
+  return deliverPrepared(options, (gateway, binary, beforeDispatch) => post2(options, () => submitBinary(
+    gateway,
     options.prepared,
     binary,
     options.parseJob,
     options.signal,
-    options.beforeDispatch,
+    beforeDispatch,
     options.idempotencyKey
-  ));
+  )));
 }
-async function submitPreparedBinary(options) {
-  if (!options.reuseEnabled) return uncached(options, false);
+function prepareBinaryEnvelope(options) {
+  return deliverPrepared(options, async (_gateway, binary) => binaryEnvelope(binary));
+}
+async function deliverPrepared(options, deliver) {
+  if (!options.reuseEnabled) return uncached(options, false, deliver);
   const headers = await resolveAuth(options);
   const digest = await exactAuthHeadersDigest(headers);
-  if (digest === void 0) return uncached(options, false);
+  if (digest === void 0) return uncached(options, false, deliver);
   const strictAuth = boundAuth(headers, digest, options.auth);
   const gateway = transport(options.gateway.baseUrl, strictAuth, options);
   const uploadGateway = transport(options.uploadGateway.baseUrl, strictAuth, options);
@@ -9194,15 +9588,7 @@ async function submitPreparedBinary(options) {
     options.beforeDispatch?.();
     paidDispatched = true;
   };
-  const send = (binary) => post2(options, () => submitBinary(
-    gateway,
-    options.prepared,
-    binary,
-    options.parseJob,
-    options.signal,
-    beforeDispatch,
-    options.idempotencyKey
-  ));
+  const send = (binary) => deliver(gateway, binary, beforeDispatch);
   try {
     let binary;
     let cacheKey2;
@@ -9233,7 +9619,7 @@ async function submitPreparedBinary(options) {
   } catch (error) {
     if (!(error instanceof AuthPartitionChangedError)) throw error;
     if (paidDispatched) throw error;
-    return uncached(options, true);
+    return uncached(options, true, deliver);
   }
 }
 
@@ -10332,13 +10718,13 @@ function limit2(value, fallback, name) {
   return resolved;
 }
 function join2(chunks, length) {
-  const result = new Uint8Array(length);
+  const result2 = new Uint8Array(length);
   let offset = 0;
   for (const chunk2 of chunks) {
-    result.set(chunk2, offset);
+    result2.set(chunk2, offset);
     offset += chunk2.length;
   }
-  return result;
+  return result2;
 }
 function feed(content, push) {
   for (let offset = 0; offset < content.length; offset += INPUT_CHUNK_BYTES) {
@@ -10452,11 +10838,11 @@ function finite(value, name) {
   return value;
 }
 function count(value, name) {
-  const result = finite(value, name);
-  if (!Number.isSafeInteger(result) || result < 0 || result > 4294967295) {
+  const result2 = finite(value, name);
+  if (!Number.isSafeInteger(result2) || result2 < 0 || result2 > 4294967295) {
     throw new TypeError(`${name} must be an unsigned 32-bit integer`);
   }
-  return result;
+  return result2;
 }
 function vector(value, name) {
   if (!Array.isArray(value) || value.length !== 3) {
@@ -10623,6 +11009,19 @@ function parseResultArchive(content, options = {}) {
   return parseResultDocument(decompressResultArchive(content, options.archive), options);
 }
 
+// src/job-model.ts
+var JobStatus = {
+  Pending: "pending",
+  Running: "running",
+  Succeeded: "succeeded",
+  Failed: "failed",
+  Unknown: "unknown"
+};
+function requireJobId(jobId) {
+  if (typeof jobId !== "string" || jobId.length === 0) throw new TypeError("jobId must be a non-empty string");
+  return jobId;
+}
+
 // src/area/facade-captures.ts
 var FacadeCaptures = class {
   kernel;
@@ -10641,10 +11040,15 @@ var FacadeCaptures = class {
   get heldBytes() {
     return this.kernel?.heldBytes ?? 0;
   }
-  /** Keep the capture of an accepted job. `cellTris`: the run asked for the per-cell triangles. */
+  /**
+   * Keep the capture of an accepted job: its bytes, or a capture already held in this store.
+   * `cellTris`: the run asked for the per-cell triangles.
+   */
+  // Maintainer note (not published): a hold is `Site.facadeCaptures`' (D-2026101110-iris-nectar-maple).
   remember(jobId, capture, cellTris) {
     try {
-      this.store.remember(jobId, capture);
+      if (capture instanceof Uint8Array) this.store.remember(jobId, capture);
+      else capture.bind(jobId);
     } catch (error) {
       this.lost.add(jobId);
       throw error;
@@ -10694,12 +11098,14 @@ var JobsService = class {
   geometryReuseEnabled;
   geometryReuseOptions;
   capabilities;
-  /** `undefined` until the batched status route has been tried once. */
+  /** What `getStatusBatch` learned of the batched route (1.0.0 behaviour); unset: not known. */
   batchedStatus;
   binaryPrepared = new BinaryRetention();
   geometryUrls;
   auth;
   binaryUrlReuse;
+  /** Area runs send their binary jobs in batch submits when the API offers them (`JobsServiceOptions.batchSubmit`). */
+  batchSubmit;
   /** Default `consoleLogger`, like every other service in this package. */
   logger;
   /**
@@ -10719,7 +11125,10 @@ var JobsService = class {
     if (typeof fetcher !== "function") throw new TypeError("a fetch implementation is required");
     this.fetch = fetcher;
     this.pollIntervalMs = options.pollIntervalMs;
-    if (this.pollIntervalMs !== void 0) requireTimeout(this.pollIntervalMs);
+    if (this.pollIntervalMs !== void 0) {
+      requireTimeout(this.pollIntervalMs);
+      warnPollIntervalDeprecated(options.logger ?? consoleLogger);
+    }
     const backoffCapSeconds = options.backoffCapSeconds;
     if (backoffCapSeconds !== void 0) requireTimeout(backoffCapSeconds * 1e3);
     this.backoffCapMs = backoffCapSeconds === void 0 ? void 0 : backoffCapSeconds * 1e3;
@@ -10729,6 +11138,7 @@ var JobsService = class {
     requireTimeout(this.requestTimeoutMs);
     this.bigPayloadThresholdBytes = options.bigPayloadThresholdBytes ?? BIG_PAYLOAD_THRESHOLD_BYTES;
     this.binaryUrlReuse = options.binaryUrlReuse !== false;
+    this.batchSubmit = options.batchSubmit !== false;
     this.logger = options.logger ?? consoleLogger;
     const urlStore = geometryUrlStoreGate(options.geometryUrlStore, this.logger, this.requestTimeoutMs);
     this.geometryUrls = new BinaryUrlCache(this.binaryUrlReuse, Date.now, urlStore);
@@ -10761,20 +11171,20 @@ var JobsService = class {
    * `options.transport` is `"json"` or the analysis has no binary route.
    */
   // Maintainer note (not published): binary-by-default routing is D196.
-  async submit(analysisType, payload, options = {}) {
-    const prepared = this.prepareSubmission(analysisType, payload, options);
+  async submit(analysisType2, payload, options = {}) {
+    const prepared = this.prepareSubmission(analysisType2, payload, options);
     return this.submitPrepared(prepared, options.signal === void 0 ? {} : { signal: options.signal });
   }
   /** Validates and encodes a request without sending it; returns the `PreparedSubmission`. */
-  prepareSubmission(analysisType, payload, options = {}) {
-    const transport3 = options.transport ?? defaultTransport(analysisType);
+  prepareSubmission(analysisType2, payload, options = {}) {
+    const transport3 = options.transport ?? defaultTransport(analysisType2);
     if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
       throw new TypeError("unsupported option binaryResults; use transport instead");
     }
     return {
-      analysisType,
+      analysisType: analysisType2,
       transport: transport3,
-      body: prepareSubmissionBody(analysisType, payload, options)
+      body: prepareSubmissionBody(analysisType2, payload, options)
     };
   }
   /** Sends a `PreparedSubmission` and returns the accepted `Job`; the options are used by area runs. */
@@ -10782,50 +11192,11 @@ var JobsService = class {
     if (prepared.transport === "binary" && prepared.interiorBinary !== void 0) {
       const binary = prepared.interiorBinary;
       return submitPreparedBinary({
-        prepared,
-        parseJob: jobFromResponse,
-        prepare: async () => binary,
-        releasePrepared: () => void 0,
-        gateway: this.gateway,
-        uploadGateway: this.uploadGateway,
-        auth: this.auth,
-        fetch: this.fetch,
-        timeoutMs: this.requestTimeoutMs,
-        urlCache: this.geometryUrls,
-        reuseEnabled: this.binaryUrlReuse,
-        resultFormat: prepared.interiorResultFormat ?? "json",
-        ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey },
-        ...options.signal === void 0 ? {} : { signal: options.signal },
-        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
-        ...options.stages === void 0 ? {} : { stages: options.stages }
+        ...this.binaryOptions(prepared, options, async () => binary, () => void 0),
+        resultFormat: prepared.interiorResultFormat ?? "json"
       });
     }
-    if (prepared.transport === "binary") {
-      const supported = await this.capabilities.get(options.signal);
-      return submitPreparedBinary({
-        prepared,
-        parseJob: jobFromResponse,
-        prepare: async (fresh) => {
-          if (!fresh) {
-            const retained = this.binaryPrepared.get(prepared);
-            if (retained !== void 0) return retained;
-          }
-          return prepareBinary(prepared, supported);
-        },
-        releasePrepared: () => this.binaryPrepared.release(prepared),
-        gateway: this.gateway,
-        uploadGateway: this.uploadGateway,
-        auth: this.auth,
-        fetch: this.fetch,
-        timeoutMs: this.requestTimeoutMs,
-        urlCache: this.geometryUrls,
-        reuseEnabled: this.binaryUrlReuse,
-        ...options.signal === void 0 ? {} : { signal: options.signal },
-        ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
-        ...options.stages === void 0 ? {} : { stages: options.stages },
-        ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey }
-      });
-    }
+    if (prepared.transport === "binary") return submitPreparedBinary(await this.outdoorBinary(prepared, options));
     if (this.geometryReuseEnabled) {
       const reused = await tryGeometryReuse(
         prepared,
@@ -10837,7 +11208,7 @@ var JobsService = class {
       if (reused !== void 0) return reused;
     }
     const json = preparedJsonBytes(prepared);
-    const archive = requireCore().zipPayloadJson(json);
+    const archive = await zipPayload(json);
     return submitArchive({
       endpointPath: `/async/${encodeURIComponent(prepared.analysisType)}`,
       archive,
@@ -10850,6 +11221,47 @@ var JobsService = class {
       ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey },
       ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
       ...options.signal === void 0 ? {} : { signal: options.signal }
+    });
+  }
+  /** The options of one binary submission of this client. */
+  binaryOptions(prepared, options, prepare2, releasePrepared) {
+    return {
+      prepared,
+      parseJob: jobFromResponse,
+      prepare: prepare2,
+      releasePrepared,
+      gateway: this.gateway,
+      uploadGateway: this.uploadGateway,
+      auth: this.auth,
+      fetch: this.fetch,
+      timeoutMs: this.requestTimeoutMs,
+      urlCache: this.geometryUrls,
+      reuseEnabled: this.binaryUrlReuse,
+      ...options.idempotencyKey === void 0 ? {} : { idempotencyKey: options.idempotencyKey },
+      ...options.signal === void 0 ? {} : { signal: options.signal },
+      ...options.beforeDispatch === void 0 ? {} : { beforeDispatch: options.beforeDispatch },
+      ...options.stages === void 0 ? {} : { stages: options.stages }
+    };
+  }
+  /** An outdoor binary submission: the encode and the URL reuse of this client. */
+  async outdoorBinary(prepared, options) {
+    const supported = await this.capabilities.get(options.signal);
+    const prepare2 = async (fresh) => (fresh ? void 0 : this.binaryPrepared.get(prepared)) ?? prepareBinary(prepared, supported);
+    return this.binaryOptions(prepared, options, prepare2, () => this.binaryPrepared.release(prepared));
+  }
+  /** @internal Batch submit: one outdoor binary request, uploaded, not POSTed; else `undefined`. */
+  async prepareBatchItem(prepared, options = {}) {
+    if (prepared.transport !== "binary" || prepared.interiorBinary !== void 0) return void 0;
+    return prepareBinaryEnvelope(await this.outdoorBinary(prepared, options));
+  }
+  /** @internal ONE POST of a batch body the run engine wrote; an HTTP error is returned. */
+  postBatch(body, options = {}) {
+    return dispatchKeyed({
+      gateway: this.gateway,
+      endpointPath: "/binary/v1/async-batch",
+      body: new TextEncoder().encode(body),
+      headers: { "Content-Type": "application/json" },
+      ...options
     });
   }
   /**
@@ -10892,7 +11304,7 @@ var JobsService = class {
       signal === void 0 ? {} : { signal }
     );
     const job = jobFromResponse(response);
-    if (job.jobId !== id) throw new Error("job response ID does not match requested jobId");
+    if (job.jobId !== id) throw new JobResponseMismatchError();
     return job;
   }
   /** Reads one job's status. */
@@ -10900,12 +11312,9 @@ var JobsService = class {
     return this.getStatusWithSignal(jobId, options.signal);
   }
   /**
-   * Whether the API's route for reading many job statuses at once has
-   * answered this client. `false` until it has, and for good once the API
-   * shows it lacks the route; area runs use it to choose their poll interval.
+   * Whether the API's route for reading many job statuses at once has answered this client.
+   * `false` until it has, and for good once the API shows it lacks the route.
    */
-  // Maintainer note (not published): see internal/status-batch.ts and
-  // docs/DEVIATIONS.md D121.
   get batchedStatusSupported() {
     return this.batchedStatus === true;
   }
@@ -10920,34 +11329,32 @@ var JobsService = class {
     if (this.batchedStatus === false) {
       return { statuses: /* @__PURE__ */ new Map(), unanswered: [...ids], batched: false, lacking: true };
     }
-    const sweep = await fetchStatusBatch(
-      this.gateway,
-      ids,
-      { ...options, routeProven: this.batchedStatus === true }
-    );
+    const sweep = await fetchStatusBatch(this.gateway, ids, options);
     if (sweep.lacking) this.batchedStatus = false;
     else if (sweep.batched) this.batchedStatus = true;
     return sweep;
   }
   /**
-   * Polls a job until it succeeds or fails. `options.timeout` is in seconds
-   * (default 900).
+   * Waits for a job to succeed or fail: one `GET /async/jobs/{id}` 1 s after
+   * the call, then every 1 s until 10 s, then every 2 s. After HTTP 429, a 5xx
+   * or a network error it backs off (at most 30 s, never shorter than
+   * `Retry-After`). `options.timeout` is in seconds (default 900).
    *
    * @returns The finished `Job`.
    * @throws {JobFailedError} when the job fails.
    * @throws {JobTimeoutError} when the timeout passes first.
    * @throws {JobAbortedError} when `options.signal` aborts the wait.
+   * @throws {JobPollError} when a status request is refused for good (for example 401 or 404).
    */
-  // Maintainer note (not published): the SDK's one poll engine,
-  // internal/wait-job.ts (D213).
+  // Maintainer note (not published): the kernel `JobWait` (internal/wait-job.ts).
   async waitForCompletion(jobId, options = {}) {
     return waitForJob(requireJobId(jobId), options, {
       // One job: `GET /async/jobs/{id}`. A batch of one saves nothing, and a
       // gateway without the batched route answers `?ids=` with the whole
       // account listing (~70 KB, ~0.9 s).
       status: (id, signal) => this.getStatusWithSignal(id, signal),
-      fixedIntervalS: this.pollIntervalMs === void 0 ? void 0 : this.pollIntervalMs / 1e3,
-      maxIntervalS: this.backoffCapMs === void 0 ? void 0 : this.backoffCapMs / 1e3
+      intervalUs: this.pollIntervalMs === void 0 ? void 0 : Math.round(this.pollIntervalMs * 1e3),
+      intervalCapUs: this.backoffCapMs === void 0 ? void 0 : Math.round(this.backoffCapMs * 1e3)
     });
   }
   async resultsUrl(jobId, signal) {
@@ -10966,30 +11373,426 @@ var JobsService = class {
   }
   /**
    * Downloads the result archive of a finished job, retrying a failed
-   * download a few times. Pass `options.job` to skip reading the status.
+   * download a few times (each try with a fresh link). Pass `options.job` to
+   * skip reading the status.
    *
    * @throws {JobNotCompletedError} when the job has not succeeded.
    * @throws {TypeError} when `options.job` is a different job.
    */
   async downloadResults(jobId, options = {}) {
+    const id = await this.downloadable(jobId, options);
+    return downloadWithRetries(id, (signal) => this.downloadOnce(id, signal), options.signal);
+  }
+  /** @internal One try of `downloadResults`: the run engine retries an area run's downloads. */
+  async downloadResultsOnce(jobId, options = {}) {
+    const id = await this.downloadable(jobId, options);
+    return this.downloadOnce(id, options.signal);
+  }
+  async downloadable(jobId, options) {
     const id = requireJobId(jobId);
     if (options.job !== void 0 && options.job.jobId !== id) {
       throw new TypeError("supplied job ID does not match requested jobId");
     }
     const job = options.job ?? await this.getStatusWithSignal(id, options.signal);
     if (job.status !== JobStatus.Succeeded) throw new JobNotCompletedError(id, job.status);
-    for (let sendsDone = 1; ; sendsDone += 1) {
-      try {
-        const presignedUrl = await this.resultsUrl(id, options.signal);
-        const downloaded = await this.download(presignedUrl, options.signal);
-        return { ...downloaded, jobId: id, presignedUrl };
-      } catch (error) {
-        if (!shouldRetryDownload(error, sendsDone)) throw error;
-        await pauseBeforeRetry(sendsDone, error, options.signal);
-      }
-    }
+    return id;
+  }
+  async downloadOnce(id, signal) {
+    const presignedUrl = await this.resultsUrl(id, signal);
+    const downloaded = await this.download(presignedUrl, signal);
+    return { ...downloaded, jobId: id, presignedUrl };
   }
 };
+
+// src/area/run-io.ts
+function postFacts(error, sent) {
+  if (error instanceof SubmissionStoppedError) return { phase: "before_send" };
+  if (error instanceof TransportError && (error.method === "PUT" || !sent && error.reason === "aborted")) {
+    return { phase: "before_send" };
+  }
+  if (!sent) return rawAnswer(error);
+  try {
+    return rawAnswer(error);
+  } catch {
+    return { phase: "unknown" };
+  }
+}
+function status(job) {
+  return job.status === JobStatus.Succeeded ? "completed" : job.status === JobStatus.Failed ? "failed" : job.status === JobStatus.Running ? "running" : "pending";
+}
+function rememberAccepted(io, an, capture, jobId, tileId) {
+  try {
+    an.remember?.(capture, jobId);
+  } catch (error) {
+    try {
+      (io.logger ?? consoleLogger).warn({
+        event: "facade_capture_not_kept",
+        tileId,
+        jobId,
+        reason: error instanceof Error ? error.message : String(error)
+      });
+    } catch {
+    }
+  }
+}
+function recordAccepted(io, a, key, job, capture) {
+  const an = io.analyses[a];
+  const entry = an.entries.get(key);
+  an.jobs.set(key, {
+    tileId: entry.key,
+    row: entry.row,
+    col: entry.col,
+    jobId: job.jobId,
+    status: status(job),
+    lastJobSnapshot: job,
+    ...job.binary === void 0 ? {} : { binary: job.binary }
+  });
+  io.byJob.set(job.jobId, { a, key });
+  try {
+    io.onAccepted?.(job.jobId, key);
+  } catch {
+  }
+  rememberAccepted(io, an, capture, job.jobId, entry.key);
+}
+async function post3(io, act, signal) {
+  const an = io.analyses[act.a];
+  const entry = an.entries.get(act.key);
+  const reply = { kind: "post_answer", a: act.a, key: act.key };
+  let sent = false;
+  let capture;
+  try {
+    capture = await an.capture?.(entry);
+    const job = await io.service.submitPrepared(
+      entry.prepared,
+      { signal, idempotencyKey: act.idempotency_key, beforeDispatch: () => {
+        if (io.stopped?.() === true) throw new SubmissionStoppedError();
+        sent = true;
+      } }
+    );
+    recordAccepted(io, act.a, act.key, job, capture);
+    return { ...reply, answer: { status: 202 }, job_id: job.jobId };
+  } catch (error) {
+    if (error instanceof GeometryReferenceSubmissionError) {
+      const accepted = error.acceptedJobIds[0];
+      an.jobs.set(act.key, {
+        tileId: entry.key,
+        row: entry.row,
+        col: entry.col,
+        status: "failed",
+        invalidReference: true,
+        error: error.message,
+        ...accepted === void 0 ? {} : { jobId: accepted }
+      });
+      io.onInvalidReference?.();
+      throw error;
+    }
+    return failedPost(act, error, sent);
+  } finally {
+    free(capture);
+  }
+}
+function free(capture) {
+  if (capture !== void 0 && !(capture instanceof Uint8Array)) capture.free();
+}
+function failedPost(act, error, sent) {
+  return {
+    kind: "post_answer",
+    a: act.a,
+    key: act.key,
+    answer: postFacts(error, sent),
+    ...us(error.retryAfterS),
+    error: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  };
+}
+var preparedCaptures = /* @__PURE__ */ new WeakMap();
+async function prepare(io, act, signal) {
+  const an = io.analyses[act.a];
+  const entry = an.entries.get(act.key);
+  let request;
+  try {
+    request = await io.service.prepareBatchItem?.(entry.prepared, { signal });
+  } catch (error) {
+    return failedPost(act, error, false);
+  }
+  if (request === void 0) return post3(io, { ...act, kind: "post" }, signal);
+  let captures = preparedCaptures.get(an);
+  if (captures === void 0) preparedCaptures.set(an, captures = /* @__PURE__ */ new Map());
+  const capture = await an.capture?.(entry);
+  free(captures.get(act.key));
+  captures.set(act.key, capture);
+  return {
+    kind: "prepared",
+    a: act.a,
+    key: act.key,
+    model: entry.prepared.analysisType,
+    request: new TextDecoder().decode(request)
+  };
+}
+async function postBatch(io, act, signal) {
+  let sent = false;
+  try {
+    const response = await io.service.postBatch(act.body, { signal, beforeDispatch: () => {
+      if (io.stopped?.() === true) throw new SubmissionStoppedError();
+      sent = true;
+    } });
+    const ok = response.status >= 200 && response.status < 300;
+    const after = Number(response.headers.get("Retry-After") ?? Number.NaN);
+    return {
+      kind: "batch_answer",
+      batch: act.batch,
+      answer: { status: response.status },
+      ...ok ? { body: new TextDecoder().decode(response.content) } : {},
+      ...us(after)
+    };
+  } catch (error) {
+    return {
+      kind: "batch_answer",
+      batch: act.batch,
+      answer: postFacts(error, sent),
+      ...us(error.retryAfterS),
+      error: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    };
+  }
+}
+function acceptedAction(io, act) {
+  const an = io.analyses[act.a];
+  const captures = preparedCaptures.get(an);
+  const capture = captures?.get(act.key);
+  captures?.delete(act.key);
+  let job;
+  try {
+    job = jobFromResponse(act.body);
+  } catch {
+    job = { jobId: act.job_id, status: JobStatus.Pending };
+  }
+  recordAccepted(io, act.a, act.key, job, capture);
+  free(capture);
+}
+function freePreparedCaptures(io) {
+  for (const an of io.analyses) {
+    for (const capture of preparedCaptures.get(an)?.values() ?? []) free(capture);
+    preparedCaptures.delete(an);
+  }
+}
+async function poll(io, act, signal) {
+  const statuses = /* @__PURE__ */ new Map();
+  try {
+    if (act.batched) {
+      const sweep = await io.service.getStatusBatch?.(act.job_ids, { signal });
+      if (sweep === void 0 || sweep.lacking) {
+        return { kind: "sweep", answer: { status: 404 }, job_ids: act.job_ids, status: [] };
+      }
+      if (sweep.refusedStatus !== void 0) {
+        return { kind: "sweep", answer: { status: sweep.refusedStatus }, job_ids: act.job_ids, status: [] };
+      }
+      if (sweep.failedIds !== void 0 || !sweep.batched) {
+        return { kind: "sweep", answer: "after_send", ...us(sweep.retryAfterS), job_ids: act.job_ids, status: [] };
+      }
+      for (const [job, value] of sweep.statuses) statuses.set(job, value);
+    } else {
+      statuses.set(act.job_ids[0], await io.service.getStatus(act.job_ids[0], { signal }));
+    }
+  } catch (error) {
+    return {
+      kind: "sweep",
+      answer: rawAnswer(error),
+      ...us(error.retryAfterS),
+      job_ids: act.job_ids,
+      status: []
+    };
+  }
+  const jobIds2 = [];
+  const texts = [];
+  const errors = {};
+  for (const [id, job] of statuses) {
+    if (job.status === JobStatus.Failed && job.error) errors[id] = job.error;
+    const where = io.byJob.get(id);
+    const record3 = where === void 0 ? void 0 : io.analyses[where.a].jobs.get(where.key);
+    if (record3 !== void 0) {
+      record3.lastJobSnapshot = job;
+      record3.status = status(job);
+      if (job.error !== void 0) record3.error = job.error;
+    }
+    jobIds2.push(id);
+    texts.push(job.status);
+  }
+  return {
+    kind: "sweep",
+    answer: { status: 200 },
+    job_ids: jobIds2,
+    status: texts,
+    ...Object.keys(errors).length === 0 ? {} : { errors }
+  };
+}
+async function download(io, act, signal) {
+  const an = io.analyses[act.a];
+  const key = io.byJob.get(act.job).key;
+  const job = an.jobs.get(key);
+  let archive;
+  try {
+    const once = io.service.downloadResultsOnce?.bind(io.service) ?? io.service.downloadResults.bind(io.service);
+    archive = (await once(
+      act.job,
+      { signal, ...job.lastJobSnapshot === void 0 ? {} : { job: job.lastJobSnapshot } }
+    )).content;
+  } catch (error) {
+    return {
+      kind: "download_failed",
+      job: act.job,
+      answer: rawAnswer(error),
+      ...us(error.retryAfterS)
+    };
+  }
+  if (signal.aborted) throw signal.reason;
+  const refused = an.grid !== void 0 ? await an.grid.push(job, archive) : an.surface !== void 0 ? await an.surface.push(act.job, key, archive) : void an.archives?.set(act.job, archive);
+  if (refused !== void 0) return { kind: "download_failed", job: act.job, answer: "unreadable_2xx" };
+  return { kind: "download_done", job: act.job };
+}
+function runAction(io, act, signal) {
+  if (act.kind === "post") return post3(io, act, signal);
+  if (act.kind === "prepare") return prepare(io, act, signal);
+  if (act.kind === "post_batch") return postBatch(io, act, signal);
+  if (act.kind === "poll") return poll(io, act, signal);
+  return download(io, act, signal);
+}
+async function batchConfig(service, binary, signal) {
+  if (!binary || service.batchSubmit !== true || service.binaryCapability === void 0 || service.postBatch === void 0) return {};
+  try {
+    const batch = (await service.binaryCapability(signal)).batchSubmit;
+    return batch === void 0 ? {} : { batch_submit: batch };
+  } catch {
+    return {};
+  }
+}
+
+// src/area/engine-jobs.ts
+function recordsFromFacts(an, facts) {
+  const state = { succeeded: "completed", failed: "failed" };
+  for (const [key, jobId] of Object.entries(facts.jobs)) {
+    const job = an.jobs.get(key);
+    const last = facts.job_state[jobId];
+    if (job !== void 0 && job.jobId === jobId && last !== void 0 && last !== "running") job.status = state[last];
+    if (job !== void 0 && job.jobId === jobId && last === "failed" && facts.errors?.[key] !== void 0) {
+      job.error = facts.errors[key];
+    }
+  }
+  for (const key of [...facts.failed, ...facts.uncertain]) {
+    if (an.jobs.get(key)?.invalidReference === true) continue;
+    const entry = an.entries.get(key);
+    an.jobs.set(key, {
+      tileId: key,
+      row: entry.row,
+      col: entry.col,
+      status: facts.failed.includes(key) ? "failed" : "skipped",
+      error: facts.failed.includes(key) ? facts.errors?.[key] ?? "job submission failed" : "submission outcome is unknown; do not resubmit automatically"
+    });
+  }
+  applyFailures(an.jobs, facts);
+}
+function applyFailures(jobs, facts) {
+  for (const [key, failure2] of Object.entries(facts.failures ?? {})) {
+    const job = jobs.get(key);
+    if (job === void 0) continue;
+    job.failureKind = failure2.kind;
+    if (failure2.status === void 0) delete job.failureStatus;
+    else job.failureStatus = failure2.status;
+  }
+}
+async function submitOnEngine(service, entries3, options) {
+  const jobs = /* @__PURE__ */ new Map();
+  for (const [key, job] of options.priorJobs ?? []) jobs.set(key, { ...job });
+  const an = {
+    entries: new Map(entries3.map((e) => [e.key, e])),
+    jobs,
+    ...options.capture === void 0 ? {} : { capture: options.capture },
+    ...options.remember === void 0 ? {} : { remember: options.remember }
+  };
+  const sent = new Set(entries3.map((e) => e.key));
+  const attempts = Object.fromEntries(Object.entries(options.attempts ?? {}).filter(([k]) => sent.has(k)));
+  const signal = options.signal ?? new AbortController().signal;
+  const binary = entries3.some((e) => e.prepared.transport === "binary");
+  const driver = new EngineDriver({
+    retries: 0,
+    area_timeout_us: 36e8,
+    goal: "sent",
+    ...await batchConfig(service, binary, signal)
+  });
+  let invalid2 = false;
+  const io = {
+    service,
+    analyses: [an],
+    byJob: /* @__PURE__ */ new Map(),
+    ...options.onAccepted === void 0 ? {} : { onAccepted: options.onAccepted },
+    ...options.logger === void 0 ? {} : { logger: options.logger },
+    // No new POST after an invalid geometry-reference acceptance; the POSTs in flight keep their jobs.
+    onInvalidReference: () => {
+      invalid2 = true;
+      driver.stop();
+    },
+    stopped: () => invalid2
+  };
+  driver.onAccepted = (act) => acceptedAction(io, act);
+  const [facts] = await driver.run(
+    [{ keys: [...sent], run_id: options.runId, attempts }],
+    signal,
+    (act, own2) => runAction(io, act, own2),
+    () => {
+    }
+  ).finally(() => freePreparedCaptures(io));
+  recordsFromFacts(an, facts);
+  const invalidKeys = [...jobs.values()].filter((j) => j.invalidReference === true && sent.has(j.tileId)).map((j) => j.tileId);
+  const uncertain = new Set((options.priorUncertain ?? []).filter((k) => !sent.has(k)));
+  for (const key of facts.uncertain) if (!invalidKeys.includes(key)) uncertain.add(key);
+  return {
+    jobs,
+    failedSubmissions: facts.failed.filter((k) => !invalidKeys.includes(k)),
+    uncertainSubmissions: [...uncertain],
+    invalidReferenceSubmissions: [...options.priorInvalidReference ?? [], ...invalid2 ? invalidKeys : []],
+    submissionAbortStatus: facts.payment_stopped ? 402 : null,
+    runId: facts.run_id,
+    attempts: { ...options.attempts, ...facts.attempts }
+  };
+}
+async function collectOnEngine(service, jobs, sink, options) {
+  const known = {};
+  const withJob = {};
+  const byJob = /* @__PURE__ */ new Map();
+  for (const [key, job] of jobs) {
+    if (!job.jobId || job.invalidReference === true) continue;
+    withJob[key] = job.jobId;
+    byJob.set(job.jobId, { a: 0, key });
+    const status2 = options.known?.[job.jobId] ?? job.status;
+    if (status2 === "completed") known[job.jobId] = "succeeded";
+    else if (status2 === "failed") known[job.jobId] = "failed";
+  }
+  const an = {
+    entries: /* @__PURE__ */ new Map(),
+    jobs,
+    ...sink.grid === void 0 ? {} : { grid: sink.grid },
+    ...sink.surface === void 0 ? {} : { surface: sink.surface },
+    ...sink.archives === void 0 ? {} : { archives: sink.archives }
+  };
+  const io = { service, analyses: [an], byJob };
+  const signal = options.signal ?? new AbortController().signal;
+  const driver = new EngineDriver({
+    retries: 0,
+    area_timeout_us: Math.round((options.timeoutS ?? 3600) * 1e6),
+    goal: options.goal
+  });
+  let outcome = "incomplete";
+  const [facts] = await driver.run(
+    [{ keys: Object.keys(withJob), run_id: "", jobs: withJob, states: known }],
+    signal,
+    (act, own2) => runAction(io, act, own2),
+    (act) => {
+      outcome = act.outcome;
+    },
+    options.onProgress
+  );
+  if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("aborted", "AbortError");
+  applyFailures(jobs, facts);
+  return { facts, outcome };
+}
 
 // src/area/schedule-retry-fields.ts
 function freezeRetryFields(schedule2) {
@@ -11109,6 +11912,8 @@ function jsonJob(job) {
     status: job.status,
     ...job.jobId === void 0 ? {} : { jobId: job.jobId },
     ...job.error === void 0 ? {} : { error: job.error },
+    ...job.failureKind === void 0 ? {} : { failureKind: job.failureKind },
+    ...job.failureStatus === void 0 ? {} : { failureStatus: job.failureStatus },
     ...job.invalidReference === true ? { invalidReference: true } : {},
     ...job.binary === void 0 ? {} : { binary: { ...job.binary } }
   };
@@ -11171,6 +11976,10 @@ function parseJob(key, value) {
   if (typeof raw.status !== "string" || !STATUSES.has(raw.status)) invalid(`job ${key} has invalid status`);
   if (raw.jobId !== void 0 && (typeof raw.jobId !== "string" || raw.jobId.length === 0)) invalid(`job ${key} has invalid jobId`);
   if (raw.error !== void 0 && typeof raw.error !== "string") invalid(`job ${key} has invalid error`);
+  if (raw.failureKind !== void 0 && typeof raw.failureKind !== "string") invalid(`job ${key} has invalid failureKind`);
+  if (raw.failureStatus !== void 0 && !Number.isSafeInteger(raw.failureStatus)) {
+    invalid(`job ${key} has invalid failureStatus`);
+  }
   if (raw.invalidReference !== void 0 && raw.invalidReference !== true) {
     invalid(`job ${key} has invalid invalidReference marker`);
   }
@@ -11182,6 +11991,8 @@ function parseJob(key, value) {
     status: raw.status,
     ...raw.jobId === void 0 ? {} : { jobId: raw.jobId },
     ...raw.error === void 0 ? {} : { error: raw.error },
+    ...raw.failureKind === void 0 ? {} : { failureKind: raw.failureKind },
+    ...raw.failureStatus === void 0 ? {} : { failureStatus: raw.failureStatus },
     ...raw.invalidReference === true ? { invalidReference: true } : {},
     ...binary === void 0 ? {} : { binary }
   };
@@ -11192,13 +12003,13 @@ function uniqueReferences(items, name) {
   return unique2;
 }
 function validateSubmissionReferences(jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions) {
-  const failed2 = uniqueReferences(failedSubmissions, "failedSubmissions");
+  const failed = uniqueReferences(failedSubmissions, "failedSubmissions");
   const uncertain = uniqueReferences(uncertainSubmissions, "uncertainSubmissions");
   const invalidReferences = uniqueReferences(
     invalidReferenceSubmissions,
     "invalidReferenceSubmissions"
   );
-  for (const tileId of failed2) {
+  for (const tileId of failed) {
     const job = jobs.get(tileId);
     if (!job) invalid(`failed submission ${tileId} has no job`);
     if (job.status !== "failed" || job.jobId !== void 0) {
@@ -11218,7 +12029,7 @@ function validateSubmissionReferences(jobs, failedSubmissions, uncertainSubmissi
     if (!job || job.status !== "failed" || job.invalidReference !== true) {
       invalid(`invalid reference submission ${tileId} must remain a failed invalid-reference job`);
     }
-    if (failed2.has(tileId) || uncertain.has(tileId)) {
+    if (failed.has(tileId) || uncertain.has(tileId)) {
       invalid(`invalid reference submission ${tileId} is in another submission outcome list`);
     }
   }
@@ -11285,8 +12096,8 @@ function areaScheduleFromJSON(value) {
   if (raw.weatherIdentity !== void 0 && (typeof raw.weatherIdentity !== "string" || !raw.weatherIdentity.startsWith("sha256:"))) {
     invalid("weatherIdentity must be a sha256: digest");
   }
-  if (raw.siteIdentity !== void 0 && (typeof raw.siteIdentity !== "string" || !/^sha256:[0-9a-f]{64}$/.test(raw.siteIdentity))) {
-    invalid("siteIdentity must be a sha256: digest");
+  if (raw.siteIdentity !== void 0 && (typeof raw.siteIdentity !== "string" || !/^(site2|sha256):[0-9a-f]{64}$/.test(raw.siteIdentity))) {
+    invalid("siteIdentity must be a site2: (or, before D297, sha256:) digest");
   }
   if (raw.scheduleContractVersion !== void 0 && (!Number.isSafeInteger(raw.scheduleContractVersion) || raw.scheduleContractVersion < 1)) {
     invalid("scheduleContractVersion must be a positive integer");
@@ -11405,113 +12216,12 @@ function computeAreaState(schedule2) {
 }
 
 // src/area/poll.ts
-var failures = /* @__PURE__ */ new WeakMap();
-var FAILURE_LIMIT = 5;
-var FAILURE_MIN_SPAN_MS = 1e4;
-function workerCount(value) {
-  const count2 = value ?? 5;
-  if (!Number.isSafeInteger(count2) || count2 < 1) throw new TypeError("maxWorkers must be a positive integer");
-  return count2;
-}
-function applySnapshot(job, snapshot) {
-  job.lastJobSnapshot = snapshot;
-  if (snapshot.status === JobStatus.Succeeded) job.status = "completed";
-  else if (snapshot.status === JobStatus.Failed) {
-    job.status = "failed";
-    job.error = snapshot.error ?? "job failed";
-  } else if (snapshot.status === JobStatus.Running) job.status = "running";
-  else job.status = "pending";
-}
-function noteFailure(record3, error) {
-  if (!isTransientStatusError(error)) return;
-  record3.failures += 1;
-  if (error.retryAfterS !== void 0) {
-    record3.retryAfterS = Math.max(record3.retryAfterS ?? 0, error.retryAfterS);
-  }
-}
-async function pollOne(service, job, record3, signal) {
-  if (job.invalidReference === true || !job.jobId || job.status === "completed" || job.status === "failed" || job.status === "skipped") return;
-  if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-  try {
-    const snapshot = await service.getStatus(job.jobId, signal === void 0 ? {} : { signal });
-    failures.delete(job);
-    applySnapshot(job, snapshot);
-  } catch (error) {
-    if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError");
-    if (isTransientStatusError(error)) {
-      noteFailure(record3, error);
-      return;
-    }
-    const now2 = performance.now();
-    const previous = failures.get(job);
-    const count2 = (previous?.count ?? 0) + 1;
-    const sinceMs = previous?.sinceMs ?? now2;
-    failures.set(job, { count: count2, sinceMs });
-    if (count2 >= FAILURE_LIMIT && now2 - sinceMs >= FAILURE_MIN_SPAN_MS) {
-      job.status = "skipped";
-      job.error = error instanceof Error ? error.message : String(error);
-    }
-  }
-}
-function revivePolledOut(schedule2) {
-  let revived = 0;
-  for (const job of schedule2.jobs.values()) {
-    if (job.status !== "skipped" || !job.jobId) continue;
-    job.status = "pending";
-    failures.delete(job);
-    revived += 1;
-  }
-  return revived;
-}
-async function pollBatched(service, pending2, options, record3) {
-  const getStatusBatch = service.getStatusBatch;
-  if (getStatusBatch === void 0) return pending2;
-  const byId = /* @__PURE__ */ new Map();
-  for (const job of pending2) if (job.jobId) byId.set(job.jobId, job);
-  if (byId.size === 0) return pending2;
-  let sweep;
-  try {
-    sweep = await getStatusBatch.call(service, [...byId.keys()], {
-      ...options.signal === void 0 ? {} : { signal: options.signal },
-      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers }
-    });
-  } catch (error) {
-    if (options.signal?.aborted === true) throw error;
-    return pending2;
-  }
-  if (sweep.failedIds !== void 0) {
-    record3.failures += 1;
-    if (sweep.retryAfterS !== void 0) {
-      record3.retryAfterS = Math.max(record3.retryAfterS ?? 0, sweep.retryAfterS);
-    }
-  }
-  for (const [id, job] of byId) {
-    const snapshot = sweep.statuses.get(id);
-    if (snapshot === void 0) continue;
-    failures.delete(job);
-    applySnapshot(job, snapshot);
-  }
-  return sweep.unanswered.map((id) => byId.get(id)).filter((job) => job !== void 0);
-}
-var lastSweeps = /* @__PURE__ */ new WeakMap();
-function lastSweepRecord(schedule2) {
-  return lastSweeps.get(schedule2) ?? { perJob: 0, failures: 0, retryAfterS: void 0 };
-}
 async function checkAreaState(service, schedule2, options = {}) {
-  const pending2 = [...schedule2.jobs.values()].filter((job) => Boolean(job.jobId) && job.status !== "completed" && job.status !== "failed" && job.status !== "skipped");
-  const record3 = { perJob: 0, failures: 0, retryAfterS: void 0 };
-  const remaining = service.getStatusBatch === void 0 || pending2.length === 0 ? pending2 : await pollBatched(service, pending2, options, record3);
-  record3.perJob = remaining.length;
-  lastSweeps.set(schedule2, record3);
-  const count2 = Math.min(workerCount(options.maxWorkers), Math.max(1, remaining.length));
-  let cursor = 0;
-  await Promise.all(Array.from({ length: count2 }, async () => {
-    while (cursor < remaining.length) {
-      const job = remaining[cursor++];
-      if (job) await pollOne(service, job, record3, options.signal);
-    }
-  }));
-  for (const job of pending2) {
+  await collectOnEngine(service, schedule2.jobs, {}, {
+    goal: "status",
+    ...options.signal === void 0 ? {} : { signal: options.signal }
+  });
+  for (const job of schedule2.jobs.values()) {
     if (job.status === "failed" && job.jobId) service.captures?.forget(job.jobId);
   }
   const state = computeAreaState(schedule2);
@@ -11538,8 +12248,7 @@ function scheduleKeyStates(schedule2) {
 }
 async function buildRetryContext(service, retryFrom, options = {}) {
   await checkAreaState(service, retryFrom, {
-    ...options.signal === void 0 ? {} : { signal: options.signal },
-    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers }
+    ...options.signal === void 0 ? {} : { signal: options.signal }
   });
   const plan = planAreaRetry({
     ...retryFrom.runId === void 0 ? { freshRunId: freshRunId() } : { runId: retryFrom.runId },
@@ -11554,87 +12263,8 @@ async function buildRetryContext(service, retryFrom, options = {}) {
   };
 }
 
-// src/area/facade-ownership.ts
-var FacadeOwnership = class {
-  /** `unowned` is the site pass's own answer, computed before any seeding. */
-  constructor(unowned) {
-    this.unowned = unowned;
-  }
-  savedOwner = /* @__PURE__ */ new Map();
-  demoted = [];
-  /**
-   * Ids some visited tile ANALYSES, and the tiles this pass visited. A saved
-   * owner is the only thing that can leave a building unclaimed, and whether
-   * that is a defect depends on whether its tile was rebuilt — see
-   * {@link FacadeOwnership.finish}.
-   */
-  claimed = /* @__PURE__ */ new Set();
-  visited = /* @__PURE__ */ new Set();
-  /**
-   * Adopt the ownership a saved schedule already recorded.
-   *
-   * A retry rebuilds SOME tiles. The kernel's answer is a property of the GRID
-   * and not of one pass over it, so a fresh run and a retry agree by
-   * construction — but a schedule saved by an older SDK, or one whose grid was
-   * planned under a different tile list, may not. Where it disagrees the SAVED
-   * answer wins: those sensors are already billed.
-   *
-   * "Wins" means it SELECTS a tile, not merely that it rejects the kernel's.
-   * Using it only to reject loses the building in both — the saved tile never
-   * had it in `core`, and the kernel's tile gives it up — and the kernel's own
-   * `unowned` cannot see that, because it is computed before this filter.
-   * {@link FacadeOwnership.finish} carries the host's own check for it.
-   */
-  seedFromSchedule(membership) {
-    for (const [key, ids] of Object.entries(membership ?? {})) {
-      const tileId = key.split("#batch")[0] ?? key;
-      for (const id of ids) if (!this.savedOwner.has(id)) this.savedOwner.set(id, tileId);
-    }
-  }
-  /**
-   * Record what the kernel selected for this tile (`area/site-facade.ts`).
-   *
-   * The kernel applies the rule this class used to apply here — a saved owner
-   * wins where the tile still carries the mesh, else the tile's post-resolution
-   * `core` — so this host only records what was claimed and which duplicates
-   * the site pass resolved. The Python twin is `observe_native`.
-   */
-  observe(tileId, answer, activeIds) {
-    this.visited.add(tileId);
-    for (const id of activeIds) this.claimed.add(id);
-    for (const id of answer.demoted) {
-      this.demoted.push({ id, kept: this.savedOwner.get(id) ?? "an earlier tile", later: tileId });
-    }
-  }
-  /**
-   * Refuse a building nobody analyses.
-   *
-   * Two ways to end up analysed by nobody. The kernel's `unowned` is one: a
-   * shrink-band building no core took. The other is a saved owner whose tile
-   * this pass DID visit and which no longer carries the mesh — and the visited
-   * set is what keeps that apart from the ordinary retry, where the owning tile
-   * simply was not rebuilt and its existing job still analyses the building.
-   * Raising on the second would fail a legitimate retry for geometry that is
-   * already billed.
-   *
-   * `complete` is `false` when only SOME tiles were visited (a retry).
-   */
-  finish(complete) {
-    const stale = [...this.savedOwner.entries()].filter(([id, tile]) => this.visited.has(tile) && !this.claimed.has(id)).map(([id]) => id);
-    const orphaned = [.../* @__PURE__ */ new Set([...this.unowned, ...stale])].sort();
-    if (orphaned.length === 0 || !complete) return;
-    throw new Error(
-      `facade ownership left ${orphaned.length} building(s) analysed by no tile: ${orphaned.slice(0, 8).join(", ")}${orphaned.length > 8 ? " ..." : ""}. The re-anchored core box (DEVIATIONS D63) gave them up and no neighbouring tile claimed them. This is a bug in the core-extent rule, not in the payload.`
-    );
-  }
-  /** `{id, kept, later}` per duplicate the kernel resolved, in tile order. */
-  get resolved() {
-    return this.demoted;
-  }
-};
-
 // src/area/weather-guard.ts
-var SCHEDULE_CONTRACT_VERSION = 11;
+var SCHEDULE_CONTRACT_VERSION = 13;
 var WEATHER_IDENTITY_CONTRACT_VERSION = 4;
 var MIGRATION = "Start a fresh run, or re-run the finished tiles yourself. The SDK will not assign the current weather to jobs it cannot prove were run with it, and it will not start a billed run on your behalf. Build the retry payload from the SAME weather \u2014 the same file, the same catalog window or the same arrays \u2014 and the resume is admitted.";
 var WeatherIdentityError = class extends Error {
@@ -11700,8 +12330,8 @@ function preparedWeatherIdentity(payload) {
     JSON.stringify({ latitude, longitude, window, columns })
   );
 }
-function isWeatherBearing(analysisType) {
-  return WEATHER_BEARING_ANALYSES.has(analysisType);
+function isWeatherBearing(analysisType2) {
+  return WEATHER_BEARING_ANALYSES.has(analysisType2);
 }
 function checkResumeWeather(retryFrom, currentIdentity) {
   if (retryFrom === void 0 || !isWeatherBearing(retryFrom.analysisType)) return;
@@ -11730,13 +12360,7 @@ function checkResumeWeather(retryFrom, currentIdentity) {
 }
 
 // src/area/planning.ts
-async function retrySiteIdentity(current, inputs, prior) {
-  const recorded = prior?.siteIdentity;
-  if (current === void 0 || recorded === void 0 || recorded === current || prior === void 0) return current;
-  const legacyKey = await preparedSiteKey(inputs, void 0, true);
-  return legacyKey !== void 0 && `sha256:${kernelConfigHash({ siteKey: legacyKey })}` === recorded ? recorded : current;
-}
-async function planAreaSubmission(service, input, polygonInput, options = {}) {
+async function planAreaSubmission(service, input, polygonInput, options = {}, memo2, facadeSites) {
   const slice = new Slice(options);
   slice.check();
   if (input.vegetationInstances != null || input["vegetation-instances"] != null) {
@@ -11748,8 +12372,8 @@ async function planAreaSubmission(service, input, polygonInput, options = {}) {
   if (payload["vegetation-instances"] != null) {
     throw new TypeError("vegetation-instances have no area tiling policy");
   }
-  const analysisType = payload["analysis-type"];
-  const weatherIdentity = isWeatherBearing(analysisType) ? preparedWeatherIdentity(payload) : void 0;
+  const analysisType2 = payload["analysis-type"];
+  const weatherIdentity = isWeatherBearing(analysisType2) ? preparedWeatherIdentity(payload) : void 0;
   const surfaceFields = payload["analysis-surfaces"] != null;
   if (payload["sensor-points"] !== void 0) {
     throw new TypeError("sensor-points are not supported for area analysis");
@@ -11763,20 +12387,18 @@ async function planAreaSubmission(service, input, polygonInput, options = {}) {
   if (options.retryFrom !== void 0) requireCurrentConfigHash(options.retryFrom);
   const polygon = validatePolygon(polygonInput);
   const grid = generateTilesForPolygon(polygon, {
-    analysisType,
+    analysisType: analysisType2,
     ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
   });
   const { tiles, byId } = indexed(grid);
-  const config = getTilingConfig(analysisType);
-  const requestedMargin = options.terrainContextMarginM ?? 128;
-  const terrainContextMarginM = Math.max(
-    (config.contextSizeM - config.inferenceSizeM) / 2,
-    requestedMargin
-  );
+  const config = getTilingConfig(analysisType2);
+  const terrainContextMarginM = JSON.parse(
+    requireCore().terrainMargin(analysisType2, options.terrainContextMarginM)
+  ).effective_m;
   if (options.retryFrom?.terrainContextMarginM !== void 0 && options.retryFrom.terrainContextMarginM !== terrainContextMarginM) {
     throw new Error("retryFrom terrainContextMarginM mismatch");
   }
-  validateRetryGrid(options.retryFrom, polygon, analysisType, tiles, grid);
+  validateRetryGrid(options.retryFrom, polygon, analysisType2, tiles, grid);
   if (options.terrainContext !== void 0) throw new TypeError("terrainContext is internal; use terrainContextMarginM");
   const inputs = {
     payload,
@@ -11787,39 +12409,57 @@ async function planAreaSubmission(service, input, polygonInput, options = {}) {
     grade
   };
   const texts = /* @__PURE__ */ new Map();
-  const siteKey = await preparedSiteKey(inputs, texts);
+  const ground = terrainKey(payload["ground-geometry"], texts);
+  const hashes = memo2 ?? siteKeyMemo();
+  const siteKey = preparedSiteKey(inputs, texts, ground, hashes);
   const retryContext = options.retryFrom === void 0 ? void 0 : await buildRetryContext(service, options.retryFrom, options);
-  const currentSiteIdentity = await retrySiteIdentity(
-    siteKey === void 0 ? void 0 : `sha256:${kernelConfigHash({ siteKey })}`,
-    inputs,
-    options.retryFrom
-  );
+  const currentSiteIdentity = `${SITE_IDENTITY_PREFIX}${kernelConfigHash({ siteKey })}`;
   const siteIdentity = options.retryFrom === void 0 ? currentSiteIdentity : options.retryFrom.siteIdentity;
-  const terrain = siteTerrain(payload["ground-geometry"], terrainDigest(siteKey), texts);
+  const terrain = siteTerrain(payload["ground-geometry"], ground, texts);
   const site = await preparedSites().get(
     siteKey,
-    () => buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain),
+    () => buildPreparedSite(inputs, analysisType2, tiles, slice, texts, terrain),
     options.signal
   );
   texts.clear();
   slice.check();
-  const composed = surfaceFields || areaTransport(options, analysisType) === "binary" ? void 0 : await composedTiles(site, slice, options.signal);
-  const ownership = new FacadeOwnership(site.answers.unowned);
-  ownership.seedFromSchedule(options.retryFrom?.batchMembership);
+  if (surfaceFields && facadeSites !== void 0) {
+    const inputs2 = JSON.stringify([facadeRequest(
+      payload,
+      tiles,
+      options.retryFrom,
+      options.maxSensorsPerJob,
+      options.packing
+    ), payload["terrain-alignment"] ?? null]);
+    facadeSites.set(site.answers, [...facadeSites.get(site.answers) ?? [], inputs2]);
+  }
+  const composed = surfaceFields || areaTransport(options, analysisType2) === "binary" ? void 0 : await composedTiles(site, slice, options.signal);
   const base = { ...payload };
   for (const key of GROUP_KEYS) delete base[key];
-  const alignment = suppliedSceneAlignment(analysisType, payload);
+  const alignment = suppliedSceneAlignment(analysisType2, payload);
+  const treeZ = requireCore().treeZWarning(
+    site.answers.treesWithoutZ ?? 0,
+    payload["terrain-alignment"] ?? alignment
+  );
+  if (treeZ !== void 0) (options.logger ?? consoleLogger).warn(treeZ);
   const gridHash = scheduleConfigHash(
-    analysisType,
+    analysisType2,
     alignment === void 0 ? payload : { ...payload, "terrain-alignment": alignment },
-    liveTerrain(terrain)
+    liveTerrain(terrain),
+    void 0,
+    hashes.groups
   );
   const configHash = gridHash;
   if (options.retryFrom !== void 0) {
     if (options.retryFrom.configHash !== configHash) {
       throw new Error("retryFrom schedule configHash mismatch");
     }
-    checkPaidRetrySiteIdentity(options.retryFrom, currentSiteIdentity, (retryContext?.resubmitKeys.size ?? 0) > 0);
+    checkPaidRetrySiteIdentity(
+      options.retryFrom,
+      currentSiteIdentity,
+      (retryContext?.resubmitKeys.size ?? 0) > 0,
+      options.logger
+    );
   }
   const runId = retryContext?.runId ?? options.retryFrom?.runId ?? freshRunId();
   const attemptFor = (key) => retryContext?.attempts[key] ?? 1;
@@ -11828,17 +12468,22 @@ async function planAreaSubmission(service, input, polygonInput, options = {}) {
   const built = await buildEntries(tiles, {
     service,
     options,
-    analysisType,
+    analysisType: analysisType2,
     base,
     byId,
-    ownership,
     site: site.answers,
     surfaceFields,
     retry,
     runId,
     attemptFor,
     ...composed === void 0 ? {} : { composed },
-    ...surfaceFields ? { facadeRequest: facadeRequest(base, tiles, options.retryFrom, options.maxSensorsPerJob) } : {},
+    ...surfaceFields ? { facadeRequest: facadeRequest(
+      base,
+      tiles,
+      options.retryFrom,
+      options.maxSensorsPerJob,
+      options.packing
+    ) } : {},
     reuseScope: (key) => [
       "area-v1",
       key,
@@ -11850,10 +12495,9 @@ async function planAreaSubmission(service, input, polygonInput, options = {}) {
     ].join(":")
   }, slice);
   tilePositions.push(...built.extraPositions);
-  if (surfaceFields) ownership.finish(options.retryFrom === void 0);
   return {
     polygon,
-    analysisType,
+    analysisType: analysisType2,
     configHash,
     ...siteIdentity === void 0 ? {} : { siteIdentity },
     gridShape: [grid.length, grid.reduce((width, line) => Math.max(width, line.length), 0)],
@@ -11891,9 +12535,9 @@ async function composedTiles(site, slice, signal) {
     return site.composed(slice);
   }
 }
-function validateRetryGrid(retry, polygon, analysisType, tiles, grid) {
+function validateRetryGrid(retry, polygon, analysisType2, tiles, grid) {
   if (retry === void 0) return;
-  if (retry.analysisType !== analysisType) throw new Error("retryFrom analysisType mismatch");
+  if (retry.analysisType !== analysisType2) throw new Error("retryFrom analysisType mismatch");
   if (JSON.stringify(retry.polygon) !== JSON.stringify(polygon)) throw new Error("retryFrom polygon mismatch");
   const shape = [grid.length, grid.reduce((width, line) => Math.max(width, line.length), 0)];
   if (retry.gridShape[0] !== shape[0] || retry.gridShape[1] !== shape[1]) throw new Error("retryFrom gridShape mismatch");
@@ -11941,6 +12585,97 @@ function checkedIndices(indices2) {
   return out;
 }
 
+// src/mesh-simplify.ts
+function pack2(geometry) {
+  const names = Object.keys(geometry);
+  const only = names.length === 1 ? geometry[names[0]] : void 0;
+  if (only !== void 0 && only.coordinates instanceof Float64Array && only.indices instanceof Uint32Array) {
+    return {
+      names,
+      coordinates: only.coordinates,
+      vertOffsets: Uint32Array.of(0, only.coordinates.length / 3),
+      indices: only.indices,
+      faceOffsets: Uint32Array.of(0, only.indices.length / 3)
+    };
+  }
+  const vertOffsets = new Uint32Array(names.length + 1);
+  const faceOffsets = new Uint32Array(names.length + 1);
+  names.forEach((n, k) => {
+    vertOffsets[k + 1] = vertOffsets[k] + geometry[n].coordinates.length / 3;
+    faceOffsets[k + 1] = faceOffsets[k] + geometry[n].indices.length / 3;
+  });
+  const coordinates = new Float64Array(3 * vertOffsets[names.length]);
+  const indices2 = new Uint32Array(3 * faceOffsets[names.length]);
+  names.forEach((n, k) => {
+    coordinates.set(geometry[n].coordinates, 3 * vertOffsets[k]);
+    indices2.set(geometry[n].indices, 3 * faceOffsets[k]);
+  });
+  return { names, coordinates, vertOffsets, indices: indices2, faceOffsets };
+}
+function jsonAsArray(view) {
+  return Object.defineProperty(view, "toJSON", {
+    value() {
+      return Array.from(this);
+    }
+  });
+}
+function result(p, out, errors, kept) {
+  const geometry = {};
+  const report2 = {};
+  (kept === void 0 ? p.names.map((_, e) => e) : Array.from(kept)).forEach((e, k) => {
+    const name = p.names[e];
+    const [v0, v1, f0, f1] = [out.vertOffsets[k], out.vertOffsets[k + 1], out.faceOffsets[k], out.faceOffsets[k + 1]];
+    geometry[name] = {
+      coordinates: jsonAsArray(out.coordinates.subarray(3 * v0, 3 * v1)),
+      indices: jsonAsArray(out.indices.subarray(3 * f0, 3 * f1))
+    };
+    report2[name] = {
+      trianglesIn: p.faceOffsets[e + 1] - p.faceOffsets[e],
+      trianglesOut: f1 - f0,
+      verticesIn: p.vertOffsets[e + 1] - p.vertOffsets[e],
+      verticesOut: v1 - v0,
+      ...errors === void 0 ? {} : { errorM: errors[k] }
+    };
+  });
+  return { geometry, report: report2 };
+}
+function weldMeshes(geometry, options = {}) {
+  const p = pack2(geometry);
+  const out = requireCore().weldMeshes(
+    p.coordinates,
+    p.vertOffsets,
+    p.indices,
+    p.faceOffsets,
+    options.toleranceM
+  );
+  return result(p, out);
+}
+function simplifyMeshes(geometry, options = {}) {
+  const p = pack2(geometry);
+  const out = requireCore().simplifyMeshes(
+    p.coordinates,
+    p.vertOffsets,
+    p.indices,
+    p.faceOffsets,
+    options.targetRatio,
+    options.maxErrorM,
+    options.lockBorder
+  );
+  return result(p, out, out.errorsM, out.kept);
+}
+function exportMeshes(geometry, format = "dotbim") {
+  const p = pack2(geometry);
+  return requireCore().exportMeshes(
+    p.names,
+    p.coordinates,
+    p.vertOffsets,
+    p.indices,
+    p.faceOffsets,
+    format,
+    p.names.map((n) => geometry[n].type ?? "")
+  );
+}
+
 // src/area/facade-layout-free.ts
 var handleRegistry = new FinalizationRegistry((handle) => {
   handle.free();
@@ -11966,8 +12701,7 @@ var HandleGuard = class {
 // src/area/facade-layout-schedule.ts
 function tileOrigin(row, col, schedule2, siteOrigin) {
   const core2 = requireCore("tiling");
-  const [swX, swY] = core2.tileSwOffset(row, col, schedule2.analysisType);
-  const [lon, lat] = core2.scalarUnproject(siteOrigin.lon, siteOrigin.lat, swX, swY);
+  const [lon, lat] = core2.tileFrameOrigin(row, col, schedule2.analysisType, siteOrigin.lon, siteOrigin.lat);
   return { lon, lat };
 }
 function jobsFromSchedule(schedule2) {
@@ -12158,7 +12892,8 @@ function surfaceColumnsFromJoin(joined) {
     minLegend: joined.minLegend,
     maxLegend: joined.maxLegend,
     sensorCount: joined.sensorCount,
-    ...joined.fallbackReasons.length === 0 ? {} : { cellTrisFallback: [...joined.fallbackReasons] }
+    ...joined.fallbackReasons.length === 0 ? {} : { cellTrisFallback: [...joined.fallbackReasons] },
+    ...joined.layoutKey === void 0 ? {} : { layoutKey: joined.layoutKey }
   };
 }
 function emptySurfaceColumns() {
@@ -12189,48 +12924,48 @@ function emptySurfaceColumns() {
     sensorCount: 0
   };
 }
-function surfaceId(result, row) {
-  return result.ids.slice(result.idOffsets[row], result.idOffsets[row + 1]);
+function surfaceId(result2, row) {
+  return result2.ids.slice(result2.idOffsets[row], result2.idOffsets[row + 1]);
 }
 var indices = /* @__PURE__ */ new WeakMap();
-function surfaceIndex(result) {
-  let index2 = indices.get(result);
+function surfaceIndex(result2) {
+  let index2 = indices.get(result2);
   if (index2 === void 0) {
     const map = /* @__PURE__ */ new Map();
-    for (let row = 0; row < result.surfaceCount; row += 1) map.set(surfaceId(result, row), row);
-    indices.set(result, map);
+    for (let row = 0; row < result2.surfaceCount; row += 1) map.set(surfaceId(result2, row), row);
+    indices.set(result2, map);
     index2 = map;
   }
   return index2;
 }
-function isVertical(result, row) {
+function isVertical(result2, row) {
   const u = 3 * row;
-  const normalZ = result.uAxis[u] * result.vAxis[u + 1] - result.uAxis[u + 1] * result.vAxis[u];
+  const normalZ = result2.uAxis[u] * result2.vAxis[u + 1] - result2.uAxis[u + 1] * result2.vAxis[u];
   return Math.abs(normalZ) <= 0.5;
 }
-function surfaceHasValue(result, cell) {
-  return cellHasValue(result.valueDtype, result.values, result.valid, cell);
+function surfaceHasValue(result2, cell) {
+  return cellHasValue(result2.valueDtype, result2.values, result2.valid, cell);
 }
-function surfaceValuesF32(result, first = 0, last = result.values.length) {
-  const v = result.values;
+function surfaceValuesF32(result2, first = 0, last = result2.values.length) {
+  const v = result2.values;
   return requireCore().surfaceValuesF32(
     new Uint8Array(v.buffer, v.byteOffset, v.byteLength),
-    result.valueDtype,
-    result.valueDivisor,
-    result.valid,
+    result2.valueDtype,
+    result2.valueDivisor,
+    result2.valid,
     first,
     last
   );
 }
-function vertexValues(result, group) {
-  const table = result.triangles;
+function vertexValues(result2, group) {
+  const table = result2.triangles;
   if (table === void 0) throw new Error("This result has no cell triangles. Build it with emitCellTris: true.");
   const base = table.groupTriangles[group];
   const out = new Float32Array((table.groupTriangles[group + 1] - base) * 3);
-  const first = result.cellOffsets[table.groupSurfaces[group]];
-  const last = result.cellOffsets[table.groupSurfaces[group + 1]];
-  const raw = result.valueDtype === "f32" || result.valueDtype === "f64";
-  const physical = raw ? result.values.subarray(first, last) : surfaceValuesF32(result, first, last);
+  const first = result2.cellOffsets[table.groupSurfaces[group]];
+  const last = result2.cellOffsets[table.groupSurfaces[group + 1]];
+  const raw = result2.valueDtype === "f32" || result2.valueDtype === "f64";
+  const physical = raw ? result2.values.subarray(first, last) : surfaceValuesF32(result2, first, last);
   for (let cell = first; cell < last; cell += 1) {
     const start = table.cellOffsets[cell], end = table.cellOffsets[cell + 1];
     if (end > start) out.fill(physical[cell - first], (start - base) * 3, (end - base) * 3);
@@ -12523,12 +13258,12 @@ var VegetationService = class {
    *   read warnings are listed under `_warnings`.
    */
   async getGeoJson(lat, lon, distance) {
-    const result = await acquireTrees(pointToBbox(lat, lon, distance), { ...this.request });
-    if (result.features.length === 0) return null;
+    const result2 = await acquireTrees(pointToBbox(lat, lon, distance), { ...this.request });
+    if (result2.features.length === 0) return null;
     return {
       type: "FeatureCollection",
-      features: result.features,
-      ...result.warnings.length === 0 ? {} : { _warnings: [...result.warnings] }
+      features: result2.features,
+      ...result2.warnings.length === 0 ? {} : { _warnings: [...result2.warnings] }
     };
   }
   // Maintainer note (not published): one tile's trees as FeatureCollection JSON
@@ -12590,10 +13325,10 @@ var VegetationService = class {
     );
     await ensureCore("vegetation.getArea");
     const started = performance.now();
-    const analysisType = resolveReadAnalysisType(options.analysisType);
-    const readDistanceM = groundReadDistanceM(analysisType);
+    const analysisType2 = resolveReadAnalysisType(options.analysisType);
+    const readDistanceM = groundReadDistanceM(analysisType2);
     const tiles = generateTilesForPolygon(polygon, {
-      analysisType,
+      analysisType: analysisType2,
       ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
     });
     const active3 = tiles.flat().filter((tile) => !tile.empty);
@@ -12638,7 +13373,7 @@ var VegetationService = class {
       executionTime: (performance.now() - started) / 1e3,
       failedTiles,
       readMarginM: readDistanceM,
-      analysisType
+      analysisType: analysisType2
     };
   }
 };
@@ -12740,10 +13475,10 @@ var GroundMaterialsService = class {
     await ensureCore("groundMaterials.getArea");
     const cleaner = resolveCleaner(options.cleaner);
     const started = performance.now();
-    const analysisType = resolveReadAnalysisType(options.analysisType);
-    const tileQueryHalfM = groundReadDistanceM(analysisType);
+    const analysisType2 = resolveReadAnalysisType(options.analysisType);
+    const tileQueryHalfM = groundReadDistanceM(analysisType2);
     const grid = generateTilesForPolygon(polygon, {
-      analysisType,
+      analysisType: analysisType2,
       ...options.maxTilesOverride === void 0 ? {} : { maxTilesOverride: options.maxTilesOverride }
     });
     const active3 = grid.flat().filter((tile) => !tile.empty);
@@ -12756,7 +13491,7 @@ var GroundMaterialsService = class {
         executionTime: (performance.now() - started) / 1e3,
         failedTiles: [],
         readMarginM: tileQueryHalfM,
-        analysisType
+        analysisType: analysisType2
       };
     }
     const transport3 = httpRangeTransport({
@@ -12808,7 +13543,7 @@ var GroundMaterialsService = class {
       // not a degraded answer. It is an emptier city that nobody can see (D48).
       failedTiles: [],
       readMarginM: tileQueryHalfM,
-      analysisType,
+      analysisType: analysisType2,
       ...overtureRelease === void 0 ? {} : { overtureRelease }
     };
   }
@@ -12850,9 +13585,6 @@ function parseJsonObject(text, subject, operation) {
   }
   return value;
 }
-function decodeJsonObject(bytes, subject, operation) {
-  return parseJsonObject(decodeUtf8(bytes, subject, operation), subject, operation);
-}
 function gunzipIfNeeded(bytes, uuid, operation) {
   if (bytes.length < 2 || bytes[0] !== GZIP_MAGIC[0] || bytes[1] !== GZIP_MAGIC[1]) return bytes;
   try {
@@ -12864,59 +13596,6 @@ function gunzipIfNeeded(bytes, uuid, operation) {
       operation
     );
   }
-}
-function indexStations(catalog, operation) {
-  const stations = catalog["stations"] ?? [];
-  if (!Array.isArray(stations)) {
-    failWeather("Weather catalog `stations` is not a list", 502, operation);
-  }
-  const byUuid = /* @__PURE__ */ new Map();
-  const byFileName = /* @__PURE__ */ new Map();
-  const byRankKey = /* @__PURE__ */ new Map();
-  const ranking = [];
-  for (const station of stations) {
-    if (station === null || typeof station !== "object" || Array.isArray(station)) continue;
-    const row = station;
-    const uuid = row["uuid"];
-    const fileName = row["fileName"];
-    const typed2 = row;
-    if (typeof uuid !== "string" || uuid === "") continue;
-    if (typeof fileName !== "string" || fileName === "") continue;
-    byUuid.set(uuid, typed2);
-    byFileName.set(fileName, typed2);
-    const lat = row["lat"];
-    const lon = row["lon"];
-    if (typeof lat !== "number" || !Number.isFinite(lat)) continue;
-    if (typeof lon !== "number" || !Number.isFinite(lon)) continue;
-    if (byRankKey.has(uuid)) continue;
-    byRankKey.set(uuid, typed2);
-    ranking.push({ uuid, lat, lon });
-  }
-  return {
-    byUuid,
-    byFileName,
-    byRankKey,
-    rankingJson: JSON.stringify({ stations: ranking })
-  };
-}
-function projectRankedStations(ranked, index2, operation) {
-  return ranked.map((entry) => {
-    const key = entry["uuid"];
-    const row = typeof key === "string" ? index2.byRankKey.get(key) : void 0;
-    if (row === void 0) {
-      return failWeather(
-        `Weather ranking returned an unknown station ${JSON.stringify(key)}`,
-        502,
-        operation
-      );
-    }
-    const source = row;
-    return {
-      uuid: source["uuid"] ?? null,
-      fileName: source["fileName"] ?? null,
-      location_data: source["location_data"] ?? null
-    };
-  });
 }
 
 // src/internal/weather-static-cache.ts
@@ -13006,9 +13685,16 @@ function clearWeatherCatalogCache() {
   stationCache.clear();
   stationPending.clear();
 }
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
 async function staticBytes(url, operation, request) {
   try {
-    const answer = await fetchPublicBytes(url, { ...request, cap: MAX_STATIC_BYTES });
+    const answer = await withHostRetry(
+      "public_get",
+      () => fetchPublicBytes(url, { ...request, cap: MAX_STATIC_BYTES }),
+      request
+    );
     return { bytes: answer.bytes, etag: answer.etag };
   } catch (error) {
     if (error instanceof GeodataError) {
@@ -13032,7 +13718,7 @@ var StaticWeatherReader = class {
     };
   }
   /** The generation folder the pointer names, re-read on the TTL. */
-  async folderUrl(operation) {
+  async folderUrl() {
     const cached2 = pointerCache.get(this.baseUrl);
     if (cached2 !== void 0 && Date.now() - cached2.at < this.ttlMs) return cached2.folderUrl;
     const loaded = await loadOnce(
@@ -13047,48 +13733,44 @@ var StaticWeatherReader = class {
           pointerOperation,
           this.request
         );
-        const pointer = decodeJsonObject(bytes, "Weather catalog pointer", pointerOperation);
-        const path = pointer["path"];
-        if (typeof path !== "string" || path === "") {
-          failWeather("Weather catalog pointer carries no usable `path`", 502, operation);
+        try {
+          return {
+            folderUrl: requireCore().weatherPointerFolder(this.baseUrl, bytes),
+            at: Date.now()
+          };
+        } catch (error) {
+          return failWeather(errorMessage(error), 502, pointerOperation);
         }
-        return {
-          folderUrl: `${this.baseUrl}/${path.replace(/^\/+|\/+$/g, "")}`,
-          at: Date.now()
-        };
       }
     );
     return loaded.folderUrl;
   }
-  /** The catalog for the current generation, parsed at most once per ETag. */
-  async catalog(operation) {
-    const folderUrl = await this.folderUrl(operation);
+  /** The catalog handle for the current generation, read at most once per generation. */
+  async catalog() {
+    const folderUrl = await this.folderUrl();
     const catalogOperation = "fetchWeatherCatalog";
     const url = `${folderUrl}/catalog.json`;
     const cached2 = catalogCache.get(url);
     if (cached2 !== void 0) return { folderUrl, entry: cached2 };
     const entry = await loadOnce(catalogPending, CATALOG_CACHE_LIMIT, catalogCache, url, async () => {
       const { bytes } = await staticBytes(url, catalogOperation, this.request);
-      const parsed = parseJsonObject(
-        decodeUtf8(bytes, "Weather catalog", catalogOperation),
-        "Weather catalog",
-        catalogOperation
-      );
-      return indexStations(parsed, catalogOperation);
+      try {
+        return new (requireCore()).WeatherCatalog(bytes);
+      } catch (error) {
+        return failWeather(errorMessage(error), 502, catalogOperation);
+      }
     });
     return { folderUrl, entry };
   }
-  /** uuid or fileName to a catalog row, or the typed 404 (D40). */
-  resolveStation(entry, identifier, operation) {
-    const station = entry.byUuid.get(identifier) ?? entry.byFileName.get(identifier);
-    if (station === void 0) {
-      failWeather(
-        `Weather station ${JSON.stringify(identifier)} is not in the public weather catalog. Private and custom-EPW weather files are no longer looked up by id: bring the EPW file itself as BYO weather instead (see MIGRATION.md). No other station is substituted for it.`,
-        404,
-        operation
-      );
+  /** uuid or fileName to the catalog's uuid, or the typed 404 (D40). The rule and its text are the kernel's. */
+  stationUuid(entry, identifier, operation) {
+    let row;
+    try {
+      row = entry.find(identifier);
+    } catch (error) {
+      return failWeather(errorMessage(error), 404, operation);
     }
-    return station;
+    return JSON.parse(row).uuid;
   }
   /** One station's data object as TEXT, gzip handled either way. */
   async stationText(folderUrl, uuid, operation) {
@@ -13109,28 +13791,18 @@ var StaticWeatherReader = class {
    */
   async nearestStations(lat, lon, radiusKm) {
     const operation = "getWeatherFileFromLocation";
-    const { entry } = await this.catalog(operation);
-    let out;
+    const { entry } = await this.catalog();
     try {
-      out = requireCore().weatherNearestStations(
-        entry.rankingJson,
-        lat,
-        lon,
-        radiusKm ?? DEFAULT_RADIUS_KM,
-        STATION_LIMIT
+      return JSON.parse(
+        entry.nearest(lat, lon, radiusKm ?? DEFAULT_RADIUS_KM, STATION_LIMIT)
       );
     } catch (error) {
       return failWeather(
-        `local weatherNearestStations failed: ${error instanceof Error ? error.message : String(error)}`,
+        `local weather catalog nearest failed: ${errorMessage(error)}`,
         500,
         operation
       );
     }
-    return projectRankedStations(
-      JSON.parse(out),
-      entry,
-      operation
-    );
   }
   /**
    * One station's full document, found by `uuid` or `fileName`.
@@ -13139,103 +13811,39 @@ var StaticWeatherReader = class {
    */
   async stationByIdentifier(identifier) {
     const operation = "getWeatherFileFromIdentifier";
-    const { folderUrl, entry } = await this.catalog(operation);
-    const station = this.resolveStation(entry, identifier, operation);
-    const text = await this.stationText(folderUrl, station.uuid, operation);
-    return parseJsonObject(text, `Weather station ${JSON.stringify(station.uuid)}`, operation);
+    const { folderUrl, entry } = await this.catalog();
+    const uuid = this.stationUuid(entry, identifier, operation);
+    const text = await this.stationText(folderUrl, uuid, operation);
+    return parseJsonObject(text, `Weather station ${JSON.stringify(uuid)}`, operation);
   }
   /**
-   * A station's hourly arrays (under `weatherData`), filtered to a period given as JSON
-   * text built from `TimeFilters`.
+   * A station's hours inside a period given as JSON text built from `TimeFilters`, one
+   * record per hour.
    *
    * @throws {WeatherServiceError} when the station is unknown, the catalog is unreadable or the
    * period is rejected.
    */
   async filterHours(identifier, timePeriodJson) {
     const operation = "filterWeatherData";
-    const { folderUrl, entry } = await this.catalog(operation);
-    const station = this.resolveStation(entry, identifier, operation);
-    const stationJson = await this.stationText(folderUrl, station.uuid, operation);
-    let out;
+    const { folderUrl, entry } = await this.catalog();
+    const uuid = this.stationUuid(entry, identifier, operation);
+    const stationJson = await this.stationText(folderUrl, uuid, operation);
+    const core2 = requireCore();
     try {
-      out = requireCore().weatherFilterHours(stationJson, timePeriodJson);
+      return JSON.parse(
+        core2.weatherRows(core2.weatherFilterHours(stationJson, timePeriodJson))
+      );
     } catch (error) {
       return failWeather(
-        `local weatherFilterHours failed: ${error instanceof Error ? error.message : String(error)}`,
+        `local weatherFilterHours failed: ${errorMessage(error)}`,
         500,
         operation
       );
     }
-    return JSON.parse(out);
   }
 };
 
 // src/weather.ts
-var NUMERIC_WEATHER_FIELDS = /* @__PURE__ */ new Set([
-  "dryBulbTemperature",
-  "dewPointTemperature",
-  "relativeHumidity",
-  "atmosphericStationPressure",
-  "extraterrestrialHorizontalRadiation",
-  "extraterrestrialDirectNormalRadiation",
-  "horizontalInfraredRadiationIntensity",
-  "globalHorizontalRadiation",
-  "directNormalRadiation",
-  "diffuseHorizontalRadiation",
-  "globalHorizontalIlluminance",
-  "directNormalIlluminance",
-  "diffuseHorizontalIlluminance",
-  "zenithLuminance",
-  "windDirection",
-  "windSpeed",
-  "totalSkyCover",
-  "opaqueSkyCover",
-  "visibility",
-  "ceilingHeight",
-  "presentWeatherObservation",
-  "presentWeatherCodes",
-  "precipitableWater",
-  "aerosolOpticalDepth",
-  "snowDepth",
-  "daysSinceLastSnowfall",
-  "albedo",
-  "liquidPrecipitationDepth",
-  "liquidPrecipitationQuantity"
-]);
-function weatherNumber(value, field) {
-  if (value === null || value === void 0 || typeof value === "number") return value ?? null;
-  if (typeof value !== "string") throw new TypeError(`${field} must be numeric`);
-  const trimmed = value.trim();
-  if (trimmed === "" || /^(null|none|na|n\/a|nan)$/i.test(trimmed)) return null;
-  const parsed = Number.parseFloat(trimmed);
-  if (Number.isNaN(parsed)) throw new TypeError(`${field} must be numeric`);
-  return parsed;
-}
-function normalizeWeatherPoint(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("weather data point must be an object");
-  }
-  const output = { ...value };
-  for (const field of NUMERIC_WEATHER_FIELDS) {
-    if (Object.hasOwn(output, field)) output[field] = weatherNumber(output[field], field);
-  }
-  return output;
-}
-function rowsFromWeatherData(weatherData) {
-  const columns = Object.entries(weatherData).filter(
-    (entry) => Array.isArray(entry[1])
-  );
-  const rowCount = columns.reduce((most, [, values]) => Math.max(most, values.length), 0);
-  const rows = [];
-  for (let index2 = 0; index2 < rowCount; index2 += 1) {
-    const record3 = {};
-    for (const [field, values] of columns) {
-      record3[field] = index2 < values.length ? values[index2] : null;
-    }
-    rows.push(normalizeWeatherPoint(record3));
-  }
-  return rows;
-}
 var WeatherService = class {
   reader;
   /**
@@ -13319,12 +13927,7 @@ var WeatherService = class {
       "it was the deleted route's `hour-filter` body field and has no kernel twin; filter the returned records yourself"
     );
     if (source instanceof WeatherDocument) return source.filterHours(filters);
-    const filtered = await this.reader.filterHours(source, weatherWindowJson(filters));
-    const weatherData = filtered["weatherData"];
-    if (weatherData === null || typeof weatherData !== "object" || Array.isArray(weatherData)) {
-      return [];
-    }
-    return rowsFromWeatherData(weatherData);
+    return this.reader.filterHours(source, weatherWindowJson(filters));
   }
 };
 
@@ -13572,12 +14175,12 @@ function flattenVisualConfigs(configurations) {
   }
   return flat;
 }
-function resolveVisualConfig(configurations, analysisType, selectors = {}) {
+function resolveVisualConfig(configurations, analysisType2, selectors = {}) {
   const flat = flattenVisualConfigs(configurations);
-  if (analysisType in flat) return flat[analysisType];
+  if (analysisType2 in flat) return flat[analysisType2];
   const variant = selectors.criteria ?? selectors.subtype;
   if (variant !== void 0 && variant !== "") {
-    const compound = `${analysisType}:${variant}`;
+    const compound = `${analysisType2}:${variant}`;
     if (compound in flat) return flat[compound];
   }
   return void 0;
@@ -13746,9 +14349,9 @@ function sharedLegendRange(sources, mode = "exact", options = {}) {
     requireCore("sharedLegendRange").sharedLegendRange(pooled, mode, options.fixed?.[0], options.fixed?.[1])
   );
 }
-async function registryFixedRange(analysisType, options = {}) {
+async function registryFixedRange(analysisType2, options = {}) {
   const configurations = options.visualConfigurations ?? (await fetchVisualConfigurations(options.registry ?? {})).configurations;
-  const config = resolveVisualConfig(configurations, analysisType, {
+  const config = resolveVisualConfig(configurations, analysisType2, {
     criteria: options.criteria,
     subtype: options.subtype
   });
@@ -13758,7 +14361,7 @@ async function registryFixedRange(analysisType, options = {}) {
 
 // src/ground-materials.ts
 function cleanV3Local(layers, params) {
-  const result = requireCore().groundCleanV3(
+  const result2 = requireCore().groundCleanV3(
     JSON.stringify(layers),
     params.latitude,
     params.longitude,
@@ -13766,7 +14369,7 @@ function cleanV3Local(layers, params) {
     params.defaultLayer,
     params.zStep
   );
-  return JSON.parse(result);
+  return JSON.parse(result2);
 }
 var LocalCleaner = class {
   /**
@@ -13780,6 +14383,14 @@ var LocalCleaner = class {
     return cleanV3Local(layers, params);
   }
 };
+
+// src/tessellate.ts
+function geojsonLayersToDotbim(layers) {
+  const result2 = requireCore("geojsonLayersToDotbim").geojsonLayersToDotbim(
+    JSON.stringify(layers)
+  );
+  return JSON.parse(result2);
+}
 
 // src/area/index.ts
 var area_exports = {};
@@ -13795,6 +14406,7 @@ __export(area_exports, {
   PHYSICS_TIERS: () => PHYSICS_TIERS,
   SCHEDULE_CONTRACT_VERSION: () => SCHEDULE_CONTRACT_VERSION,
   THERMAL_CONTROLS: () => THERMAL_CONTROLS,
+  TILE_FAILURE_KINDS: () => TILE_FAILURE_KINDS,
   TILE_SIZE_CELLS: () => TILE_SIZE_CELLS,
   TILE_SIZE_M: () => TILE_SIZE_M,
   TileFailurePhase: () => TileFailurePhase,
@@ -13826,213 +14438,16 @@ var CELL_SIZE_M = 1;
 var TILE_SIZE_M = 512;
 var TILE_SIZE_CELLS = TILE_SIZE_M / CELL_SIZE_M;
 
-// src/internal/submission-stopped.ts
-var SubmissionStoppedError = class extends TransportError {
-  constructor(message = "submission stopped after an invalid geometry reference") {
-    super(message, "pre-dispatch", "aborted", "POST");
-  }
-};
-
-// src/area/submit-pool.ts
-function concurrency(value) {
-  const count2 = value ?? 8;
-  if (!Number.isSafeInteger(count2) || count2 < 1) throw new TypeError("maxWorkers must be a positive integer");
-  return count2;
-}
-function tileStatus(job) {
-  if (job.status === JobStatus.Succeeded) return "completed";
-  if (job.status === JobStatus.Failed) return "failed";
-  if (job.status === JobStatus.Running) return "running";
-  return "pending";
-}
-function unknownAcceptance(error, posted) {
-  return error instanceof SubmissionUncertainError || error instanceof TransportError && error.phase === "unknown-acceptance" && (error.reason !== "aborted" || posted);
-}
-function failed(entry, error) {
-  return {
-    tileId: entry.key,
-    row: entry.row,
-    col: entry.col,
-    status: "failed",
-    error: error instanceof Error ? error.message : String(error)
-  };
-}
-function slots(count2) {
-  let active3 = 0;
-  const waiting4 = [];
-  return async (run) => {
-    if (active3 < count2) active3 += 1;
-    else await new Promise((resolve) => {
-      waiting4.push(resolve);
-    });
-    try {
-      return await run();
-    } finally {
-      const next = waiting4.shift();
-      if (next === void 0) active3 -= 1;
-      else next();
-    }
-  };
-}
-function reportAccepted(options, jobId, tileKey) {
-  if (jobId === void 0 || options.onAccepted === void 0) return;
-  try {
-    options.onAccepted(jobId, tileKey);
-  } catch {
-  }
-}
-async function submitEntries(service, entries3, options = {}) {
-  const jobs = /* @__PURE__ */ new Map();
-  for (const [key, job] of options.priorJobs ?? []) jobs.set(key, { ...job });
-  const failedSubmissions = [];
-  const uncertainSubmissions = new Set(options.priorUncertain ?? []);
-  const invalidReferenceSubmissions = [...options.priorInvalidReference ?? []];
-  let submissionAbortStatus = null;
-  let invalidReferenceAbort = false;
-  const beforeDispatch = () => {
-    if (invalidReferenceAbort) throw new SubmissionStoppedError();
-    if (submissionAbortStatus !== null) throw new SubmissionStoppedError("submission stopped after a 402");
-  };
-  let cursor = 0;
-  const workers = Math.min(concurrency(options.maxWorkers), Math.max(1, entries3.length));
-  const posts = slots(concurrency(options.maxWorkers));
-  const submitOne = async (entry, stages) => {
-    let posted = false;
-    try {
-      const capture = options.beforeSubmit?.(entry);
-      const job = await service.submitPrepared(
-        entry.prepared,
-        {
-          beforeDispatch: () => {
-            beforeDispatch();
-            posted = true;
-          },
-          stages,
-          ...options.signal === void 0 ? {} : { signal: options.signal },
-          ...entry.idempotencyKey === void 0 ? {} : { idempotencyKey: entry.idempotencyKey }
-        }
-      );
-      jobs.set(entry.key, {
-        tileId: entry.key,
-        row: entry.row,
-        col: entry.col,
-        jobId: job.jobId,
-        status: tileStatus(job),
-        lastJobSnapshot: job,
-        ...job.binary === void 0 ? {} : { binary: job.binary },
-        ...job.error === void 0 ? {} : { error: job.error }
-      });
-      uncertainSubmissions.delete(entry.key);
-      reportAccepted(options, job.jobId, entry.key);
-      try {
-        options.afterAccepted?.(capture, job.jobId);
-      } catch (error) {
-        try {
-          (options.logger ?? consoleLogger).warn({
-            event: "facade_capture_not_kept",
-            tileId: entry.key,
-            jobId: job.jobId,
-            reason: error instanceof Error ? error.message : String(error)
-          });
-        } catch {
-        }
-      }
-    } catch (error) {
-      if (error instanceof SubmissionStoppedError && invalidReferenceAbort) {
-        jobs.set(entry.key, {
-          tileId: entry.key,
-          row: entry.row,
-          col: entry.col,
-          status: "skipped",
-          error: error.message
-        });
-      } else if (error instanceof GeometryReferenceSubmissionError) {
-        invalidReferenceAbort = true;
-        invalidReferenceSubmissions.push(entry.key);
-        uncertainSubmissions.delete(entry.key);
-        const accepted = error.acceptedJobIds[0];
-        jobs.set(entry.key, {
-          tileId: entry.key,
-          row: entry.row,
-          col: entry.col,
-          ...accepted === void 0 ? {} : { jobId: accepted },
-          status: "failed",
-          invalidReference: true,
-          error: error.message
-        });
-        reportAccepted(options, accepted, entry.key);
-      } else if (unknownAcceptance(error, posted)) {
-        uncertainSubmissions.add(entry.key);
-        const accepted = error instanceof SubmissionUncertainError ? error.acceptedJobIds[0] : void 0;
-        jobs.set(entry.key, {
-          tileId: entry.key,
-          row: entry.row,
-          col: entry.col,
-          ...accepted === void 0 ? {} : { jobId: accepted },
-          status: accepted === void 0 ? "skipped" : "pending",
-          error: "submission outcome is unknown; do not resubmit automatically"
-        });
-        reportAccepted(options, accepted, entry.key);
-      } else {
-        if (error instanceof TransportError && error.status === 402) submissionAbortStatus = 402;
-        uncertainSubmissions.delete(entry.key);
-        failedSubmissions.push(entry.key);
-        jobs.set(entry.key, failed(entry, error));
-      }
-    }
-  };
-  const submits = [];
-  await Promise.all(Array.from({ length: workers }, async () => {
-    while (cursor < entries3.length) {
-      const entry = entries3[cursor++];
-      if (!entry) continue;
-      if (invalidReferenceAbort) {
-        jobs.set(entry.key, {
-          tileId: entry.key,
-          row: entry.row,
-          col: entry.col,
-          status: "skipped",
-          error: "submission stopped after an invalid geometry reference"
-        });
-        continue;
-      }
-      if (submissionAbortStatus !== null || options.signal?.aborted) {
-        failedSubmissions.push(entry.key);
-        jobs.set(entry.key, failed(entry, options.signal?.reason ?? "submission stopped"));
-        continue;
-      }
-      let uploaded;
-      const slotFree = new Promise((resolve) => {
-        uploaded = resolve;
-      });
-      const submit = submitOne(entry, { uploaded, post: posts });
-      submits.push(submit);
-      await Promise.race([slotFree, submit]);
-    }
-  }));
-  await Promise.all(submits);
-  return {
-    jobs,
-    failedSubmissions,
-    uncertainSubmissions: [...uncertainSubmissions],
-    invalidReferenceSubmissions,
-    submissionAbortStatus
-  };
-}
-
 // src/area/submission.ts
-function effectiveOptions(options, analysisType) {
+function effectiveOptions(options, analysisType2) {
   if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
     throw new TypeError("unsupported option binaryResults; use transport instead");
   }
-  const transport3 = areaTransport(options, analysisType);
+  const transport3 = areaTransport(options, analysisType2);
   if (options.transport !== void 0 && options.retryFrom?.transport !== void 0 && options.transport !== options.retryFrom.transport) {
     throw new Error("retryFrom transport mismatch");
   }
   const margin = options.terrainContextMarginM ?? options.retryFrom?.terrainContextMarginM;
-  if (margin !== void 0 && (!Number.isFinite(margin) || margin < 0)) {
-    throw new TypeError("terrainContextMarginM must be a finite non-negative number");
-  }
   if (options.terrainContextMarginM !== void 0 && options.retryFrom?.terrainContextMarginM !== void 0 && options.terrainContextMarginM !== options.retryFrom.terrainContextMarginM) {
     throw new Error("retryFrom terrainContextMarginM mismatch");
   }
@@ -14097,11 +14512,11 @@ var AreaGeometryProbeError = class extends Error {
   }
   name = "AreaGeometryProbeError";
 };
-function facadeCaptureFor(service, plan, entry) {
+async function facadeCaptureFor(service, plan, entry) {
   if (service.captures === void 0 || !plan.surfaceFields) return void 0;
   if (entry.capture === void 0) return void 0;
   const alignment = entry.prepared.body["terrain-alignment"];
-  return entry.capture(typeof alignment === "string" ? alignment : null);
+  return await entry.capture(typeof alignment === "string" ? alignment : null, service.captures.store);
 }
 function rememberFacadeInputs(service, capture, jobId, cellTris = false) {
   const store = service.captures;
@@ -14117,15 +14532,16 @@ async function submitAreaPlan(service, plan, options = {}) {
   if (options.retryFrom?.geometryProbeUncertain === true) {
     throw new AreaGeometryProbeError(options.retryFrom, options.retryFrom.geometryProbeJobIds ?? []);
   }
-  checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries3.length > 0);
-  const workers = concurrency(options.maxWorkers);
+  checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries3.length > 0, options.logger);
   let outcome;
   try {
     if (areaTransport(options, plan.analysisType) === "binary" && entries3.length > 0 && service.binaryCapability !== void 0) {
       checkBinaryRoute(plan.analysisType, await service.binaryCapability(options.signal));
     }
-    outcome = await submitEntries(service, entries3, {
-      maxWorkers: workers,
+    outcome = await submitOnEngine(service, entries3, {
+      // A plan built by hand may lack the run id; the engine keys need one.
+      runId: plan.runId ?? freshRunId(),
+      ...plan.retryContext?.attempts === void 0 ? {} : { attempts: plan.retryContext.attempts },
       ...options.signal === void 0 ? {} : { signal: options.signal },
       ...options.onAccepted === void 0 ? {} : { onAccepted: options.onAccepted },
       ...options.retryFrom === void 0 ? {} : {
@@ -14137,8 +14553,8 @@ async function submitAreaPlan(service, plan, options = {}) {
         priorUncertain: plan.retryContext?.carryUncertain ?? options.retryFrom.uncertainSubmissions ?? [],
         priorInvalidReference: options.retryFrom.invalidReferenceSubmissions ?? []
       },
-      beforeSubmit: (entry) => facadeCaptureFor(service, plan, entry),
-      afterAccepted: (capture, jobId) => rememberFacadeInputs(service, capture, jobId, plan.localCellTris === true),
+      capture: (entry) => facadeCaptureFor(service, plan, entry),
+      remember: (capture, jobId) => rememberFacadeInputs(service, capture, jobId, plan.localCellTris === true),
       ...options.logger === void 0 ? {} : { logger: options.logger }
     });
   } finally {
@@ -14151,15 +14567,19 @@ async function submitAreaPlan(service, plan, options = {}) {
     invalidReferenceSubmissions,
     submissionAbortStatus
   } = outcome;
-  const schedule2 = freezeAreaSchedule(scheduleFromPlan(
-    plan,
-    jobs,
-    failedSubmissions,
-    uncertainSubmissions,
-    invalidReferenceSubmissions,
-    submissionAbortStatus,
-    options
-  ));
+  const schedule2 = freezeAreaSchedule({
+    ...scheduleFromPlan(
+      plan,
+      jobs,
+      failedSubmissions,
+      uncertainSubmissions,
+      invalidReferenceSubmissions,
+      submissionAbortStatus,
+      options
+    ),
+    // A new attempt the engine made (a new key) travels with the schedule (D224).
+    ...Object.keys(outcome.attempts).length === 0 ? {} : { attempts: outcome.attempts }
+  });
   try {
     options.onProgress?.(computeAreaState(schedule2));
   } catch {
@@ -14175,9 +14595,36 @@ async function submitAreaPlan(service, plan, options = {}) {
 }
 async function runArea(service, input, polygon, options = {}) {
   const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
-  concurrency(effective.maxWorkers);
   const plan = await planAreaSubmission(service, input, polygon, effective);
   return submitAreaPlan(service, plan, effective);
+}
+function shareFacadeSites(facadeSites) {
+  const shared2 = [...facadeSites].filter(([, plans]) => plans.length >= 2 && new Set(plans).size === 1);
+  for (const [site, plans] of shared2) site.shareFacadeParts?.(plans.length);
+  return () => {
+    for (const [site] of shared2) site.shareFacadeParts?.(0);
+  };
+}
+async function runAreaMany(service, inputs, polygon, options = {}) {
+  if (options.retryFrom !== void 0) {
+    throw new TypeError("retryFrom is not supported with a list of analyses: retry each analysis alone");
+  }
+  const memo2 = siteKeyMemo();
+  const facadeSites = /* @__PURE__ */ new Map();
+  const plans = [];
+  for (const input of inputs) {
+    const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
+    plans.push({ plan: await planAreaSubmission(service, input, polygon, effective, memo2, facadeSites), effective });
+  }
+  const release4 = shareFacadeSites(facadeSites);
+  try {
+    const settled2 = await Promise.allSettled(plans.map(({ plan, effective }) => submitAreaPlan(service, plan, effective)));
+    const failed = settled2.find((outcome) => outcome.status === "rejected");
+    if (failed !== void 0) throw failed.reason;
+    return settled2.map((outcome) => outcome.value);
+  } finally {
+    release4();
+  }
 }
 
 // src/area/preview.ts
@@ -14188,26 +14635,22 @@ function sumSensorCounts(counts) {
   if (counts === void 0) return void 0;
   return Object.values(counts).reduce((total, count2) => total + count2, 0);
 }
-async function previewAreaBatches(service, input, polygon, options = {}) {
+async function previewAreaBatches(service, billing2, input, polygon, options = {}) {
   const plan = await planAreaSubmission(service, input, polygon, options);
   const plannedJobCount = plan.plannedJobCount ?? plan.entries.length;
   const sensorCount = sumSensorCounts(plan.batchSensorCounts);
+  const priced = estimateRun(plannedJobCount, await billing2.quote(plan.analysisType));
   return {
     tileCount: gridTileCount(plan.tilePositions),
     plannedJobCount,
-    estimatedTimeS: plannedJobCount * ESTIMATED_SECONDS_PER_TILE,
-    estimatedCostTokens: plannedJobCount * DEFAULT_TOKENS_PER_JOB,
+    estimatedTimeS: priced.estimatedTimeS,
+    estimatedCostTokens: priced.estimatedCostTokens,
+    tokensPerJob: priced.tokensPerJob,
+    pricingSource: priced.pricingSource,
+    ...priced.pricingVersion === void 0 ? {} : { pricingVersion: priced.pricingVersion },
     ...sensorCount === void 0 ? {} : { sensorCount }
   };
 }
-
-// src/area/schedule-types.ts
-var TileFailurePhase = {
-  Submit: "submit",
-  Compute: "compute",
-  Download: "download",
-  Skipped: "skipped"
-};
 
 // src/area/area-grid.ts
 function newAreaGridMerger(schedule2, strategy, windDirectionDeg, block) {
@@ -14246,16 +14689,16 @@ function finishAreaGrid(merger) {
     }
   };
 }
-function areaGridHasValue(result, cell) {
-  return cellHasValue(result.valueDtype, result.mergedGrid, result.valid, cell);
+function areaGridHasValue(result2, cell) {
+  return cellHasValue(result2.valueDtype, result2.mergedGrid, result2.valid, cell);
 }
-function areaGridValuesF32(result) {
-  const grid = result.mergedGrid;
+function areaGridValuesF32(result2) {
+  const grid = result2.mergedGrid;
   return requireCore("areaGridValuesF32").surfaceValuesF32(
     new Uint8Array(grid.buffer, grid.byteOffset, grid.byteLength),
-    result.valueDtype,
-    result.valueDivisor,
-    result.valid,
+    result2.valueDtype,
+    result2.valueDivisor,
+    result2.valid,
     0,
     grid.length
   );
@@ -14271,239 +14714,57 @@ function incomplete(schedule2, missing) {
     const job = schedule2.jobs.get(tile.tileId);
     return uncertain.has(tile.tileId) && job?.jobId !== void 0 && job.status === "failed";
   });
-  const named2 = missing.map((tile) => `${tile.tileId} (${tile.phase ?? "unknown"}: ${tile.error})`);
+  const kindText = (tile) => tile.kind === void 0 ? "" : `; kind=${tile.kind}${tile.status === void 0 ? "" : `, status=${tile.status}`}`;
+  const named = missing.map((tile) => `${tile.tileId} (${tile.phase ?? "unknown"}: ${tile.error}${kindText(tile)})`);
+  const advice = retryPolicy().failureAdvice;
+  const adviceNote = [...new Set(missing.flatMap((tile) => tile.kind === void 0 ? [] : [tile.kind]))].map((kind) => ` [${kind}] ${advice[kind]}`).join("");
+  const totalTiles = (/* @__PURE__ */ new Set([...schedule2.jobs.keys(), ...missing.map((tile) => tile.tileId)])).size;
   const cause = missing.find((tile) => tile.exception !== void 0)?.exception;
   const uncertainNote = unreachable.length === 0 ? "" : ` ${unreachable.length} of them (${unreachable.map((tile) => tile.tileId).join(", ")}) had an UNKNOWN submission outcome: neither recovery reaches those, because the server may or may not hold a job for them. Resubmitting one can pay for it twice, so this SDK will not do it for you \u2014 check the account's jobs, or call runArea for just those tiles knowing the cost.`;
   const failedNote = failedAfterUncertain.length === 0 ? "" : ` ${failedAfterUncertain.length} of them (${failedAfterUncertain.map((tile) => tile.tileId).join(", ")}) had an uncertain submission that turned out to be ACCEPTED: the job ran and FAILED, so there is no result for mergeAreaJobs to fetch. This SDK will not resubmit it for you either, for the same reason \u2014 check the job's own error, or call runArea for just that tile knowing the cost.`;
   return new Error(
-    `Area run is incomplete: ${missing.length} of ${schedule2.jobs.size} tiles did not contribute to the grid. Call mergeAreaJobs again with this schedule to fetch a result that is already computed, or runArea with retryFrom to resubmit a tile that was never accepted.${uncertainNote}${failedNote} Missing: ${named2.join("; ")}`,
+    `Area run is incomplete: ${missing.length} of ${totalTiles} tiles did not contribute to the grid. Call mergeAreaJobs again with this schedule to fetch a result that is already computed.${adviceNote}${uncertainNote}${failedNote} Missing: ${named.join("; ")}`,
     cause === void 0 ? {} : { cause }
   );
 }
 
 // src/area/merge-common.ts
-var DEFAULT_MERGE_WORKERS = 8;
-function workerCount2(value) {
-  const count2 = value ?? DEFAULT_MERGE_WORKERS;
-  if (!Number.isSafeInteger(count2) || count2 < 1) {
-    throw new TypeError("maxWorkers must be a positive integer");
-  }
-  return count2;
-}
-async function parallel(values, maximum, task) {
-  let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(maximum, Math.max(1, values.length)) }, async () => {
-    while (cursor < values.length) {
-      const value = values[cursor++];
-      if (value !== void 0) await task(value);
-    }
-  }));
-}
 function throwable(error) {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-// src/area/merge-surface-decode.ts
-function decodeSurfaceHandle(content) {
-  const limits = RESULT_DECODE_LIMITS;
-  const archive = requireCore().decodeSurfaceArchive(
-    content,
-    BigInt(limits.maxTotalBytes),
-    limits.maxMetadataBytes,
-    BigInt(limits.maxCells),
-    BigInt(limits.maxTriangleValues)
-  );
-  if (archive.route !== "surface") {
-    archive.free();
-    return void 0;
-  }
-  return archive;
-}
-function decodeSurfaceChunk(indices2, contents, decoded) {
-  if (indices2.length === 0) return;
-  const limits = RESULT_DECODE_LIMITS;
-  const handles = requireCore().decodeSurfaceArchives(
-    indices2.map((index2) => contents[index2]),
-    BigInt(limits.maxTotalBytes),
-    limits.maxMetadataBytes,
-    BigInt(limits.maxCells),
-    BigInt(limits.maxTriangleValues)
-  );
-  indices2.forEach((index2, at) => {
-    contents[index2] = void 0;
-    decoded[index2] = handles[at];
-  });
-}
-function checkSurfaceBatch(entryIds, decoded) {
-  const refused = decoded.findIndex((handle2) => handle2?.route !== "surface");
-  if (refused === -1) return;
-  const handle = decoded[refused];
-  const entryId = entryIds[refused];
-  throw new Error(`Cannot merge surface results: download failed for ${entryId}`, {
-    cause: new Error(handle.route === "error" ? handle.error : `surface entry ${entryId} returned a non-surface result`)
-  });
-}
+// src/area/schedule-types.ts
+var TileFailurePhase = {
+  Submit: "submit",
+  Compute: "compute",
+  Download: "download",
+  Skipped: "skipped"
+};
+var TILE_FAILURE_KINDS = [
+  "send_refused",
+  "host_refused",
+  "rate_limited",
+  "payment_required",
+  "uncertain",
+  "server_failed",
+  "download_failed",
+  "timeout"
+];
 
-// src/area/merge-surface.ts
-async function mergeSurfaceAreaJobs(jobsService, schedule2, options = {}) {
-  if (schedule2.surfaceFields !== true) throw new Error("Surface merge requires a surface schedule");
-  if (schedule2.geometryProbeUncertain === true) {
-    throw new Error("Area run contains an uncertain geometry capability probe");
-  }
-  if ((schedule2.invalidReferenceSubmissions?.length ?? 0) > 0 || [...schedule2.jobs.values()].some((job) => job.invalidReference === true)) {
-    throw new Error("Area run contains an invalid geometry-reference acceptance");
-  }
-  revivePolledOut(schedule2);
-  await checkAreaState(jobsService, schedule2, {
-    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-    ...options.signal === void 0 ? {} : { signal: options.signal }
-  });
-  const recovered = (tileId) => {
-    const job = schedule2.jobs.get(tileId);
-    return job?.status === "completed" && Boolean(job.jobId);
+// src/area/grid-merge.ts
+function failure(tileId, row, col, error, phase, exception, job) {
+  return {
+    tileId,
+    row,
+    col,
+    error,
+    phase,
+    ...exception === void 0 ? {} : { exception },
+    ...job?.failureKind === void 0 ? {} : { kind: job.failureKind },
+    ...job?.failureStatus === void 0 ? {} : { status: job.failureStatus }
   };
-  const missing = [
-    ...schedule2.failedSubmissions,
-    ...(schedule2.uncertainSubmissions ?? []).filter((tileId) => !recovered(tileId))
-  ];
-  if (missing.length > 0) {
-    throw new Error(`Cannot merge surface results with missing submissions: ${JSON.stringify(missing.sort())}`);
-  }
-  if (schedule2.jobs.size === 0) return emptySurfaceColumns();
-  const incomplete2 = [...schedule2.jobs.values()].filter((job) => job.status !== "completed" || !job.jobId);
-  if (incomplete2.length > 0) {
-    throw new Error(`Cannot merge surface results: jobs not succeeded: ${JSON.stringify(incomplete2.map((job) => job.jobId ?? job.tileId))}`);
-  }
-  const scheduled = [...schedule2.jobs.entries()];
-  const decoded = Array(scheduled.length);
-  const errors = Array(scheduled.length);
-  const batch = coreThreads() > 1;
-  const contents = Array(batch ? scheduled.length : 0);
-  const waiting4 = [];
-  const decodeWaiting = () => decodeSurfaceChunk(waiting4.splice(0), contents, decoded);
-  try {
-    await parallel(
-      scheduled.map((entry, index2) => ({ entry, index: index2 })),
-      workerCount2(options.maxWorkers),
-      async ({ entry: [entryId, job], index: index2 }) => {
-        try {
-          const result = await jobsService.downloadResults(job.jobId, {
-            ...job.lastJobSnapshot === void 0 ? {} : { job: job.lastJobSnapshot },
-            ...options.signal === void 0 ? {} : { signal: options.signal }
-          });
-          if (batch) {
-            contents[index2] = result.content;
-            waiting4.push(index2);
-            if (waiting4.length >= 2 * coreThreads()) decodeWaiting();
-            return;
-          }
-          const value = decodeSurfaceHandle(result.content);
-          if (value === void 0) {
-            throw new Error(`surface entry ${entryId} returned a non-surface result`);
-          }
-          decoded[index2] = value;
-        } catch (error) {
-          errors[index2] = throwable(error);
-        }
-      }
-    );
-    if (options.signal?.aborted) {
-      throw options.signal.reason ?? new DOMException("aborted", "AbortError");
-    }
-    const failedAt = errors.findIndex((error) => error !== void 0);
-    if (failedAt !== -1) {
-      throw new Error(`Cannot merge surface results: download failed for ${scheduled[failedAt][0]}`, {
-        cause: errors[failedAt]
-      });
-    }
-    if (batch) {
-      decodeWaiting();
-      checkSurfaceBatch(scheduled.map(([entryId]) => entryId), decoded);
-    }
-    return join3(jobsService, schedule2, scheduled, decoded, options.logger ?? consoleLogger);
-  } finally {
-    for (const value of decoded) value?.free();
-  }
 }
-function join3(jobsService, schedule2, scheduled, decoded, logger) {
-  const started = performance.now();
-  const positions = new Map(schedule2.tilePositions.map((position) => [position.tileId, position]));
-  const core2 = requireCore("mergeSurfaceAreaJobs");
-  const captures = jobsService.captures;
-  const store = captures ?? new FacadeCaptures();
-  try {
-    const anchors = new Float64Array(scheduled.length * 2);
-    scheduled.forEach(([entryId], index2) => {
-      const position = positions.get(entryId);
-      if (position === void 0) throw new Error(`surface entry ${entryId} has no tile position`);
-      const [swX, swY] = core2.tileSwOffset(position.row, position.col, schedule2.analysisType);
-      anchors[index2 * 2] = swX;
-      anchors[index2 * 2 + 1] = swY;
-    });
-    const jobIds2 = scheduled.map(([, job]) => job.jobId);
-    for (const [entryId, job] of scheduled) {
-      if (job.jobId !== void 0 && captures?.lostCapture(job.jobId) === true) {
-        logger.warn({
-          event: "facade_capture_missing",
-          tileId: entryId,
-          jobId: job.jobId,
-          reason: "the capture was not kept after the job was accepted; its surfaces have no outline, and surfaceRenderBuffers refuses them"
-        });
-      }
-    }
-    const emitCellTris = captures?.wantsCellTris(jobIds2) ?? false;
-    const handles = decoded.map((handle) => handle);
-    decoded.fill(void 0);
-    const joined = core2.joinSurfaceJobs(
-      handles,
-      scheduled.map(([entryId]) => entryId),
-      anchors,
-      store.store,
-      jobIds2,
-      emitCellTris
-    );
-    store.forgetSchedule(schedule2);
-    report(joined, scheduled, logger, started);
-    return surfaceColumnsFromJoin(joined);
-  } finally {
-    if (captures === void 0) store.free();
-  }
-}
-function report(joined, scheduled, logger, started) {
-  const elapsedMs = Math.round(performance.now() - started);
-  const host = (job) => joined.jobOrder[job];
-  const fell = /* @__PURE__ */ new Set();
-  for (const { job, reason: reason2, detail } of joined.fallbacks) {
-    fell.add(job);
-    logger.warn({
-      event: "facade_synthesis",
-      outcome: "fell_back",
-      reason: reason2,
-      jobId: scheduled[host(job)]?.[1].jobId,
-      elapsedMs,
-      ...detail === void 0 ? {} : { detail }
-    });
-  }
-  const table = joined.triangles;
-  if (table === void 0) return;
-  for (let job = 0; job < scheduled.length; job += 1) {
-    if (fell.has(job) || table.groupEngaged[job] !== 1) continue;
-    logger.info({
-      event: "facade_synthesis",
-      outcome: "engaged",
-      jobId: scheduled[host(job)]?.[1].jobId,
-      surfaces: table.groupSurfaces[job + 1] - table.groupSurfaces[job],
-      elapsedMs
-    });
-  }
-}
-
-// src/area/merge.ts
-function failure(tileId, row, col, error, phase, exception) {
-  return { tileId, row, col, error, phase, ...exception === void 0 ? {} : { exception } };
-}
-async function mergeAreaJobs(jobsService, schedule2, options = {}) {
-  const started = performance.now();
+function checkGridSchedule(schedule2) {
   if (schedule2.surfaceFields === true) {
     throw new Error("Grid merge does not apply to a surface schedule; call mergeSurfaceAreaJobs");
   }
@@ -14513,142 +14774,425 @@ async function mergeAreaJobs(jobsService, schedule2, options = {}) {
   if ((schedule2.invalidReferenceSubmissions?.length ?? 0) > 0 || [...schedule2.jobs.values()].some((job) => job.invalidReference === true)) {
     throw new Error("Area run contains an invalid geometry-reference acceptance");
   }
-  const strategy = options.strategy ?? "default";
-  if (strategy !== "default" && schedule2.analysisType !== "wind-speed") {
-    throw new Error(`strategy=${JSON.stringify(strategy)} is only valid for wind-speed analyses`);
-  }
-  if (strategy !== "default" && options.windDirectionDeg === void 0) {
-    throw new Error("windDirectionDeg is required");
-  }
-  const revived = revivePolledOut(schedule2);
-  await checkAreaState(jobsService, schedule2, {
-    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-    ...options.signal === void 0 ? {} : { signal: options.signal }
-  });
-  if (revived > 0) {
-    (options.logger ?? consoleLogger).info({
-      event: "area_polled_out_revived",
-      count: revived
-    });
-  }
-  const failedJobs = [];
-  const skippedJobs = [];
-  const failedTiles = [];
-  const seen = /* @__PURE__ */ new Set();
-  const addFailure = (item) => {
-    if (!seen.has(item.tileId)) {
-      seen.add(item.tileId);
-      failedTiles.push(item);
-    }
-  };
-  for (const tileId of schedule2.failedSubmissions) {
-    const job = schedule2.jobs.get(tileId);
-    addFailure(failure(
-      tileId,
-      job?.row ?? -1,
-      job?.col ?? -1,
-      job?.error ?? "job submission failed",
-      TileFailurePhase.Submit
-    ));
-  }
-  for (const tileId of schedule2.uncertainSubmissions ?? []) {
-    const job = schedule2.jobs.get(tileId);
-    if (job?.status === "completed" && job.jobId) continue;
-    skippedJobs.push(tileId);
-    addFailure(failure(
-      tileId,
-      job?.row ?? -1,
-      job?.col ?? -1,
-      "job submission acceptance is unknown",
-      TileFailurePhase.Skipped
-    ));
-  }
-  const complete = [...schedule2.jobs.values()].filter((job) => {
+}
+function completedJobs(schedule2, other = () => {
+}) {
+  return [...schedule2.jobs.values()].filter((job) => {
     if (job.status === "completed" && job.jobId) return true;
-    if (job.status === "failed") {
-      const item = failure(job.tileId, job.row, job.col, job.error ?? "job failed", TileFailurePhase.Compute);
-      failedJobs.push(item);
-      addFailure(item);
-    } else {
-      skippedJobs.push(job.tileId);
-      addFailure(failure(
-        job.tileId,
-        job.row,
-        job.col,
-        "job did not reach a terminal state",
-        TileFailurePhase.Skipped
-      ));
-    }
+    other(job);
     return false;
   });
-  const logger = options.logger ?? consoleLogger;
-  if (complete.length === 0) {
-    if (failedTiles.length > 0) throw incomplete(schedule2, failedTiles);
-    return {
-      mergedGrid: new Float32Array(0),
-      valueDtype: "f32",
-      valueDivisor: 1,
-      gridShape: [0, 0],
-      failedJobs,
-      skippedJobs,
-      failedTiles,
-      executionTime: (performance.now() - started) / 1e3
-    };
+}
+var GridMerge = class {
+  constructor(frame, options = {}) {
+    this.frame = frame;
+    this.options = options;
+    const strategy = options.strategy ?? "default";
+    if (strategy !== "default" && frame.analysisType !== "wind-speed") {
+      throw new Error(`strategy=${JSON.stringify(strategy)} is only valid for wind-speed analyses`);
+    }
+    if (strategy !== "default" && options.windDirectionDeg === void 0) {
+      throw new Error("windDirectionDeg is required");
+    }
   }
-  const merger = newAreaGridMerger(schedule2, strategy, options.windDirectionDeg, options.block);
-  try {
-    const downloadErrors = Array(complete.length);
-    const unusable = Array(complete.length);
-    let runError;
-    await parallel(complete.map((job, index2) => ({ job, index: index2 })), workerCount2(options.maxWorkers), async ({ job, index: index2 }) => {
-      let content;
-      try {
-        content = (await jobsService.downloadResults(job.jobId, {
-          ...job.lastJobSnapshot === void 0 ? {} : { job: job.lastJobSnapshot },
-          ...options.signal === void 0 ? {} : { signal: options.signal }
-        })).content;
-      } catch (error) {
-        downloadErrors[index2] = throwable(error);
-        return;
+  merger;
+  /** Downloaded tiles that give no grid values, by tile id. */
+  lost = /* @__PURE__ */ new Map();
+  /** A run error (numeric and categorical tiles mixed): kept, and thrown by `finish`. */
+  runError;
+  /** Freed: a late download (after a timeout) is dropped, never a new canvas. */
+  freed = false;
+  /** Merge one tile archive; the archive is not kept. Resolves with why the tile is not usable. */
+  push(job, archive) {
+    if (this.runError !== void 0 || this.freed) return Promise.resolve(void 0);
+    return decodeInTurn({ grid: this, job, archive }).then((reason2) => reason2, (error) => {
+      this.runError ??= error;
+      return void 0;
+    });
+  }
+  /** Place the tiles `at` of `tiles` (one batch of `decodeInTurn`); a reason per item into `out`. */
+  place(tiles, at, items, out) {
+    if (this.runError !== void 0 || this.freed) return;
+    try {
+      this.merger ??= newAreaGridMerger(
+        this.frame,
+        this.options.strategy ?? "default",
+        this.options.windDirectionDeg,
+        this.options.block
+      );
+      const reasons = this.merger.pushMany(
+        tiles,
+        Uint32Array.from(at),
+        Uint32Array.from(at, (i) => items[i].job.row),
+        Uint32Array.from(at, (i) => items[i].job.col)
+      );
+      for (const [k, i] of at.entries()) {
+        const job = items[i].job;
+        const reason2 = reasons[k];
+        if (reason2 !== void 0 && reason2 !== null) {
+          this.lost.set(job.tileId, { error: `result is not a usable grid: ${reason2}` });
+          out[i] = String(reason2);
+        } else {
+          this.lost.delete(job.tileId);
+        }
       }
-      if (options.signal?.aborted || runError !== void 0) return;
-      try {
-        unusable[index2] = merger.push(job.row, job.col, content) ?? void 0;
-      } catch (error) {
-        runError = error;
+    } catch (error) {
+      this.runError = error;
+    }
+  }
+  /** A tile whose download failed; a reason `push` already gave stays. */
+  lose(job, error) {
+    if (this.lost.has(job.tileId)) return;
+    const exception = throwable(error);
+    this.lost.set(job.tileId, { error: `download failed: ${exception.message}`, exception });
+  }
+  /**
+   * The merged grid of `schedule`, after each completed tile was pushed or lost.
+   * The caller ran `checkGridSchedule(schedule)` first.
+   * @throws {Error} when any tile failed, was skipped or could not be downloaded.
+   */
+  finish(schedule2, logger, started) {
+    if (this.runError !== void 0) throw throwable(this.runError);
+    const failedJobs = [];
+    const skippedJobs = [];
+    const failedTiles = [];
+    const seen = /* @__PURE__ */ new Set();
+    const addFailure = (item) => {
+      if (!seen.has(item.tileId)) {
+        seen.add(item.tileId);
+        failedTiles.push(item);
+      }
+    };
+    for (const tileId of schedule2.failedSubmissions) {
+      const job = schedule2.jobs.get(tileId);
+      addFailure(failure(
+        tileId,
+        job?.row ?? -1,
+        job?.col ?? -1,
+        job?.error ?? "job submission failed",
+        TileFailurePhase.Submit,
+        void 0,
+        job
+      ));
+    }
+    for (const tileId of schedule2.uncertainSubmissions ?? []) {
+      const job = schedule2.jobs.get(tileId);
+      if (job?.status === "completed" && job.jobId) continue;
+      skippedJobs.push(tileId);
+      addFailure(failure(
+        tileId,
+        job?.row ?? -1,
+        job?.col ?? -1,
+        "job submission acceptance is unknown",
+        TileFailurePhase.Skipped,
+        void 0,
+        job
+      ));
+    }
+    const complete = completedJobs(schedule2, (job) => {
+      if (job.status === "failed") {
+        const item = failure(
+          job.tileId,
+          job.row,
+          job.col,
+          job.error ?? "job failed",
+          TileFailurePhase.Compute,
+          void 0,
+          job
+        );
+        failedJobs.push(item);
+        addFailure(item);
+      } else {
+        skippedJobs.push(job.tileId);
+        addFailure(failure(
+          job.tileId,
+          job.row,
+          job.col,
+          "job did not reach a terminal state",
+          TileFailurePhase.Skipped
+        ));
       }
     });
-    if (runError !== void 0) throw throwable(runError);
-    if (options.signal?.aborted) {
-      throw options.signal.reason ?? new DOMException("aborted", "AbortError");
+    const executionTime = () => (performance.now() - started) / 1e3;
+    if (complete.length === 0) {
+      if (failedTiles.length > 0) throw incomplete(schedule2, failedTiles);
+      return {
+        mergedGrid: new Float32Array(0),
+        valueDtype: "f32",
+        valueDivisor: 1,
+        gridShape: [0, 0],
+        failedJobs,
+        skippedJobs,
+        failedTiles,
+        executionTime: executionTime()
+      };
     }
-    complete.forEach((job, index2) => {
-      const exception = downloadErrors[index2];
-      const reason2 = unusable[index2];
-      if (exception === void 0 && reason2 === void 0) return;
+    for (const job of complete) {
+      const lost = this.lost.get(job.tileId);
+      if (lost === void 0) continue;
       skippedJobs.push(job.tileId);
-      const error = exception === void 0 ? `result is not a usable grid: ${reason2}` : `download failed: ${exception.message}`;
       logger.warn({
         event: "area_tile_download_failed",
         tileId: job.tileId,
         row: job.row,
         col: job.col,
         jobId: job.jobId,
-        error
+        error: lost.error
       });
-      addFailure(failure(job.tileId, job.row, job.col, error, TileFailurePhase.Download, exception));
-    });
+      addFailure(failure(job.tileId, job.row, job.col, lost.error, TileFailurePhase.Download, lost.exception, job));
+    }
     if (failedTiles.length > 0) throw incomplete(schedule2, failedTiles);
     return {
-      ...finishAreaGrid(merger),
+      ...finishAreaGrid(this.merger),
       failedJobs,
       skippedJobs,
       failedTiles,
-      executionTime: (performance.now() - started) / 1e3
+      executionTime: executionTime()
     };
-  } finally {
-    merger.free();
   }
+  free() {
+    this.freed = true;
+    this.merger?.free();
+    this.merger = void 0;
+  }
+};
+var decodeInTurn = perTurn(async (items) => {
+  const core2 = requireCore();
+  const tiles = await poolCall(
+    () => core2.decodeGridTilesStart(items.map((item) => item.archive)),
+    (task) => core2.decodeGridTilesEnd(task)
+  );
+  try {
+    const byGrid = /* @__PURE__ */ new Map();
+    for (const [i, item] of items.entries()) {
+      const at = byGrid.get(item.grid);
+      if (at === void 0) byGrid.set(item.grid, [i]);
+      else at.push(i);
+    }
+    const out = new Array(items.length).fill(void 0);
+    for (const [grid, at] of byGrid) grid.place(tiles, at, items, out);
+    return out;
+  } finally {
+    tiles.free();
+  }
+}, () => 16 * coreThreads());
+
+// src/area/merge-surface.ts
+async function mergeSurfaceAreaJobs(jobsService, schedule2, options = {}, waitS) {
+  if (schedule2.surfaceFields !== true) throw new Error("Surface merge requires a surface schedule");
+  if (schedule2.geometryProbeUncertain === true) {
+    throw new Error("Area run contains an uncertain geometry capability probe");
+  }
+  if ((schedule2.invalidReferenceSubmissions?.length ?? 0) > 0 || [...schedule2.jobs.values()].some((job) => job.invalidReference === true)) {
+    throw new Error("Area run contains an invalid geometry-reference acceptance");
+  }
+  if (schedule2.failedSubmissions.length > 0) {
+    throw new Error(`Cannot merge surface results with missing submissions: ${JSON.stringify([...schedule2.failedSubmissions].sort())}`);
+  }
+  const positions = new Map(schedule2.tilePositions.map((position) => [position.tileId, position]));
+  const surface = new SurfaceFeed(jobsService, schedule2.analysisType, (key) => positions.get(key));
+  try {
+    return await collectAndJoin(jobsService, schedule2, surface, options, waitS);
+  } finally {
+    surface.free();
+  }
+}
+async function collectAndJoin(jobsService, schedule2, surface, options, waitS) {
+  const { facts } = await collectOnEngine(jobsService, schedule2.jobs, { surface }, {
+    ...waitS === void 0 ? { goal: "available" } : { goal: "results", timeoutS: waitS },
+    ...options.signal === void 0 ? {} : { signal: options.signal },
+    ...options.known === void 0 ? {} : { known: options.known }
+  });
+  const recovered = (tileId) => {
+    const job = schedule2.jobs.get(tileId);
+    return job?.status === "completed" && Boolean(job.jobId);
+  };
+  const missing = (schedule2.uncertainSubmissions ?? []).filter((tileId) => !recovered(tileId));
+  if (missing.length > 0) {
+    throw new Error(`Cannot merge surface results with missing submissions: ${JSON.stringify(missing.sort())}`);
+  }
+  if (schedule2.jobs.size === 0) return emptySurfaceColumns();
+  const incomplete2 = [...schedule2.jobs.values()].filter((job) => job.status !== "completed" || !job.jobId);
+  if (incomplete2.length > 0) {
+    throw new Error(`Cannot merge surface results: jobs not succeeded: ${JSON.stringify(incomplete2.map((job) => job.jobId ?? job.tileId))}`);
+  }
+  if (facts.lost.length > 0) {
+    throw new Error(`Cannot merge surface results: download failed for ${[...facts.lost].sort()[0]}`);
+  }
+  return await surface.finish(schedule2, options.logger ?? consoleLogger);
+}
+var SurfaceFeed = class {
+  constructor(service, analysisType2, tileOf) {
+    this.analysisType = analysisType2;
+    this.tileOf = tileOf;
+    this.own = service.captures === void 0;
+    this.captures = service.captures ?? new FacadeCaptures();
+  }
+  stream;
+  asked = /* @__PURE__ */ new Map();
+  captures;
+  own;
+  freed = false;
+  /** Decode job `jobId` of key `key` with the other downloads of this turn. Resolves with why it is not usable, or `undefined`. */
+  push(jobId, key, archive) {
+    if (this.asked.has(jobId)) return Promise.resolve(void 0);
+    if (this.tileOf(key) === void 0) throw new Error(`surface entry ${key} has no tile position`);
+    return decodeSurfaceInTurn({ feed: this, jobId, key, archive });
+  }
+  /**
+   * Keep the jobs `at` of `jobs` (one batch of `decodeSurfaceInTurn`); a reason per item into
+   * `out`. Their layouts are built on the pool while this thread goes on.
+   */
+  async place(jobs, at, items, out) {
+    if (this.freed) return;
+    const core2 = requireCore("mergeSurfaceAreaJobs");
+    const stream = this.stream ??= new core2.SurfaceJoinStream();
+    const fresh = at.filter((i, k) => !this.asked.has(items[i].jobId) && at.findIndex((j) => items[j].jobId === items[i].jobId) === k);
+    const anchors = new Float64Array(2 * fresh.length);
+    for (const [k, i] of fresh.entries()) {
+      const tile = this.tileOf(items[i].key);
+      const [swX, swY] = core2.tileSwOffset(tile.row, tile.col, this.analysisType);
+      anchors[2 * k] = swX;
+      anchors[2 * k + 1] = swY;
+    }
+    const jobIds2 = fresh.map((i) => items[i].jobId);
+    const asked = this.captures.wantsCellTris(jobIds2);
+    for (const id of jobIds2) this.asked.set(id, asked);
+    const reasons = await poolCall(
+      () => stream.pushManyStart(
+        jobs,
+        Uint32Array.from(fresh),
+        fresh.map((i) => items[i].key),
+        anchors,
+        this.captures.store,
+        jobIds2,
+        asked
+      ),
+      (task) => this.stream === stream ? stream.pushManyEnd(task) : []
+    );
+    for (const [k, i] of fresh.entries()) {
+      const reason2 = reasons[k];
+      if (reason2 !== void 0 && reason2 !== null) {
+        this.asked.delete(items[i].jobId);
+        out[i] = String(reason2);
+      }
+    }
+  }
+  /** Join every pushed job of `schedule` into its columns, on the pool while this thread goes on. */
+  async finish(schedule2, logger) {
+    if (schedule2.jobs.size === 0) return emptySurfaceColumns();
+    const started = performance.now();
+    for (const [entryId, job] of schedule2.jobs) {
+      if (job.jobId !== void 0 && this.captures.lostCapture(job.jobId)) {
+        logger.warn({
+          event: "facade_capture_missing",
+          tileId: entryId,
+          jobId: job.jobId,
+          reason: "the capture was not kept after the job was accepted; its surfaces have no outline, and surfaceRenderBuffers refuses them"
+        });
+      }
+    }
+    try {
+      const stream = this.stream;
+      const joined = await poolCall(
+        () => stream.finishStart(this.captures.store, [...this.asked.values()].some(Boolean)),
+        (task) => stream.finishEnd(task)
+      );
+      this.captures.forgetSchedule(schedule2);
+      report(joined, joined.jobIds, logger, started);
+      return surfaceColumnsFromJoin(joined);
+    } finally {
+      this.free();
+    }
+  }
+  /** Free the kept jobs (a feed that is not finished). */
+  free() {
+    this.freed = true;
+    this.stream?.free();
+    this.stream = void 0;
+    if (this.own) this.captures.free();
+  }
+};
+function report(joined, jobIds2, logger, started) {
+  const elapsedMs = Math.round(performance.now() - started);
+  const host = (job) => joined.jobOrder[job];
+  const fell = /* @__PURE__ */ new Set();
+  for (const { job, reason: reason2, detail } of joined.fallbacks) {
+    fell.add(job);
+    logger.warn({
+      event: "facade_synthesis",
+      outcome: "fell_back",
+      reason: reason2,
+      jobId: jobIds2[host(job)],
+      elapsedMs,
+      ...detail === void 0 ? {} : { detail }
+    });
+  }
+  const table = joined.triangles;
+  if (table === void 0) return;
+  for (let job = 0; job < jobIds2.length; job += 1) {
+    if (fell.has(job) || table.groupEngaged[job] !== 1) continue;
+    logger.info({
+      event: "facade_synthesis",
+      outcome: "engaged",
+      jobId: jobIds2[host(job)],
+      surfaces: table.groupSurfaces[job + 1] - table.groupSurfaces[job],
+      elapsedMs
+    });
+  }
+}
+var decodeSurfaceInTurn = perTurn(async (items) => {
+  const limits = RESULT_DECODE_LIMITS;
+  const core2 = requireCore("mergeSurfaceAreaJobs");
+  const jobs = await poolCall(() => core2.decodeSurfaceJobsStart(
+    items.map((item) => item.archive),
+    BigInt(limits.maxTotalBytes),
+    limits.maxMetadataBytes,
+    BigInt(limits.maxCells),
+    BigInt(limits.maxTriangleValues)
+  ), (task) => core2.decodeSurfaceJobsEnd(task));
+  try {
+    const byFeed = /* @__PURE__ */ new Map();
+    for (const [i, item] of items.entries()) {
+      const at = byFeed.get(item.feed);
+      if (at === void 0) byFeed.set(item.feed, [i]);
+      else at.push(i);
+    }
+    const out = new Array(items.length).fill(void 0);
+    await Promise.all([...byFeed].map(async ([feed2, at]) => {
+      try {
+        await feed2.place(jobs, at, items, out);
+      } catch (error) {
+        for (const i of at) out[i] = error instanceof Error ? error.message : String(error);
+      }
+    }));
+    return out;
+  } finally {
+    jobs.free();
+  }
+}, () => 16 * coreThreads());
+
+// src/area/merge.ts
+async function mergeAreaJobs(jobsService, schedule2, options = {}, waitS) {
+  const started = performance.now();
+  checkGridSchedule(schedule2);
+  const grid = new GridMerge(schedule2, options);
+  try {
+    const { facts } = await collectOnEngine(jobsService, schedule2.jobs, { grid }, {
+      ...waitS === void 0 ? { goal: "available" } : { goal: "results", timeoutS: waitS },
+      ...options.signal === void 0 ? {} : { signal: options.signal },
+      ...options.known === void 0 ? {} : { known: options.known }
+    });
+    for (const key of facts.lost) grid.lose(schedule2.jobs.get(key), new Error("result download failed"));
+    const logger = options.logger ?? consoleLogger;
+    return grid.finish(schedule2, logger, started);
+  } finally {
+    grid.free();
+  }
+}
+function waitAndMerge(jobsService, schedule2, options) {
+  const waitS = options.areaTimeout ?? 3600;
+  return schedule2.surfaceFields === true ? mergeSurfaceAreaJobs(jobsService, schedule2, options, waitS) : mergeAreaJobs(jobsService, schedule2, options, waitS);
 }
 
 // src/results/surface.ts
@@ -14672,87 +15216,197 @@ function surfaceRenderBuffers(columns, options = {}) {
   return options.layout === void 0 ? requireCore("surfaceRenderBuffers").surfaceRenderBuffers(columns) : options.layout._surfaceRenderBuffers(columns);
 }
 
-// src/area/poll-schedule.ts
-function nextSweepRequests(state, batched, perJob) {
-  const open = openJobs(state);
-  return batched ? Math.ceil(open / STATUS_BATCH_LIMIT) + perJob : open;
+// src/area/stream.ts
+var DEFAULT_AREA_TIMEOUT_S = 3600;
+function analysisType(input) {
+  return String(input.analysisType ?? input["analysis-type"]);
 }
-function openJobs(state) {
-  return state.pendingCount + state.runningCount;
-}
-
-// src/area/wait-schedule.ts
-function abortableSleep(milliseconds, signal) {
-  if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException("aborted", "AbortError"));
-  return new Promise((resolve, reject) => {
-    const finish = () => {
-      signal?.removeEventListener("abort", abort);
-      resolve();
-    };
-    const timer = setTimeout(finish, milliseconds);
-    const abort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException("aborted", "AbortError"));
-    };
-    signal?.addEventListener("abort", abort, { once: true });
+function scheduleFromFacts(an, facts, options) {
+  recordsFromFacts(an, facts);
+  return freezeAreaSchedule({
+    ...scheduleFromPlan(
+      an.plan,
+      an.jobs,
+      facts.failed,
+      facts.uncertain,
+      [],
+      facts.payment_stopped ? 402 : null,
+      options
+    ),
+    runId: facts.run_id,
+    ...Object.keys(facts.attempts).length === 0 ? {} : { attempts: facts.attempts }
   });
 }
-async function waitForSchedule(service, schedule2, options) {
-  let state;
-  await poll(async () => {
-    const sweep = {
-      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-      ...options.signal === void 0 ? {} : { signal: options.signal },
-      ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress }
-    };
-    state = options.check === void 0 ? await checkAreaState(service, schedule2, sweep) : await options.check(sweep);
-    const record3 = lastSweepRecord(schedule2);
-    return {
-      done: state.isComplete,
-      nextRequests: nextSweepRequests(state, service.batchedStatusSupported === true, record3.perJob),
-      failed: record3.failures > 0,
-      retryAfterS: record3.retryAfterS
-    };
-  }, {
-    timeoutS: options.timeoutS,
-    // Nothing submitted (every tile uncertain or skipped): no first delay.
-    firstSweepNow: ![...schedule2.jobs.values()].some((job) => Boolean(job.jobId)),
-    sleep: (ms) => abortableSleep(ms, options.signal),
-    onTimeout: () => options.onTimeout(state)
-  });
-  return state;
-}
-
-// src/area/run-and-wait-retry.ts
-async function runAreaAndWaitRounds(jobs, runArea2, checkAreaState2, input, polygon, options, schedule0) {
-  let schedule2 = schedule0;
+async function finish(service, an, outcome, facts, options) {
+  an.done = true;
+  const { index: index2, analysisType: analysisType2 } = an;
+  let schedule2;
   try {
-    const waitRound = () => waitForSchedule(jobs, schedule2, {
-      timeoutS: options.areaTimeout,
-      check: (sweep) => checkAreaState2(schedule2, sweep),
-      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-      ...options.signal === void 0 ? {} : { signal: options.signal },
-      ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress },
-      onTimeout: options.onTimeout
-    });
-    await waitRound();
-    const retries = options.retries ?? 1;
-    for (let round = 0; round < retries; round += 1) {
-      if (schedule2.submissionAbortStatus !== null) break;
-      const ctx = await buildRetryContext(jobs, schedule2, {
-        ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-        ...options.signal === void 0 ? {} : { signal: options.signal }
-      });
-      if (ctx.resubmitKeys.size === 0) break;
-      schedule2 = await runArea2(input, polygon, { ...options, retryFrom: schedule2 });
-      await waitRound();
+    const made = scheduleFromFacts(an, facts, options);
+    schedule2 = made;
+    const failure2 = finalError(
+      outcome,
+      facts,
+      analysisType2,
+      options.areaTimeout ?? DEFAULT_AREA_TIMEOUT_S,
+      () => computeAreaState(made)
+    );
+    if (failure2 !== void 0) throw failure2;
+    if (an.grid === void 0) {
+      return { index: index2, analysisType: analysisType2, result: await an.surface.finish(made, options.logger) };
     }
-    return schedule2;
+    checkGridSchedule(made);
+    return { index: index2, analysisType: analysisType2, result: an.grid.finish(made, options.logger, an.started) };
   } catch (error) {
-    jobs.captures?.forgetSchedule(schedule0);
-    jobs.captures?.forgetSchedule(schedule2);
-    throw error;
+    return { index: index2, analysisType: analysisType2, error: throwable(error) };
+  } finally {
+    const tidy = (step2) => {
+      try {
+        step2();
+      } catch {
+      }
+    };
+    tidy(() => service.captures?.forgetSchedule(schedule2 ?? { jobs: an.jobs }));
+    tidy(() => an.grid?.free());
+    tidy(() => an.surface?.free());
+    for (const entry of an.entries.values()) tidy(() => service.releasePreflight?.(entry.prepared));
+    an.entries.clear();
+    an.plan = { ...an.plan, entries: [] };
   }
+}
+function tilesOf(plan) {
+  const tiles = new Map(plan.entries.map((e) => [e.key, { row: e.row, col: e.col }]));
+  return (key) => tiles.get(key);
+}
+async function* streamArea(service, inputs, polygon, options = {}) {
+  if (options.retryFrom !== void 0) throw new TypeError("runAreaStream takes no retryFrom; use runArea");
+  const how = { ...options, logger: options.logger ?? consoleLogger };
+  const controller = new AbortController();
+  const outer = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted === true) outer();
+  options.signal?.addEventListener("abort", outer, { once: true });
+  const signal = controller.signal;
+  const ready = [];
+  const analyses = [];
+  const memo2 = siteKeyMemo();
+  const facadeSites = /* @__PURE__ */ new Map();
+  for (const [index2, input] of inputs.entries()) {
+    try {
+      const effective = effectiveOptions({ ...options, signal }, analysisType(input));
+      const plan = await planAreaSubmission(service, input, polygon, effective, memo2, facadeSites);
+      if (areaTransport(effective, plan.analysisType) === "binary" && plan.entries.length > 0 && service.binaryCapability !== void 0) {
+        checkBinaryRoute(plan.analysisType, await service.binaryCapability(signal));
+      }
+      analyses.push({
+        index: index2,
+        analysisType: analysisType(input),
+        plan,
+        jobs: /* @__PURE__ */ new Map(),
+        entries: new Map(plan.entries.map((e) => [e.key, e])),
+        started: performance.now(),
+        capture: (entry) => facadeCaptureFor(service, plan, entry),
+        remember: (capture, jobId) => rememberFacadeInputs(service, capture, jobId, plan.localCellTris === true),
+        ...plan.surfaceFields ? { surface: new SurfaceFeed(service, plan.analysisType, tilesOf(plan)) } : { grid: new GridMerge(plan, options) }
+      });
+    } catch (error) {
+      ready.push({ index: index2, analysisType: analysisType(input), error: throwable(error) });
+    }
+  }
+  const release4 = shareFacadeSites(facadeSites);
+  const binary = analyses.some((an) => an.plan.entries.some((e) => e.prepared.transport === "binary"));
+  const driver = new EngineDriver({
+    retries: options.retries ?? 1,
+    area_timeout_us: Math.round((options.areaTimeout ?? DEFAULT_AREA_TIMEOUT_S) * 1e6),
+    ...await batchConfig(service, binary, signal)
+  });
+  const io = {
+    service,
+    analyses,
+    byJob: /* @__PURE__ */ new Map(),
+    logger: how.logger,
+    ...options.onAccepted === void 0 ? {} : { onAccepted: options.onAccepted }
+  };
+  driver.onAccepted = (act) => acceptedAction(io, act);
+  let wakeConsumer = () => {
+  };
+  const finishing = [];
+  const progress = options.onProgress === void 0 ? void 0 : () => {
+    for (const [a, an] of analyses.entries()) {
+      if (an.done === true) continue;
+      try {
+        options.onProgress(computeAreaState(scheduleFromFacts(an, driver.facts(a), how)));
+      } catch {
+      }
+    }
+  };
+  const loop = driver.run(
+    analyses.map((an) => ({ keys: an.plan.entries.map((e) => e.key), run_id: an.plan.runId })),
+    signal,
+    (act, own2) => runAction(io, act, own2),
+    (act) => {
+      const an = analyses[act.a];
+      finishing.push(finish(service, an, act.outcome, act.facts, how).then((item) => {
+        ready.push(item);
+        wakeConsumer();
+      }, (error) => {
+        ready.push({ index: an.index, analysisType: an.analysisType, error: throwable(error) });
+        wakeConsumer();
+      }));
+    },
+    progress
+  ).catch((error) => {
+    controller.abort(error);
+  }).finally(async () => {
+    try {
+      await Promise.all(finishing);
+      freePreparedCaptures(io);
+    } finally {
+      endUnfinished();
+    }
+  });
+  function endUnfinished() {
+    for (const an of analyses) {
+      if (an.done === true) continue;
+      ready.push({
+        index: an.index,
+        analysisType: an.analysisType,
+        error: throwable(signal.reason ?? new Error("run stopped"))
+      });
+      try {
+        service.captures?.forgetSchedule({ jobs: an.jobs });
+        an.grid?.free();
+        for (const entry of an.entries.values()) service.releasePreflight?.(entry.prepared);
+      } catch {
+      }
+    }
+    wakeConsumer();
+  }
+  try {
+    for (let left = inputs.length; left > 0; left -= 1) {
+      while (ready.length === 0) await new Promise((resolve) => {
+        wakeConsumer = resolve;
+      });
+      const item = ready.shift();
+      const a = analyses.findIndex((an) => an.index === item.index);
+      if (a >= 0) driver.push({ kind: "taken", a });
+      yield item;
+    }
+  } finally {
+    controller.abort(new DOMException("result stream closed", "AbortError"));
+    options.signal?.removeEventListener("abort", outer);
+    await loop;
+    release4();
+  }
+}
+async function allResults(stream, count2) {
+  const results = new Array(count2);
+  const errors = /* @__PURE__ */ new Map();
+  for await (const item of stream) {
+    if (item.error !== void 0) errors.set(item.index, item.error);
+    else results[item.index] = item.result;
+  }
+  if (errors.size > 0) throw errors.get(Math.min(...errors.keys()));
+  return results;
 }
 
 // src/parts/result-format.ts
@@ -14761,22 +15415,22 @@ var DAYLIGHT_POINTS_FAMILY = "daylight-points";
 function resolveResultFormat(value) {
   return value ?? DEFAULT_DAYLIGHT_RESULT_FORMAT;
 }
-function binaryResultSupported(capability2, analysisType) {
-  return capability2.models[analysisType]?.resultFamilies.includes(DAYLIGHT_POINTS_FAMILY) === true;
+function binaryResultSupported(capability2, analysisType2) {
+  return capability2.models[analysisType2]?.resultFamilies.includes(DAYLIGHT_POINTS_FAMILY) === true;
 }
 
 // src/parts/interior-binary.ts
 var decoder5 = new TextDecoder("utf-8", { fatal: true });
-function interiorRouteSupported(capability2, analysisType, wanted = "json") {
-  const model = capability2.models[analysisType];
-  return model !== void 0 && (model.resultFamilies.includes("json") || wanted === "irbf" && binaryResultSupported(capability2, analysisType));
+function interiorRouteSupported(capability2, analysisType2, wanted = "json") {
+  const model = capability2.models[analysisType2];
+  return model !== void 0 && (model.resultFamilies.includes("json") || wanted === "irbf" && binaryResultSupported(capability2, analysisType2));
 }
-function encodeInteriorArtifact(bytes, analysisType, limits) {
+function encodeInteriorArtifact(bytes, analysisType2, limits) {
   try {
     const core2 = requireCore();
     const encoded = core2.interiorArtifact(
       bytes,
-      analysisType,
+      analysisType2,
       BigInt(limits.maxGeometryBytes),
       limits.maxMetadataBytes,
       BigInt(limits.maxMeshes),
@@ -14800,7 +15454,7 @@ function interiorPartBinary(shared2, limits, part) {
   const control = JSON.parse(decoder5.decode(bytes));
   return { artifact: shared2.artifact, control, limits };
 }
-async function planInteriorRoute(service, analysisType, bytes, options, logger, wanted = "json") {
+async function planInteriorRoute(service, analysisType2, bytes, options, logger, wanted = "json") {
   if (options.transport !== void 0 || service.binaryCapability === void 0) return void 0;
   let capability2;
   try {
@@ -14809,30 +15463,30 @@ async function planInteriorRoute(service, analysisType, bytes, options, logger, 
     logger.info({
       event: "analysis_parts_binary",
       outcome: "capability_unavailable",
-      analysisType,
+      analysisType: analysisType2,
       error: error instanceof Error ? error.message : String(error)
     });
     return void 0;
   }
-  if (!interiorRouteSupported(capability2, analysisType, wanted)) return void 0;
-  const shared2 = encodeInteriorArtifact(bytes, analysisType, capability2.limits);
+  if (!interiorRouteSupported(capability2, analysisType2, wanted)) return void 0;
+  const shared2 = encodeInteriorArtifact(bytes, analysisType2, capability2.limits);
   if (shared2 === void 0) {
     logger.info({
       event: "analysis_parts_binary",
       outcome: "encode_refused",
-      analysisType,
+      analysisType: analysisType2,
       message: "the request carries a field the interior frame cannot encode; parts are sent as JSON"
     });
     return void 0;
   }
-  const resultFormat = wanted === "irbf" && binaryResultSupported(capability2, analysisType) ? "irbf" : "json";
+  const resultFormat = wanted === "irbf" && binaryResultSupported(capability2, analysisType2) ? "irbf" : "json";
   return { shared: shared2, limits: capability2.limits, resultFormat };
 }
 
 // src/parts/plan.ts
 var SPLIT_ANALYSES = /* @__PURE__ */ new Set(["daylight-factor"]);
-function splitsAnalysis(analysisType) {
-  return SPLIT_ANALYSES.has(analysisType);
+function splitsAnalysis(analysisType2) {
+  return SPLIT_ANALYSES.has(analysisType2);
 }
 function checkMaxParts(value) {
   if (value === void 0) return;
@@ -14846,14 +15500,15 @@ function retryTarget(prior) {
 function planRequest(jobs, input, options, logger, target) {
   checkMaxParts(options.maxParts);
   const payload = prepareAnalysisPayload(input);
-  const analysisType = String(payload["analysis-type"]);
-  const prepared = jobs.prepareSubmission(analysisType, payload, {
+  const analysisType2 = String(payload["analysis-type"]);
+  const prepared = jobs.prepareSubmission(analysisType2, payload, {
     ...options.webhookUrl === void 0 ? {} : { webhookUrl: options.webhookUrl },
     ...options.webhookEvents === void 0 ? {} : { webhookEvents: options.webhookEvents },
     ...options.transport === void 0 ? {} : { transport: options.transport }
   });
-  if (!SPLIT_ANALYSES.has(analysisType) || prepared.transport !== "json" || options.maxParts === 1) {
-    return { analysisType, prepared };
+  if (!SPLIT_ANALYSES.has(analysisType2) || prepared.transport !== "json" || options.maxParts === 1) {
+    const cellTris = input.emitCellTris === true || input["emit-cell-tris"] === true;
+    return { analysisType: analysisType2, prepared, ...cellTris ? { cellTris: true } : {} };
   }
   const bytes = preparedJsonBytes(prepared);
   const one = { ...prepared, json: () => bytes };
@@ -14865,20 +15520,20 @@ function planRequest(jobs, input, options, logger, target) {
     logger.warn({
       event: "analysis_parts",
       outcome: "unplanned",
-      analysisType,
+      analysisType: analysisType2,
       message: "the request is sent as one job",
       error: error instanceof Error ? error.message : String(error)
     });
-    return { analysisType, prepared: one, bytes };
+    return { analysisType: analysisType2, prepared: one, bytes };
   }
   const plan = JSON.parse(planText);
-  for (const note of plan.notes) logger.warn({ event: "analysis_parts", analysisType, note });
+  for (const note of plan.notes) logger.warn({ event: "analysis_parts", analysisType: analysisType2, note });
   if (options.maxParts !== void 0 && plan.parts.length > options.maxParts) {
     throw new RangeError(
-      `the ${analysisType} request plans ${plan.parts.length} parts (${plan.total_sensors} sensors), more than maxParts ${options.maxParts}; nothing was sent. Pass maxParts: 1 to send one job.`
+      `the ${analysisType2} request plans ${plan.parts.length} parts (${plan.total_sensors} sensors), more than maxParts ${options.maxParts}; nothing was sent. Pass maxParts: 1 to send one job.`
     );
   }
-  return { analysisType, prepared: one, bytes, plan, planText };
+  return { analysisType: analysisType2, prepared: one, bytes, plan, planText };
 }
 function partEntries(request, keys, interior) {
   const { plan, bytes, prepared } = request;
@@ -14953,8 +15608,8 @@ async function submitParts(service, request, options = {}, logger = silentLogger
     prior === void 0 ? void 0 : new Set(retryableParts(prior)),
     interior
   );
-  const outcome = await submitEntries(service, entries3, {
-    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+  const outcome = await submitOnEngine(service, entries3, {
+    runId: freshRunId(),
     ...options.signal === void 0 ? {} : { signal: options.signal },
     ...options.onAccepted === void 0 ? {} : { onAccepted: options.onAccepted },
     ...prior === void 0 ? {} : { priorJobs: prior.jobs, priorUncertain: prior.uncertainSubmissions }
@@ -15015,7 +15670,7 @@ function framesOf(core2, parts) {
 function mergeFormat(schedule2, options) {
   return resolveResultFormat(options.resultFormat ?? schedule2.resultFormat);
 }
-function join4(plan, parts, format, logger) {
+function join3(plan, parts, format, logger) {
   const core2 = requireCore();
   const jsonJoin = () => core2.daylightMerge(plan, parts.map((p) => isDaylightFrame(p) ? core2.daylightJsonFromFrame(p) : p));
   if (format === "json") return jsonJoin();
@@ -15042,11 +15697,14 @@ function missingParts(schedule2) {
   });
 }
 async function mergePartsDocument(service, schedule2, options = {}) {
-  revivePolledOut(schedule2);
-  await checkAreaState(service, schedule2, {
-    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
+  const archives = /* @__PURE__ */ new Map();
+  const { facts } = await collectOnEngine(service, schedule2.jobs, { archives }, {
+    goal: "available",
     ...options.signal === void 0 ? {} : { signal: options.signal }
   });
+  return joinParts2(schedule2, archives, facts.lost, options);
+}
+function joinParts2(schedule2, archives, lost, options = {}) {
   const missing = missingParts(schedule2);
   if (missing.length > 0) {
     const uncertain = missing.filter((key) => schedule2.uncertainSubmissions.includes(key));
@@ -15054,6 +15712,15 @@ async function mergePartsDocument(service, schedule2, options = {}) {
       `${missing.length} of ${schedule2.partKeys.length} ${schedule2.analysisType} parts have no result: ${JSON.stringify(missing)}` + (uncertain.length === 0 ? "" : `; outcome unknown, never resent: ${JSON.stringify(uncertain)}`) + ". Pass this error's schedule as retryFrom to send the failed parts again.",
       missing,
       schedule2
+    );
+  }
+  const failed = schedule2.partKeys.filter((key) => lost.includes(key));
+  if (failed.length > 0) {
+    throw new AnalysisPartsError(
+      `Cannot join the parts: download failed for ${JSON.stringify(failed)}; call mergeParts with this error's schedule to download them again.`,
+      [],
+      schedule2,
+      failed
     );
   }
   const open = schedule2.partKeys.filter((key) => schedule2.jobs.get(key)?.status !== "completed");
@@ -15064,37 +15731,54 @@ async function mergePartsDocument(service, schedule2, options = {}) {
       schedule2
     );
   }
-  const documents = Array(schedule2.partKeys.length);
-  const errors = Array(schedule2.partKeys.length);
-  await parallel(
-    schedule2.partKeys.map((key, index2) => ({ key, index: index2 })),
-    workerCount2(options.maxWorkers),
-    async ({ key, index: index2 }) => {
-      const job = schedule2.jobs.get(key);
-      try {
-        const result = await service.downloadResults(job.jobId, {
-          ...job.lastJobSnapshot === void 0 ? {} : { job: job.lastJobSnapshot },
-          ...options.signal === void 0 ? {} : { signal: options.signal }
-        });
-        documents[index2] = decompressResultArchive(result.content);
-      } catch (error) {
-        errors[index2] = throwable(error);
-      }
-    }
-  );
-  if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("aborted", "AbortError");
-  const failed2 = schedule2.partKeys.filter((_key, index2) => errors[index2] !== void 0);
-  if (failed2.length > 0) {
-    throw new AnalysisPartsError(
-      `Cannot join the parts: download failed for ${JSON.stringify(failed2)}; call mergeParts with this error's schedule to download them again.`,
-      [],
-      schedule2,
-      failed2,
-      { cause: errors[schedule2.partKeys.indexOf(failed2[0])] }
-    );
-  }
+  const documents = schedule2.partKeys.map((key) => decompressResultArchive(archives.get(schedule2.jobs.get(key).jobId)));
   if (!splitsAnalysis(schedule2.analysisType)) return requireCore().daylightMerge(schedule2.plan, documents);
-  return join4(schedule2.plan, documents, mergeFormat(schedule2, options), options.logger);
+  return join3(schedule2.plan, documents, mergeFormat(schedule2, options), options.logger);
+}
+
+// src/parts/cell-tris.ts
+var FALLBACK_KEY = "cell-tris-fallback";
+function cellTrisCapture(request) {
+  if (request.cellTris !== true) return void 0;
+  return requireCore().surfaceJobCapture(preparedJsonBytes(request.prepared)) ?? void 0;
+}
+function attachCellTris(value, archive, jobId, capture, logger) {
+  const surfaces2 = value?.surfaces;
+  if (surfaces2 === void 0) return;
+  const core2 = requireCore();
+  const store = new core2.CaptureStore();
+  let out;
+  try {
+    store.remember(jobId, capture);
+    const limits = RESULT_DECODE_LIMITS;
+    out = core2.surfaceJobTriangles(
+      archive,
+      store,
+      jobId,
+      BigInt(limits.maxTotalBytes),
+      limits.maxMetadataBytes,
+      BigInt(limits.maxCells),
+      BigInt(limits.maxTriangleValues)
+    );
+  } finally {
+    store.free();
+  }
+  if (out.fallbackReasons.length > 0) {
+    value[FALLBACK_KEY] = [...out.fallbackReasons];
+    logger.warn({ event: "cell_tris", outcome: "fell_back", jobId, reasons: out.fallbackReasons });
+    return;
+  }
+  const tri = out.triangleOffsets;
+  if (tri.length === 0) return;
+  out.ids.forEach((id, row) => {
+    const [first, last] = [out.cellOffsets[row], out.cellOffsets[row + 1]];
+    const base = tri[first] * 9;
+    const offsets = new Uint32Array(last - first + 1);
+    for (let cell = first; cell <= last; cell += 1) offsets[cell - first] = tri[cell] * 9 - base;
+    const entry = surfaces2[id];
+    entry.cellTris = out.positions.subarray(base, tri[last] * 9);
+    entry.cellTrisOffsets = offsets;
+  });
 }
 
 // src/parts/run.ts
@@ -15109,23 +15793,23 @@ var PartsTimeoutError = class extends Error {
   }
   name = "PartsTimeoutError";
 };
-function logWarnings(value, analysisType, logger) {
+function logWarnings(value, analysisType2, logger) {
   if (value === null || typeof value !== "object") return;
   if (value instanceof DaylightFactorResult) {
-    if (value.warnings.length > 0) logger.warn({ event: "analysis_warnings", analysisType, warnings: value.warnings });
+    if (value.warnings.length > 0) logger.warn({ event: "analysis_warnings", analysisType: analysisType2, warnings: value.warnings });
     return;
   }
   const warnings = value.warnings;
   if (!Array.isArray(warnings) || warnings.length === 0) return;
-  logger.warn({ event: "analysis_warnings", analysisType, warnings });
+  logger.warn({ event: "analysis_warnings", analysisType: analysisType2, warnings });
 }
 function splits(request) {
   return request.plan !== void 0 && request.plan.parts.length > 1;
 }
 function daylightValue(document2, format, logger) {
   if (isDaylightFrame(document2)) {
-    const result = new DaylightFactorResult(document2);
-    return format === "irbf" ? result : result.toJson();
+    const result2 = new DaylightFactorResult(document2);
+    return format === "irbf" ? result2 : result2.toJson();
   }
   if (format === "irbf") {
     try {
@@ -15143,7 +15827,7 @@ function daylightValue(document2, format, logger) {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(document2));
 }
 async function runPlannedAndWait(jobs, logger, request, options = {}) {
-  const timeoutS = options.timeout ?? defaultPollTimeoutS();
+  const timeoutS = options.timeout ?? requireCore().pollDefaultTimeoutSeconds();
   requireTimeout(timeoutS * 1e3);
   if (options.archive !== void 0) checkArchiveOptions(options.archive);
   if (!splits(request)) {
@@ -15153,16 +15837,21 @@ async function runPlannedAndWait(jobs, logger, request, options = {}) {
     const signal = options.signal === void 0 ? {} : { signal: options.signal };
     const daylight = splitsAnalysis(request.analysisType);
     const format = resolveResultFormat(options.resultFormat);
+    const capture = cellTrisCapture(request);
     const job = await jobs.submitPrepared(request.prepared, signal);
     const completed = await jobs.waitForCompletion(job.jobId, {
       ...signal,
       ...options.timeout === void 0 ? {} : { timeout: options.timeout },
       ...options.onPoll === void 0 ? {} : { onPoll: options.onPoll }
     });
-    const download = await jobs.downloadResults(completed.jobId, { job: completed, ...signal });
+    const download2 = await jobs.downloadResults(completed.jobId, { job: completed, ...signal });
     const archive = options.archive;
-    if (!daylight) return decompressResultValue(jobs, download.content, archive === void 0 ? void 0 : { archive });
-    const value = daylightValue(decompressResultArchive(download.content, archive), format, logger);
+    if (!daylight) {
+      const value2 = decompressResultValue(jobs, download2.content, archive === void 0 ? void 0 : { archive });
+      if (capture !== void 0) attachCellTris(value2, download2.content, completed.jobId, capture, logger);
+      return value2;
+    }
+    const value = daylightValue(decompressResultArchive(download2.content, archive), format, logger);
     logWarnings(value, request.analysisType, logger);
     return value;
   }
@@ -15187,18 +15876,29 @@ function withSchedule(error, schedule2) {
   );
 }
 async function waitAndJoin(jobs, logger, request, schedule2, timeoutS, options) {
-  await waitForSchedule(jobs, schedule2, {
+  const archives = /* @__PURE__ */ new Map();
+  const { facts, outcome } = await collectOnEngine(jobs, schedule2.jobs, { archives }, {
+    goal: "results",
     timeoutS,
-    ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
     ...options.signal === void 0 ? {} : { signal: options.signal },
-    ...options.onProgress === void 0 ? {} : { onProgress: options.onProgress },
-    onTimeout: (last) => new PartsTimeoutError(
+    ...options.onProgress === void 0 ? {} : {
+      onProgress: () => {
+        try {
+          options.onProgress(computeAreaState(schedule2));
+        } catch {
+        }
+      }
+    }
+  });
+  if (outcome === "timeout") {
+    const last = computeAreaState(schedule2);
+    throw new PartsTimeoutError(
       `${request.analysisType} parts timed out after ${timeoutS}s: ${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed`,
       schedule2
-    )
-  });
+    );
+  }
   const format = mergeFormat(schedule2, options);
-  const document2 = await mergePartsDocument(jobs, schedule2, { ...options, resultFormat: format, logger });
+  const document2 = joinParts2(schedule2, archives, facts.lost, { ...options, resultFormat: format, logger });
   const value = daylightValue(document2, format, logger);
   logWarnings(value, request.analysisType, logger);
   return value;
@@ -15213,21 +15913,24 @@ async function runParts(jobs, logger, input, options = {}) {
   }
   return submitParts(jobs, request, options, logger);
 }
-function previewParts(jobs, logger, input, options = {}, target) {
-  const { analysisType, plan } = planRequest(jobs, input, options, logger, target);
+async function previewParts(jobs, billing2, logger, input, options = {}, target) {
+  const { analysisType: analysisType2, plan } = planRequest(jobs, input, options, logger, target);
   const parts = plan === void 0 ? [] : plan.parts.map((part) => ({
     key: part.key,
     floorKeys: [...part.floor_keys],
     sensors: part.sensors
   }));
   const partCount = Math.max(1, parts.length);
+  const priced = estimateRun(partCount, await billing2.quote(analysisType2));
   return {
-    analysisType,
+    analysisType: analysisType2,
     partCount,
     totalSensors: plan?.total_sensors ?? 0,
     parts,
-    tokensPerJob: DEFAULT_TOKENS_PER_JOB,
-    estimatedCostTokens: partCount * DEFAULT_TOKENS_PER_JOB,
+    tokensPerJob: priced.tokensPerJob,
+    estimatedCostTokens: priced.estimatedCostTokens,
+    pricingSource: priced.pricingSource,
+    ...priced.pricingVersion === void 0 ? {} : { pricingVersion: priced.pricingVersion },
     ...plan?.unsplit_reason == null ? {} : { unsplitReason: plan.unsplit_reason },
     notes: plan?.notes ?? []
   };
@@ -15239,21 +15942,6 @@ async function mergePartsValue(jobs, logger, schedule2, options = {}) {
   logWarnings(value, schedule2.analysisType, logger);
   return value;
 }
-
-// src/client-types.ts
-var AreaTimeoutError = class extends Error {
-  /** The run's counts at the moment it timed out. */
-  areaState;
-  /**
-   * @param message - The error message.
-   * @param areaState - The run's counts at the moment it timed out.
-   */
-  constructor(message, areaState) {
-    super(message);
-    this.name = "AreaTimeoutError";
-    this.areaState = areaState;
-  }
-};
 
 // src/analysis-service.ts
 var AnalysisService = class {
@@ -15270,11 +15958,11 @@ var AnalysisService = class {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
       return Promise.reject(new TypeError("analysis payload must be an object"));
     }
-    const analysisType = payload["analysis-type"];
-    if (typeof analysisType !== "string" || analysisType.length === 0) {
+    const analysisType2 = payload["analysis-type"];
+    if (typeof analysisType2 !== "string" || analysisType2.length === 0) {
       return Promise.reject(new TypeError("analysis payload requires analysis-type"));
     }
-    return this.jobs.submit(analysisType, payload, options);
+    return this.jobs.submit(analysisType2, payload, options);
   }
 };
 
@@ -15309,12 +15997,14 @@ function jobsServiceOptions(options, baseUrl, auth, logger, timeoutMs) {
     ...options.onGeometryReuseProbe === void 0 ? {} : {
       onGeometryReuseProbe: options.onGeometryReuseProbe
     },
-    ...options.geometryUrlStore === void 0 ? {} : { geometryUrlStore: options.geometryUrlStore }
+    ...options.geometryUrlStore === void 0 ? {} : { geometryUrlStore: options.geometryUrlStore },
+    // A batch item carries a geometry URL of the credential it was prepared
+    // with; only fixed credentials keep one partition for the whole run.
+    batchSubmit: options.batchSubmit !== false && options.getToken === void 0 && options.auth === void 0
   };
 }
 
 // src/client.ts
-var DEFAULT_AREA_TIMEOUT_S = 3600;
 var InfraredClient = class {
   /** The API base URL in use, without trailing slashes. */
   baseUrl;
@@ -15433,34 +16123,12 @@ var InfraredClient = class {
   }
   /** The parts, sensors and tokens a `runAndWait` of `input` would bill; sends nothing. */
   previewParts(input, options = {}) {
-    return previewParts(this.jobs, this.logger, input, options);
+    return previewParts(this.jobs, this.billing, this.logger, input, options);
   }
-  /**
-   * Plans an area run over `polygon`, submits one job per non-empty tile and
-   * returns the saved `AreaSchedule` without waiting; finish it with
-   * `checkAreaState` and `mergeAreaJobs`.
-   *
-   * A tile that fails does not stop the run. The tiles that went out before it
-   * may be billed. List the failed tiles in `schedule.failedSubmissions` and
-   * pass the schedule as `retryFrom` to send only those.
-   *
-   * @param input - the analysis request, as for `runAndWait`, plus the area settings.
-   * @param polygon - the area to analyse.
-   * @param options - `maxWorkers` (requests in flight at once), `maxTilesOverride`,
-   * `retryFrom`, `onAccepted`, `signal` and `logger`.
-   * @returns the saved `AreaSchedule` with one entry for each submitted tile.
-   * @throws {Error} when the polygon needs more non-empty tiles than the
-   * limit; the message gives the `maxTilesOverride` to pass.
-   * @throws {ReadMarginError} when an acquired layer was read with a narrower
-   * margin than the analysis needs.
-   *
-   * @example
-   * ```ts
-   * const schedule = await client.runArea(input, polygon, { maxTilesOverride: 400 });
-   * ```
-   */
   async runArea(input, polygon, options = {}) {
-    return runArea(this.jobs, input, polygon, { logger: this.logger, ...options });
+    const how = { logger: this.logger, ...options };
+    if (Array.isArray(input)) return runAreaMany(this.jobs, input, polygon, how);
+    return runArea(this.jobs, input, polygon, how);
   }
   /** Reads the status of the schedule's jobs once, updates it and returns the run's counts. */
   checkAreaState(schedule2, options = {}) {
@@ -15478,84 +16146,73 @@ var InfraredClient = class {
   mergeSurfaceAreaJobs(schedule2, options = {}) {
     return mergeSurfaceAreaJobs(this.jobs, schedule2, { logger: this.logger, ...options });
   }
+  async runAreaAndWait(input, polygon, options = {}) {
+    const list = Array.isArray(input);
+    if (options.retryFrom !== void 0) {
+      if (list) throw new TypeError("retryFrom is not supported with a list of analyses: retry each analysis alone");
+      return waitAndMerge(
+        this.jobs,
+        await this.runArea(input, polygon, options),
+        { logger: this.logger, ...options }
+      );
+    }
+    const inputs = list ? input : [input];
+    const results = await allResults(this.runAreaStream(inputs, polygon, options), inputs.length);
+    return list ? results : results[0];
+  }
   /**
-   * Runs an analysis over a polygon area and returns the merged result: it
-   * submits the tiles, waits, retries what failed (`retries`) and merges. A
-   * surface run returns `SurfaceColumns`, any other run an `AreaResult`.
-   * `areaTimeout` is in seconds, default 3600.
+   * Runs analyses over one polygon area as `runAreaAndWait` does, and yields each
+   * result the moment its last tile is merged, in the order they finish. Read the
+   * items one by one: the SDK keeps no reference to a yielded result. A failed
+   * analysis yields an item with `error`; the others continue. `break` or
+   * `options.signal` cancels the analyses not yet yielded. `options` apply to every
+   * analysis; `onProgress` reports each analysis until it is finished (then its bodies are freed).
    *
-   * @throws {AreaTimeoutError} when the run does not finish within `areaTimeout`.
-   * @throws {TypeError} when `areaTimeout` is not a positive finite number.
-   *
+   * @throws {TypeError} on the first `next()` when `areaTimeout` is not a positive finite number.
+   * @category Run an analysis
    * @example
    * ```ts
-   * const result = await client.runAreaAndWait(input, polygon, { areaTimeout: 1800 });
+   * for await (const item of client.runAreaStream([solar, wind], polygon)) draw(item);
    * ```
    */
-  async runAreaAndWait(input, polygon, options = {}) {
-    const areaTimeout = options.areaTimeout ?? DEFAULT_AREA_TIMEOUT_S;
-    if (typeof areaTimeout !== "number" || !Number.isFinite(areaTimeout) || areaTimeout <= 0) {
-      throw new TypeError("areaTimeout must be a positive finite number");
-    }
-    const schedule0 = await this.runArea(input, polygon, options);
-    const schedule2 = await runAreaAndWaitRounds(
-      this.jobs,
-      (i, p, o) => this.runArea(i, p, o),
-      (s, o) => this.checkAreaState(s, o),
-      input,
-      polygon,
-      {
-        ...options,
-        areaTimeout,
-        onTimeout: (last) => new AreaTimeoutError(
-          `Area analysis timed out after ${areaTimeout}s: ${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed, ${last.runningCount} running`,
-          last
-        )
-      },
-      schedule0
-    );
-    if (schedule2.surfaceFields === true) {
-      const merge = {
-        ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-        ...options.signal === void 0 ? {} : { signal: options.signal }
-      };
-      try {
-        return await this.mergeSurfaceAreaJobs(schedule2, merge);
-      } finally {
-        this.jobs.captures.forgetSchedule(schedule2);
-      }
-    }
-    return this.mergeAreaJobs(schedule2, {
-      ...options.strategy === void 0 ? {} : { strategy: options.strategy },
-      ...options.windDirectionDeg === void 0 ? {} : { windDirectionDeg: options.windDirectionDeg },
-      ...options.block === void 0 ? {} : { block: options.block },
-      ...options.maxWorkers === void 0 ? {} : { maxWorkers: options.maxWorkers },
-      ...options.signal === void 0 ? {} : { signal: options.signal }
-    });
+  runAreaStream(inputs, polygon, options = {}) {
+    const list = Array.isArray(inputs) ? inputs : [inputs];
+    return streamArea(this.jobs, list, polygon, { ...options, logger: options.logger ?? this.logger });
   }
   /** Builds the tile grid covering a polygon, south to north; sends no request. */
   generateTiles(polygon, options = {}) {
     return generateTilesForPolygon(polygon, options);
   }
   /**
-   * Estimates an area run from its tile count; submits nothing. The cost uses
-   * a default price per job (`previewAreaWithPricing` uses the live price);
-   * for a facade run use `previewAreaBatches`. Throws when the polygon needs
-   * more non-empty tiles than the limit.
+   * Estimates an area run from its tile count; submits nothing. The cost is
+   * the jobs times the API's price for the analysis (`pricingSource` says if
+   * the price is `"live"`, `"cached"` or `"stale"`). For a facade run use
+   * `previewAreaBatches`. Throws when the polygon needs more non-empty tiles
+   * than the limit.
+   *
+   * @throws {PricingUnavailableError} when the price list cannot be fetched and the client has none.
    *
    * @example
    * ```ts
-   * const preview = client.previewArea(polygon, { analysisType: "wind-speed" });
+   * const preview = await client.previewArea(polygon, { analysisType: "wind-speed" });
    * ```
    */
-  previewArea(polygon, options = {}) {
+  async previewArea(polygon, options) {
     const tiles = this.generateTiles(polygon, options);
     const tileCount = tiles.flat().filter((tile) => !tile.empty).length;
+    const { tokensPerJob, pricingVersion, pricingSource, estimatedCostTokens, estimatedTimeS } = estimateRun(tileCount, await this.billing.quote(options.analysisType));
     return {
       tileCount,
-      estimatedTimeS: tileCount * ESTIMATED_SECONDS_PER_TILE,
-      estimatedCostTokens: tileCount * DEFAULT_TOKENS_PER_JOB
+      estimatedTimeS,
+      estimatedCostTokens,
+      tokensPerJob,
+      pricingSource,
+      ...pricingVersion === void 0 ? {} : { pricingVersion }
     };
+  }
+  /** @deprecated Use `previewArea`: it is priced with the same price list. Removed in 2.0. */
+  previewAreaWithPricing(polygon, options) {
+    return previewAreaWithPricing(this, polygon, options);
   }
   /**
    * Previews a facade run: builds the plan `runArea` would and reports its job
@@ -15564,37 +16221,7 @@ var InfraredClient = class {
    */
   // Maintainer note (not published): added by WP-6; see area/preview.ts.
   previewAreaBatches(input, polygon, options = {}) {
-    return previewAreaBatches(this.jobs, input, polygon, { logger: this.logger, ...options });
-  }
-  /**
-   * Like `previewArea`, but priced with the API's current price for the
-   * analysis. When the price list cannot be fetched a warning is logged and
-   * the default price is used (`pricingSource` is `"fallback"`).
-   */
-  async previewAreaWithPricing(polygon, options) {
-    const preview = this.previewArea(polygon, options);
-    try {
-      const pricing = await this.billing.getPublicPricing();
-      const tokensPerJob = resolveTokensPerJob(pricing, options.analysisType);
-      return {
-        ...preview,
-        estimatedCostTokens: preview.tileCount * tokensPerJob,
-        tokensPerJob,
-        pricingSource: "remote",
-        ...pricing.version === void 0 ? {} : { pricingVersion: String(pricing.version) }
-      };
-    } catch (error) {
-      this.logger.warn({
-        event: "pricing_fetch_failed",
-        message: `Failed to fetch gateway pricing; using ${DEFAULT_TOKENS_PER_JOB} tokens per job`,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return {
-        ...preview,
-        tokensPerJob: DEFAULT_TOKENS_PER_JOB,
-        pricingSource: "fallback"
-      };
-    }
+    return previewAreaBatches(this.jobs, this.billing, input, polygon, { logger: this.logger, ...options });
   }
   /** Decodes an already downloaded result archive; prefer `jobs.decompress`, which returns a typed result. */
   // Maintainer note (not published): explicit legacy adapter; `jobs.decompress`
@@ -15612,14 +16239,13 @@ function coreVersion() {
 // src/node.ts
 var packagedBytes;
 var packagedInitialization;
-registerPackagedCoreLoader(() => initializeCore2());
+registerPackagedCoreLoader((threads) => initializeCore2(threads === void 0 ? {} : { threads }));
 function initializeCore2(options = {}) {
   const { threads, ...source } = options;
   if (threads !== void 0 && threads !== 1) return initializeThreadedCore(source, threads);
-  const explicit = threads === 1 || source.url !== void 0 || source.bytes !== void 0 || source.module !== void 0;
-  const loading = initializeSerialCore(source);
-  if (!explicit) return loading;
-  return loading.then(() => {
+  const supplied = source.url !== void 0 || source.bytes !== void 0 || source.module !== void 0;
+  if (threads === void 0 && !supplied) return initializeDefaultCore();
+  return initializeSerialCore(source).then(() => {
     if (coreThreads() !== 1) {
       throw new CoreInitializationError(
         `the Infrared core is already initialized with ${coreThreads()} thread(s)`
@@ -15644,6 +16270,31 @@ function initializeSerialCore(options) {
   return packagedInitialization;
 }
 var MAX_THREADS = 64;
+function defaultThreads() {
+  const cores = (0, import_node_os.availableParallelism)();
+  return Math.min(cores >= 16 ? 8 : 4, cores);
+}
+function initializeDefaultCore() {
+  try {
+    requireCore();
+    return Promise.resolve();
+  } catch {
+  }
+  const threads = defaultThreads();
+  if (Number(process.versions.node.split(".")[0]) < 22 || threads < 2) return initializeSerialCore({});
+  defaultInitialization ??= initializeThreadedCore({}, threads).catch((error) => {
+    process.emitWarning(
+      `the threaded Infrared core did not start; using the single-threaded core (${describe2(error)})`,
+      { type: "InfraredThreadsFallbackWarning" }
+    );
+    return initializeSerialCore({});
+  }).catch((error) => {
+    defaultInitialization = void 0;
+    throw error;
+  });
+  return defaultInitialization;
+}
+var defaultInitialization;
 function initializeThreadedCore(options, threads) {
   if (!Number.isSafeInteger(threads) || threads < 1 || threads > MAX_THREADS) {
     return Promise.reject(new CoreInitializationError(
@@ -15672,6 +16323,11 @@ function initializeThreadedCore(options, threads) {
     threaded: { threads, glue: () => import(glue.href) }
   }));
 }
+function describe2(error) {
+  const parts = [];
+  for (let e = error; e instanceof Error && parts.length < 4; e = e.cause) parts.push(e.message);
+  return parts.join(": ");
+}
 
 // src/utilities.ts
 var utilities_exports = {};
@@ -15686,16 +16342,457 @@ __export(utilities_exports, {
 });
 
 // src/node-runtime.ts
+var import_node_worker_threads = require("node:worker_threads");
+
+// src/worker/index.ts
+var worker_exports = {};
+__export(worker_exports, {
+  FacadeLayout: () => FacadeLayout,
+  WorkerLostError: () => WorkerLostError,
+  attachValues: () => attachValues,
+  createWorkerClient: () => createWorkerClient,
+  serveSdkWorker: () => serveSdkWorker,
+  synthesizeFacadeLayout: () => synthesizeFacadeLayout
+});
+
+// src/worker/protocol.ts
+function stringList(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? [...value] : void 0;
+}
+function serializeError(error) {
+  const fields = typeof error === "object" && error !== null ? error : {};
+  const name = typeof fields.name === "string" ? fields.name : "Error";
+  const message = typeof fields.message === "string" ? fields.message : String(error);
+  const acceptedJobIds2 = stringList(fields.acceptedJobIds);
+  let areaSchedule;
+  try {
+    if (fields.areaSchedule !== void 0) areaSchedule = areaScheduleToJSON(fields.areaSchedule);
+  } catch {
+  }
+  return {
+    name,
+    message,
+    ...typeof fields.status === "number" ? { status: fields.status } : {},
+    ...acceptedJobIds2 === void 0 ? {} : { acceptedJobIds: acceptedJobIds2 },
+    ...areaSchedule === void 0 ? {} : { areaSchedule },
+    ...fields.terminal === true ? { terminal: true } : {}
+  };
+}
+function restoreError(detail) {
+  const error = new Error(detail.message);
+  error.name = detail.name;
+  const fields = {};
+  if (detail.status !== void 0) fields.status = detail.status;
+  if (detail.acceptedJobIds !== void 0) fields.acceptedJobIds = detail.acceptedJobIds;
+  if (detail.areaSchedule !== void 0) fields.areaSchedule = areaScheduleFromJSON(detail.areaSchedule);
+  if (detail.terminal === true) fields.terminal = true;
+  return Object.assign(error, fields);
+}
+function transferables(value) {
+  const found = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set();
+  const visit = (item) => {
+    if (typeof item !== "object" || item === null || seen.has(item)) return;
+    seen.add(item);
+    if (ArrayBuffer.isView(item)) {
+      const buffer = item.buffer;
+      if (buffer instanceof ArrayBuffer && item.byteOffset === 0 && item.byteLength === buffer.byteLength) {
+        found.add(buffer);
+      }
+      return;
+    }
+    if (Array.isArray(item)) {
+      for (const child of item) visit(child);
+      return;
+    }
+    for (const child of Object.values(item)) visit(child);
+  };
+  visit(value);
+  return [...found];
+}
+
+// src/worker/node-port.ts
+var isNodeStyle = (value) => typeof value.addEventListener !== "function" && typeof value.on === "function";
+function adaptNodeWorker(worker2) {
+  if (!isNodeStyle(worker2)) return worker2;
+  const node = worker2;
+  return {
+    postMessage: (message, transfer) => node.postMessage(message, transfer),
+    addEventListener(type, listener) {
+      if (type === "error") {
+        node.on("exit", (() => listener({ error: new Error("the SDK worker exited"), preventDefault() {
+        } })));
+      }
+      node.on(type, ((value) => {
+        listener(type === "message" ? { data: value } : { error: value, preventDefault() {
+        } });
+      }));
+    },
+    terminate: () => {
+      void node.terminate();
+    }
+  };
+}
+function adaptNodePort(port) {
+  if (!isNodeStyle(port)) return port;
+  const node = port;
+  return {
+    postMessage: (message, transfer) => node.postMessage(message, transfer),
+    addEventListener(_type, listener) {
+      node.on("message", ((data) => listener({ data })));
+    }
+  };
+}
+
+// src/worker/stream.ts
+function observe(callback) {
+  try {
+    callback();
+  } catch {
+  }
+}
+function abortReason2(signal) {
+  const reason2 = signal.reason;
+  return typeof reason2?.message === "string" ? reason2.message : "aborted";
+}
+async function* workerStream(start, outer) {
+  const controller = new AbortController();
+  const stop = () => controller.abort(outer?.reason);
+  if (outer?.aborted === true) stop();
+  outer?.addEventListener("abort", stop, { once: true });
+  const queue = [];
+  let wake;
+  let end;
+  const call = start((message, took) => {
+    const { index: index2, analysisType: analysisType2 } = message;
+    queue.push({ took, item: message.error === void 0 ? { index: index2, analysisType: analysisType2, result: message.result } : { index: index2, analysisType: analysisType2, error: restoreError(message.error) } });
+    wake?.();
+  }, controller.signal).then(() => {
+    end = {};
+    wake?.();
+  }, (error) => {
+    end = { error };
+    wake?.();
+  });
+  try {
+    for (; ; ) {
+      while (queue.length > 0) {
+        const { item, took } = queue.shift();
+        took();
+        yield item;
+      }
+      if (end !== void 0) {
+        if ("error" in end) throw end.error;
+        return;
+      }
+      await new Promise((resolve) => {
+        wake = resolve;
+      });
+      wake = void 0;
+    }
+  } finally {
+    outer?.removeEventListener("abort", stop);
+    if (end === void 0) controller.abort(new DOMException("the stream was closed", "AbortError"));
+    await call;
+  }
+}
+
+// src/worker/lost-error.ts
+var WorkerLostError = class extends Error {
+  /**
+   * @param reason - `"load"` or `"lost"`, as described above.
+   * @param acceptedJobIds - Ids of the jobs the server accepted before the worker ended.
+   * @param message - The error message; a default is given for each reason.
+   */
+  constructor(reason2, acceptedJobIds2, message = reason2 === "load" ? "the SDK worker failed to load" : "the SDK worker ended during a call") {
+    super(message);
+    this.reason = reason2;
+    this.acceptedJobIds = acceptedJobIds2;
+  }
+  name = "WorkerLostError";
+};
+
+// src/worker/client.ts
+var bound2 = /* @__PURE__ */ new WeakSet();
+function createWorkerClient(options) {
+  const { getToken } = options;
+  const worker2 = adaptNodeWorker(options.worker);
+  if (bound2.has(options.worker)) throw new TypeError("this worker already serves an SDK worker client");
+  bound2.add(options.worker);
+  const open = /* @__PURE__ */ new Set();
+  let ready = false;
+  let closed = false;
+  const end = (error) => {
+    if (closed) return;
+    closed = true;
+    worker2.terminate();
+    for (const call2 of [...open]) call2.fail(error(call2));
+  };
+  worker2.addEventListener("error", (event) => {
+    event.preventDefault();
+    const started = ready || [...open].some((call2) => call2.accepted.length > 0);
+    end((call2) => new WorkerLostError(started ? "lost" : "load", [...call2.accepted]));
+  });
+  const undeliverable = () => {
+    end((call2) => new WorkerLostError("lost", [...call2.accepted], "an SDK worker message could not be read"));
+  };
+  worker2.addEventListener("messageerror", undeliverable);
+  worker2.addEventListener("message", (event) => {
+    const message = event.data;
+    if (message?.type === "ready") ready = true;
+    if (message?.type !== "token-request" || closed) return;
+    const reply = (fields) => {
+      if (!closed) worker2.postMessage({ type: "token", id: message.id, ...fields });
+    };
+    if (getToken === void 0) {
+      reply({ error: "createWorkerClient has no getToken" });
+      return;
+    }
+    Promise.resolve().then(getToken).then((token) => reply({ token }), (error) => reply({ error: String(error) }));
+  });
+  worker2.postMessage({
+    type: "init",
+    ...options.module === void 0 ? {} : { module: options.module },
+    config: options.config ?? {},
+    getToken: getToken !== void 0,
+    ...options.threads === void 0 ? {} : { threads: options.threads }
+  });
+  function call(op, args, hooks, decode) {
+    if (closed) return Promise.reject(new Error("the SDK worker client is closed; create a new one"));
+    return new Promise((resolve, reject) => {
+      const channel2 = new MessageChannel();
+      const port = channel2.port1;
+      const signal = hooks.signal;
+      const onAbort = () => port.postMessage({ type: "abort", reason: abortReason2(signal) });
+      const entry = {
+        accepted: [],
+        fail: (error) => finish2(() => reject(error))
+      };
+      const finish2 = (settle) => {
+        if (!open.delete(entry)) return;
+        signal?.removeEventListener("abort", onAbort);
+        port.close();
+        settle();
+      };
+      port.addEventListener("message", (event) => {
+        const message = event.data;
+        if (message.type === "progress") {
+          observe(() => hooks.onProgress?.(message.state));
+        } else if (message.type === "accepted") {
+          entry.accepted.push(message.jobId);
+          observe(() => hooks.onAccepted?.(message.jobId, message.tileKey));
+        } else if (message.type === "item") {
+          hooks.onItem?.(message, () => port.postMessage({ type: "taken" }));
+        } else if (message.type === "done") {
+          finish2(() => {
+            try {
+              resolve(decode(message.value));
+            } catch (error) {
+              reject(error);
+            }
+          });
+        } else if (message.type === "failed") {
+          finish2(() => reject(restoreError(message.error)));
+        }
+      });
+      port.addEventListener("messageerror", undeliverable);
+      port.start();
+      open.add(entry);
+      try {
+        worker2.postMessage({ type: "call", op, args, port: channel2.port2 }, [channel2.port2]);
+      } catch (error) {
+        entry.fail(error);
+        return;
+      }
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+  const same = (value) => value;
+  const plain = (value) => {
+    const { signal, ...rest } = value ?? {};
+    return { rest, hooks: { signal } };
+  };
+  return {
+    runArea(input, polygon, runOptions = {}) {
+      const { signal, onProgress, onAccepted, retryFrom, ...rest } = runOptions;
+      const sent = { ...rest, ...retryFrom === void 0 ? {} : { retryFrom: areaScheduleToJSON(retryFrom) } };
+      return call(
+        "runArea",
+        [input, polygon, sent],
+        { signal, onProgress, onAccepted },
+        (value) => Array.isArray(value) ? value.map((one) => areaScheduleFromJSON(one)) : areaScheduleFromJSON(value)
+      );
+    },
+    runAreaStream(inputs, polygon, streamOptions = {}) {
+      if (streamOptions.retryFrom !== void 0) throw new TypeError("runAreaStream takes no retryFrom; use runArea");
+      const { signal, onProgress, onAccepted, ...rest } = streamOptions;
+      return workerStream((onItem, inner) => call(
+        "runAreaStream",
+        [inputs, polygon, rest],
+        { signal: inner, onProgress, onAccepted, onItem },
+        same
+      ), signal);
+    },
+    mergeAreaJobs(schedule2, mergeOptions) {
+      const { rest, hooks } = plain(mergeOptions);
+      return call("mergeAreaJobs", [areaScheduleToJSON(schedule2), rest], hooks, same);
+    },
+    mergeSurfaceAreaJobs(schedule2, mergeOptions) {
+      const { rest, hooks } = plain(mergeOptions);
+      return call("mergeSurfaceAreaJobs", [areaScheduleToJSON(schedule2), rest], hooks, same);
+    },
+    vegetation: {
+      getArea(polygon, readOptions) {
+        const { rest, hooks } = plain(readOptions);
+        return call("vegetation.getArea", [polygon, rest], hooks, same);
+      }
+    },
+    groundMaterials: {
+      getArea(polygon, readOptions) {
+        const { rest, hooks } = plain(readOptions);
+        return call("groundMaterials.getArea", [polygon, rest], hooks, same);
+      }
+    },
+    buildings: {
+      getBuildingsInArea(polygon, readOptions) {
+        const { rest, hooks } = plain(readOptions);
+        return call("buildings.getBuildingsInArea", [polygon, rest], hooks, same);
+      }
+    },
+    dispose() {
+      end((entry) => new WorkerLostError("lost", [...entry.accepted], "the SDK worker client was disposed"));
+    }
+  };
+}
+
+// src/worker/serve.ts
+function serveSdkWorker(options = {}) {
+  const scope = adaptNodePort(options.scope ?? globalThis);
+  let client;
+  let nextToken = 1;
+  const tokens = /* @__PURE__ */ new Map();
+  const requestToken = () => new Promise((resolve, reject) => {
+    const id = nextToken++;
+    tokens.set(id, { resolve, reject });
+    scope.postMessage({ type: "token-request", id });
+  });
+  const init = async (message) => {
+    if (message.module === void 0 || message.threads !== void 0 && message.threads !== 1) {
+      await loadPackagedCore(message.threads);
+    } else await initializeCore({ module: message.module });
+    const created = new InfraredClient({
+      ...message.config,
+      ...options.fetch === void 0 ? {} : { fetch: options.fetch },
+      ...options.geometryUrlStore === void 0 ? {} : { geometryUrlStore: options.geometryUrlStore },
+      ...message.getToken ? { getToken: requestToken } : {}
+    });
+    scope.postMessage({ type: "ready" });
+    return created;
+  };
+  scope.addEventListener("message", (event) => {
+    const message = event.data;
+    if (message?.type === "init") {
+      client ??= init(message);
+      client.catch(() => void 0);
+    } else if (message?.type === "call") {
+      void serveCall(message, client);
+    } else if (message?.type === "token") {
+      const waiter = tokens.get(message.id);
+      if (waiter === void 0) return;
+      tokens.delete(message.id);
+      if (message.token !== void 0) waiter.resolve(message.token);
+      else waiter.reject(new Error(message.error ?? "getToken failed on the page"));
+    }
+  });
+}
+async function serveCall(message, client) {
+  const port = message.port;
+  const abort = new AbortController();
+  let taken = 0;
+  let wakeTaken = () => {
+  };
+  port.addEventListener("message", (event) => {
+    if (event.data?.type === "abort") abort.abort(new DOMException(event.data.reason, "AbortError"));
+    if (event.data?.type === "taken") taken += 1;
+    wakeTaken();
+  });
+  const pageTook = async () => {
+    while (taken === 0 && !abort.signal.aborted) await new Promise((resolve) => {
+      wakeTaken = resolve;
+    });
+    taken = Math.max(0, taken - 1);
+  };
+  port.start();
+  const send = (reply, transfer = []) => port.postMessage(reply, transfer);
+  try {
+    if (client === void 0) throw new Error("the SDK worker received a call before init");
+    const value = await dispatch(await client, message.op, message.args, abort.signal, send, pageTook);
+    send({ type: "done", value }, transferables(value));
+  } catch (error) {
+    send({ type: "failed", error: serializeError(error) });
+  } finally {
+    port.close();
+  }
+}
+async function dispatch(client, op, args, signal, send, pageTook) {
+  const [first, second, third] = args;
+  if (op === "runArea") {
+    const { retryFrom, ...options2 } = third ?? {};
+    const schedule2 = await client.runArea(first, second, {
+      ...options2,
+      ...retryFrom === void 0 ? {} : { retryFrom: areaScheduleFromJSON(retryFrom) },
+      signal,
+      onProgress: (state) => send({ type: "progress", state }),
+      onAccepted: (jobId, tileKey) => send({ type: "accepted", jobId, tileKey })
+    });
+    return Array.isArray(schedule2) ? schedule2.map(areaScheduleToJSON) : areaScheduleToJSON(schedule2);
+  }
+  if (op === "runAreaStream") {
+    for await (const item of client.runAreaStream(first, second, {
+      ...third,
+      signal,
+      onProgress: (state) => send({ type: "progress", state }),
+      onAccepted: (jobId, tileKey) => send({ type: "accepted", jobId, tileKey })
+    })) {
+      const { index: index2, analysisType: analysisType2 } = item;
+      if (item.error !== void 0) send({ type: "item", index: index2, analysisType: analysisType2, error: serializeError(item.error) });
+      else send({ type: "item", index: index2, analysisType: analysisType2, result: item.result }, transferables(item.result));
+      await pageTook();
+    }
+    return void 0;
+  }
+  const options = { ...second, signal };
+  if (op === "mergeAreaJobs") {
+    return client.mergeAreaJobs(areaScheduleFromJSON(first), options);
+  }
+  if (op === "mergeSurfaceAreaJobs") {
+    return client.mergeSurfaceAreaJobs(areaScheduleFromJSON(first), options);
+  }
+  if (op === "vegetation.getArea") return client.vegetation.getArea(first, options);
+  if (op === "groundMaterials.getArea") return client.groundMaterials.getArea(first, options);
+  if (op === "buildings.getBuildingsInArea") return client.buildings.getBuildingsInArea(first, options);
+  throw new Error(`unknown SDK worker operation ${String(op)}`);
+}
+
+// src/node-runtime.ts
 var nodeInitialize = { initializeCore: initializeCore2 };
 var tiling = Object.freeze({ ...area_exports, ...nodeInitialize });
 var geodata = Object.freeze({ ...geodata_exports, ...nodeInitialize });
 var utilities = Object.freeze({ ...utilities_exports });
 var billing = Object.freeze({ ...billing_exports });
+var serveSdkWorker2 = (options = {}) => {
+  const scope = options.scope ?? import_node_worker_threads.parentPort;
+  if (scope === null) throw new Error("serveSdkWorker() needs a worker thread: call it in a node:worker_threads Worker, or pass `scope`");
+  serveSdkWorker({ ...options, scope });
+};
+var worker = Object.freeze({ ...worker_exports, serveSdkWorker: serveSdkWorker2 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   billing,
   geodata,
   root,
   tiling,
-  utilities
+  utilities,
+  worker
 });

@@ -1,15 +1,11 @@
 /**
  * The byte-range seam: one remote object, read a window at a time.
  *
- * Split out of `http.ts` so that neither file passes 400 lines once the
- * range read gained a retry. `http.ts` owns the request itself — the
- * allow-list, the deadline, the credential-free headers — and this module
- * owns what a `Range` answer must prove and what is worth asking again.
- *
- * The retry is described in `retry.ts`. Two of its rules are visible here:
- * a `200` answer to a `Range` request is asked again BEFORE its body is
- * read, and the entity tag of every answer is recorded so a second attempt
- * cannot silently read a file that was replaced meanwhile.
+ * `http.ts` owns the request itself — the allow-list, the deadline, the
+ * credential-free headers. What a `Range` answer must prove, what is worth
+ * asking again, the waits and the entity-tag pin are the kernel's
+ * (`rangeReadStep`, the rule the Python host calls too); this module sends
+ * the facts of each answer and reads the body under the cap it is given.
  */
 import { type PublicRequestOptions } from "./http.js";
 /**

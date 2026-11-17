@@ -52,6 +52,7 @@ export const MODEL_INPUT_NAMES = {
     global_horizontal_radiation: "globalHorizontalRadiation",
     dry_bulb_temperature: "dryBulbTemperature",
     wind_speed: "windSpeed",
+    wind_direction: "windDirection",
     relative_humidity: "relativeHumidity",
 };
 export const BASE = ["analysisType", "geometries", "vegetation", "groundMaterials"];

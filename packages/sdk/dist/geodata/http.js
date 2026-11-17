@@ -4,9 +4,8 @@ import { VERSION } from "../version.js";
 import { cancelBody, readCappedBody } from "../internal/capped-body.js";
 import { Deadline, delay } from "../internal/deadline.js";
 import { resolveFetch } from "../internal/fetch.js";
-import { RangeRetry } from "./retry.js";
+import { requireCore } from "../internal/core.js";
 import { STALL_TIMEOUT_MS, StallWatch } from "./stall.js";
-export { MAX_HTTP_200_BYTES, MAX_RANGE_BYTES } from "./range-answer.js";
 /**
  * Metres per degree of latitude (111 320 m) used by flat bounding-box derivations
  * such as {@link pointToBbox}.
@@ -100,6 +99,24 @@ function fetchImpl(options) {
     return implementation;
 }
 /**
+ * The `public_get` row of the kernel's host retry table for one plain GET:
+ * a failed connection, a stall, 5xx, 408 and 429 are asked again.
+ */
+class PublicGetRetry {
+    tries = 0;
+    attempt() {
+        this.tries += 1;
+        return {};
+    }
+    next(error) {
+        const status = error instanceof GeodataFetchError ? error.status : undefined;
+        if (error instanceof GeodataError && status === undefined)
+            return undefined;
+        const waitS = requireCore().hostRetryWaitSeconds("public_get", "after_send", status, this.tries, Math.random(), undefined);
+        return waitS === undefined ? undefined : waitS * 1_000;
+    }
+}
+/**
  * Send one GET request to an allowed public host and hand the response to a
  * callback, under a single deadline that covers the headers and the body.
  *
@@ -122,15 +139,15 @@ function fetchImpl(options) {
 // a server that answered and then stalled held the read open for as long as it liked. `Deadline`
 // carries one abort controller for the whole call — the fetch, the body read, and the caller's own
 // signal — and `close()` clears the timer and removes the listener the caller's signal got, so a
-// finished read leaves nothing behind. The loop asks again only while `RangeRetry.next` names a
-// wait. The static-weather reader, the one whole-object caller, has a retry of its own.
+// finished read leaves nothing behind. The loop asks again only while `retry.next` (the kernel) names a
+// wait. The static-weather reader, the one whole-object caller, retries with the kernel table (`withHostRetry`, `public_get`).
 export async function withRequest(url, headers, options, use, retry) {
     const checked = assertAllowedUrl(url);
     const timeoutMs = options.timeoutMs ?? DEFAULT_PUBLIC_TIMEOUT_MS;
     const deadline = new Deadline(options.signal, timeoutMs);
     const signal = deadline.controller.signal;
     const step = (work) => deadline.wait(work);
-    const stopped = (error) => new GeodataFetchError(checked, stopDetail(error, deadline, timeoutMs));
+    const stopped = (error) => new GeodataFetchError(checked, stopDetail(error, deadline, timeoutMs), undefined, { cause: error });
     const stallMs = options.stallTimeoutMs ?? STALL_TIMEOUT_MS;
     try {
         for (;;) {
@@ -142,13 +159,13 @@ export async function withRequest(url, headers, options, use, retry) {
                 // reach them. `redirect: "error"` keeps the allow-list honest: a 3xx
                 // from an allow-listed host would otherwise carry the request to any
                 // host at all, which is the one thing `assertAllowedUrl` prevents.
-                // `retry.headers()` adds the `If-Match` of the logical read, so a
+                // `retry.attempt()` adds the `If-Match` of the logical read, so a
                 // second attempt cannot read a file that was replaced meanwhile.
                 const response = await step(() => fetchImpl(options)(checked, {
                     headers: {
                         "User-Agent": DATA_USER_AGENT,
                         ...headers,
-                        ...(retry === undefined ? {} : retry.headers()),
+                        ...(retry === undefined ? {} : retry.attempt()),
                     },
                     redirect: "error",
                     signal: watch?.controller.signal ?? signal,
@@ -217,11 +234,11 @@ function stopDetail(error, deadline, timeoutMs) {
  *   size cap is exceeded or the body is not UTF-8.
  * @category Geodata
  */
-// Maintainer note (not published): the read is retried like a range read (see `retry.ts`). A
+// Maintainer note (not published): the kernel's `public_get` retry row decides each retry. A
 // ground read fetches five Overture pointer documents on every call, and one connection reset on
 // one of them failed the whole site read with `SiteReadError`.
 export async function fetchPublicText(url, options = {}) {
-    const retry = new RangeRetry(url, undefined, options.logger);
+    const retry = new PublicGetRetry();
     return withRequest(url, { Accept: "application/json" }, options, async (response) => {
         if (!response.ok) {
             cancelBody(response);

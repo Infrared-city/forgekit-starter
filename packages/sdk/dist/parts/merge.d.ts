@@ -15,7 +15,7 @@ export type PartsJobsService = AreaStatusService & Pick<JobsService, "downloadRe
  * @category Run an analysis
  */
 export interface MergePartsOptions {
-    /** Width of the download pool. */
+    /** @deprecated No effect: the engine sets the widths. Removed in 2.0. */
     readonly maxWorkers?: number;
     /** Aborts the polling and the downloads. */
     readonly signal?: AbortSignal;
@@ -49,3 +49,8 @@ export declare function mergeFormat(schedule: PartsSchedule, options: MergeParts
  * @category Run an analysis
  */
 export declare function mergePartsDocument(service: PartsJobsService, schedule: PartsSchedule, options?: MergePartsOptions): Promise<Uint8Array>;
+/**
+ * Join the parts from the archives the engine downloaded (by job id). `lost`:
+ * the parts whose job succeeded and whose download gave up.
+ */
+export declare function joinParts(schedule: PartsSchedule, archives: ReadonlyMap<string, Uint8Array>, lost: readonly string[], options?: MergePartsOptions): Uint8Array;

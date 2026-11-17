@@ -48,30 +48,6 @@ export function reanchorEntries(entries, source, target) {
     return JSON.parse(decoder.decode(moved));
 }
 /**
- * The site-frame entries a tile was assigned, ready to re-anchor.
- *
- * The ASSIGNMENT is the kernel's — `composeTilePayloads` decides which bodies
- * a tile's context rectangle meets, and this reads that decision back as a key
- * list. Only the COORDINATES come from the site-frame source, because the
- * kernel's copy has already been shifted by the constant offset this replaces.
- * Key order is the kernel's, so the payload's insertion order does not move.
- */
-export function siteEntriesFor(assigned, siteGroup) {
-    const out = {};
-    for (const key of Object.keys(assigned)) {
-        const entry = siteGroup[key];
-        if (entry === undefined) {
-            // The kernel assigned a key the source does not hold, which would mean
-            // the assignment and the geometry disagree about the area.
-            throw new Error(`tile geometry ${JSON.stringify(key)} is not in the site-frame group`);
-        }
-        Object.defineProperty(out, key, {
-            value: entry, enumerable: true, writable: true, configurable: true,
-        });
-    }
-    return out;
-}
-/**
  * Is this an `AreaBuildings`, or a bare `{buildingId: mesh}` map?
  *
  * The discriminator is `origin`: a two-element array of finite numbers. A

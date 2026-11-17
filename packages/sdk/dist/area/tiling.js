@@ -1,5 +1,4 @@
 import { requireCore } from "../internal/core.js";
-import { DEFAULT_TOKENS_PER_JOB } from "../pricing.js";
 const WASM_USIZE_MAX = 0xffff_ffff;
 function optionalUsize(value, name) {
     if (value === undefined)
@@ -42,20 +41,15 @@ function grouped(value) {
 function capRefusal(verdict) {
     const grid = `the ${verdict.family} grid (${verdict.step_m} m step)`;
     if (verdict.kind === "bbox_too_large") {
-        const cost = verdict.estimate * DEFAULT_TOKENS_PER_JOB;
         return (`Polygon bbox would generate about ${grouped(verdict.estimate)} tiles on ${grid}, ` +
             `over the limit of ${grouped(verdict.limit)} non-empty tiles; a bbox grid that large ` +
-            `is refused before a single tile is built. At about ${DEFAULT_TOKENS_PER_JOB} tokens ` +
-            `per billed tile that is up to about ${grouped(cost)} tokens IF every bbox tile were ` +
-            `non-empty — most will not be, so read it as an upper bound. To get past this ` +
-            `pre-check, pass maxTilesOverride: ${verdict.min_override} or more; the non-empty cap ` +
-            `is checked after it. A bbox this large is more often a coordinate-order mistake ` +
-            `(GeoJSON is [lon, lat]).`);
+            `is refused before a single tile is built. Most bbox tiles will not be non-empty, so read ` +
+            `the count as an upper bound. To get past this pre-check, pass maxTilesOverride: ` +
+            `${verdict.min_override} or more; the non-empty cap is checked after it. A bbox this large ` +
+            `is more often a coordinate-order mistake (GeoJSON is [lon, lat]).`);
     }
-    const cost = verdict.count * DEFAULT_TOKENS_PER_JOB;
     return (`Polygon produces ${grouped(verdict.count)} non-empty tiles on ${grid}, over the limit ` +
-        `of ${grouped(verdict.limit)}. Each tile is one billed job at about ` +
-        `${DEFAULT_TOKENS_PER_JOB} tokens, so this run would cost about ${grouped(cost)} tokens. ` +
+        `of ${grouped(verdict.limit)}. Each tile is one billed job. ` +
         `To run it, pass maxTilesOverride: ${verdict.count}; to spend less, shrink the polygon ` +
         `or size it first with previewArea().`);
 }

@@ -63,6 +63,8 @@ function jsonJob(job) {
         tileId: job.tileId, row: job.row, col: job.col, status: job.status,
         ...(job.jobId === undefined ? {} : { jobId: job.jobId }),
         ...(job.error === undefined ? {} : { error: job.error }),
+        ...(job.failureKind === undefined ? {} : { failureKind: job.failureKind }),
+        ...(job.failureStatus === undefined ? {} : { failureStatus: job.failureStatus }),
         ...(job.invalidReference === true ? { invalidReference: true } : {}),
         ...(job.binary === undefined ? {} : { binary: { ...job.binary } }),
     };
@@ -136,6 +138,11 @@ function parseJob(key, value) {
         invalid(`job ${key} has invalid jobId`);
     if (raw.error !== undefined && typeof raw.error !== "string")
         invalid(`job ${key} has invalid error`);
+    if (raw.failureKind !== undefined && typeof raw.failureKind !== "string")
+        invalid(`job ${key} has invalid failureKind`);
+    if (raw.failureStatus !== undefined && !Number.isSafeInteger(raw.failureStatus)) {
+        invalid(`job ${key} has invalid failureStatus`);
+    }
     if (raw.invalidReference !== undefined && raw.invalidReference !== true) {
         invalid(`job ${key} has invalid invalidReference marker`);
     }
@@ -145,6 +152,8 @@ function parseJob(key, value) {
         status: raw.status,
         ...(raw.jobId === undefined ? {} : { jobId: raw.jobId }),
         ...(raw.error === undefined ? {} : { error: raw.error }),
+        ...(raw.failureKind === undefined ? {} : { failureKind: raw.failureKind }),
+        ...(raw.failureStatus === undefined ? {} : { failureStatus: raw.failureStatus }),
         ...(raw.invalidReference === true ? { invalidReference: true } : {}),
         ...(binary === undefined ? {} : { binary }),
     };
@@ -267,8 +276,8 @@ export function areaScheduleFromJSON(value) {
         invalid("weatherIdentity must be a sha256: digest");
     }
     if (raw.siteIdentity !== undefined &&
-        (typeof raw.siteIdentity !== "string" || !/^sha256:[0-9a-f]{64}$/.test(raw.siteIdentity))) {
-        invalid("siteIdentity must be a sha256: digest");
+        (typeof raw.siteIdentity !== "string" || !/^(site2|sha256):[0-9a-f]{64}$/.test(raw.siteIdentity))) {
+        invalid("siteIdentity must be a site2: (or, before D297, sha256:) digest");
     }
     if (raw.scheduleContractVersion !== undefined &&
         (!Number.isSafeInteger(raw.scheduleContractVersion) ||

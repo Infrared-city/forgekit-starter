@@ -15,7 +15,13 @@ export class AreaGridMerger {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_areagridmerger_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_areagridmerger_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * Finish the merge: `{ values, valuesDtype, valueDivisor, valid?, shape,
@@ -26,7 +32,13 @@ export class AreaGridMerger {
      * @returns {any}
      */
     finish() {
-        const ret = wasm.areagridmerger_finish(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.areagridmerger_finish(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -50,7 +62,13 @@ export class AreaGridMerger {
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(strategy) ? 0 : passStringToWasm0(strategy, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.areagridmerger_new(num_rows, num_cols, ptr0, len0, ptr1, len1, ptr2, len2, !isLikeNone(wind_direction_deg), isLikeNone(wind_direction_deg) ? 0 : wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.areagridmerger_new(num_rows, num_cols, ptr0, len0, ptr1, len1, ptr2, len2, !isLikeNone(wind_direction_deg), isLikeNone(wind_direction_deg) ? 0 : wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -59,32 +77,113 @@ export class AreaGridMerger {
         return this;
     }
     /**
-     * Add one tile archive at tile position `(row, col)`. `undefined` when
-     * the tile is merged; the reason when the tile is not usable (an archive
-     * that does not decode, a wrong shape, an IRBF family that is not a
-     * grid). Throws for a run error (numeric and categorical tiles mixed, a
-     * position outside the layout).
-     * @param {number} row
-     * @param {number} col
-     * @param {Uint8Array} archive
-     * @returns {string | undefined}
+     * Place the decoded tiles `tiles[indices[i]]` at tile positions
+     * `(rows[i], cols[i])`, in this order; each tile is taken (a second
+     * take is an error). One entry per tile: `undefined` when the tile is
+     * merged, else the reason it is not usable (an archive that does not
+     * decode, a wrong shape, an IRBF family that is not a grid). Throws for
+     * a run error (numeric and categorical tiles mixed, a position outside
+     * the layout); the tiles before it stay placed.
+     * @param {GridTiles} tiles
+     * @param {Uint32Array} indices
+     * @param {Uint32Array} rows
+     * @param {Uint32Array} cols
+     * @returns {Array<any>}
      */
-    push(row, col, archive) {
-        const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
+    pushMany(tiles, indices, rows, cols) {
+        _assertClass(tiles, GridTiles);
+        const ptr0 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.areagridmerger_push(this.__wbg_ptr, row, col, ptr0, len0);
-        if (ret[3]) {
-            throw takeFromExternrefTable0(ret[2]);
+        const ptr1 = passArray32ToWasm0(rows, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(cols, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.areagridmerger_pushMany(this.__wbg_ptr, tiles.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
         }
-        let v2;
-        if (ret[0] !== 0) {
-            v2 = getStringFromWasm0(ret[0], ret[1]).slice();
-            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
         }
-        return v2;
+        return takeFromExternrefTable0(ret[0]);
     }
 }
 if (Symbol.dispose) AreaGridMerger.prototype[Symbol.dispose] = AreaGridMerger.prototype.free;
+
+/**
+ * A capture the kernel put in a `CaptureStore` before its job was accepted
+ * (`Site.facadeCaptures`, D-2026101110-iris-nectar-maple). `bind(jobId)`
+ * gives it to the accepted job; freed unbound, it is released.
+ */
+export class CaptureHold {
+    static __wrap(ptr) {
+        const obj = Object.create(CaptureHold.prototype);
+        obj.__wbg_ptr = ptr;
+        CaptureHoldFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        CaptureHoldFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_capturehold_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+    /**
+     * Job `jobId` takes the capture. Only the first call does something.
+     * @param {string} job_id
+     */
+    bind(job_id) {
+        const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        __wbg_call_guard();
+        try {
+            wasm.capturehold_bind(this.__wbg_ptr, ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+    /**
+     * The content key (64 hex characters).
+     * @returns {string}
+     */
+    get key() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.capturehold_key(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+        }
+    }
+}
+if (Symbol.dispose) CaptureHold.prototype[Symbol.dispose] = CaptureHold.prototype.free;
 
 /**
  * See the module documentation.
@@ -98,13 +197,24 @@ export class CaptureStore {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_capturestore_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_capturestore_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * Drop everything, as `free()` would, but keep the handle.
      */
     clear() {
-        wasm.capturestore_clear(this.__wbg_ptr);
+        __wbg_call_guard();
+        try {
+            wasm.capturestore_clear(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
     /**
      * Drop job `jobId`'s reference. An unknown id does nothing.
@@ -113,14 +223,25 @@ export class CaptureStore {
     forget(job_id) {
         const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        wasm.capturestore_forget(this.__wbg_ptr, ptr0, len0);
+        __wbg_call_guard();
+        try {
+            wasm.capturestore_forget(this.__wbg_ptr, ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
     /**
      * The bytes held: the distinct captures and the syntheses cached for them.
      * @returns {number}
      */
     get heldBytes() {
-        const ret = wasm.capturestore_heldBytes(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.capturestore_heldBytes(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
     /**
@@ -128,14 +249,26 @@ export class CaptureStore {
      * @returns {number}
      */
     get jobCount() {
-        const ret = wasm.capturestore_jobCount(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.capturestore_jobCount(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret >>> 0;
     }
     /**
      * An empty store.
      */
     constructor() {
-        const ret = wasm.capturestore_new();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.capturestore_new();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         this.__wbg_ptr = ret;
         CaptureStoreFinalization.register(this, this.__wbg_ptr, this);
         return this;
@@ -155,12 +288,23 @@ export class CaptureStore {
             const len0 = WASM_VECTOR_LEN;
             const ptr1 = passArray8ToWasm0(capture, wasm.__wbindgen_malloc);
             const len1 = WASM_VECTOR_LEN;
-            const ret = wasm.capturestore_remember(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.capturestore_remember(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             deferred3_0 = ret[0];
             deferred3_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
 }
@@ -184,20 +328,38 @@ export class CategoricalAreaDense {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_categoricalareadense_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_categoricalareadense_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * @returns {Array<any>}
      */
     get legend() {
-        const ret = wasm.categoricalareadense_legend(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.categoricalareadense_legend(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
     /**
      * @returns {Float64Array}
      */
     get values() {
-        const ret = wasm.categoricalareadense_values(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.categoricalareadense_values(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
 }
@@ -226,7 +388,13 @@ export class FacadeLayoutHandle {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_facadelayouthandle_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_facadelayouthandle_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * This layout as typed fields (no export bytes): `layoutKey`,
@@ -249,7 +417,13 @@ export class FacadeLayoutHandle {
      * @returns {any}
      */
     fields() {
-        const ret = wasm.facadelayouthandle_fields(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.facadelayouthandle_fields(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -260,7 +434,13 @@ export class FacadeLayoutHandle {
      * @returns {any}
      */
     surfaceRenderBuffers(columns) {
-        const ret = wasm.facadelayouthandle_surfaceRenderBuffers(this.__wbg_ptr, columns);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.facadelayouthandle_surfaceRenderBuffers(this.__wbg_ptr, columns);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -282,7 +462,13 @@ export class FacadeLayoutHandle {
      * @returns {Uint8Array}
      */
     toBytes() {
-        const ret = wasm.facadelayouthandle_toBytes(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.facadelayouthandle_toBytes(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[3]) {
             throw takeFromExternrefTable0(ret[2]);
         }
@@ -308,13 +494,25 @@ export class GridDecode {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_griddecode_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_griddecode_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * @returns {Uint8Array}
      */
     get data() {
-        const ret = wasm.griddecode_data(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.griddecode_data(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
     /**
@@ -324,12 +522,23 @@ export class GridDecode {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.griddecode_dtype(this.__wbg_ptr);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.griddecode_dtype(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
     /**
@@ -339,22 +548,39 @@ export class GridDecode {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.griddecode_kind(this.__wbg_ptr);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.griddecode_kind(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
     /**
      * @returns {string[] | undefined}
      */
     get legend() {
-        const ret = wasm.griddecode_legend(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.griddecode_legend(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         let v1;
         if (ret[0] !== 0) {
-            v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+            v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
             wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         }
         return v1;
@@ -363,7 +589,13 @@ export class GridDecode {
      * @returns {Uint32Array}
      */
     get shape() {
-        const ret = wasm.griddecode_shape(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.griddecode_shape(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
 }
@@ -384,13 +616,25 @@ export class GridDocumentDecode {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_griddocumentdecode_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_griddocumentdecode_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * @returns {boolean | undefined}
      */
     get finiteNumbersValidated() {
-        const ret = wasm.griddocumentdecode_finiteNumbersValidated(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.griddocumentdecode_finiteNumbersValidated(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret === 0xFFFFFF ? undefined : ret !== 0;
     }
     /**
@@ -400,16 +644,198 @@ export class GridDocumentDecode {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.griddocumentdecode_route(this.__wbg_ptr);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.griddocumentdecode_route(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
 }
 if (Symbol.dispose) GridDocumentDecode.prototype[Symbol.dispose] = GridDocumentDecode.prototype.free;
+
+/**
+ * Decoded tile archives, held in the kernel until `AreaGridMerger.pushMany`
+ * takes them. Call `free()` when done.
+ */
+export class GridTiles {
+    static __wrap(ptr) {
+        const obj = Object.create(GridTiles.prototype);
+        obj.__wbg_ptr = ptr;
+        GridTilesFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        GridTilesFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_gridtiles_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+}
+if (Symbol.dispose) GridTiles.prototype[Symbol.dispose] = GridTiles.prototype.free;
+
+/**
+ * The wait for ONE job (`ir_geo::run_engine::JobWait`): the host does the
+ * status GET and the sleep the step names, nothing else.
+ */
+export class JobWait {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        JobWaitFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_jobwait_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+    /**
+     * Times in whole microseconds (numbers, no BigInt).
+     * @param {string} job
+     * @param {number} timeout_us
+     * @param {number} seed
+     * @param {number | null} [interval_us]
+     * @param {number | null} [interval_cap_us]
+     */
+    constructor(job, timeout_us, seed, interval_us, interval_cap_us) {
+        const ptr0 = passStringToWasm0(job, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.jobwait_new(ptr0, len0, timeout_us, seed, !isLikeNone(interval_us), isLikeNone(interval_us) ? 0 : interval_us, !isLikeNone(interval_cap_us), isLikeNone(interval_cap_us) ? 0 : interval_cap_us);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        this.__wbg_ptr = ret;
+        JobWaitFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * `answer`: the last GET's answer as JSON, or `""`; returns the step as JSON.
+     * @param {number} now_us
+     * @param {string} answer
+     * @returns {string}
+     */
+    next(now_us, answer) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(answer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.jobwait_next(this.__wbg_ptr, now_us, ptr0, len0);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+        }
+    }
+}
+if (Symbol.dispose) JobWait.prototype[Symbol.dispose] = JobWait.prototype.free;
+
+/**
+ * One kernel call in flight on the pool; see the module documentation.
+ */
+export class PoolTask {
+    static __wrap(ptr) {
+        const obj = Object.create(PoolTask.prototype);
+        obj.__wbg_ptr = ptr;
+        PoolTaskFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PoolTaskFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_pooltask_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+    /**
+     * Whether the work is done (its result can be taken).
+     * @returns {boolean}
+     */
+    get done() {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.pooltask_done(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        return ret !== 0;
+    }
+    /**
+     * The byte address of the task's `i32` done word in the core's memory
+     * (a multiple of 4): 0 while it runs, 1 when it is done.
+     * @returns {number}
+     */
+    get flag() {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.pooltask_flag(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        return ret >>> 0;
+    }
+}
+if (Symbol.dispose) PoolTask.prototype[Symbol.dispose] = PoolTask.prototype.free;
 
 /**
  * One downloaded AREA result archive, decoded in one crossing. `route` is
@@ -438,30 +864,54 @@ export class ResultArchiveDecode {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_resultarchivedecode_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_resultarchivedecode_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * @returns {Uint8Array | undefined}
      */
     get data() {
-        const ret = wasm.resultarchivedecode_data(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.resultarchivedecode_data(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
     /**
      * @returns {Uint8Array | undefined}
      */
     get document() {
-        const ret = wasm.resultarchivedecode_document(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.resultarchivedecode_document(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
     /**
      * @returns {string | undefined}
      */
     get dtype() {
-        const ret = wasm.resultarchivedecode_dtype(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.resultarchivedecode_dtype(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         let v1;
         if (ret[0] !== 0) {
-            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            v1 = getStringFromWasm0(ret[0], ret[1]);
             wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         }
         return v1;
@@ -470,10 +920,16 @@ export class ResultArchiveDecode {
      * @returns {string | undefined}
      */
     get kind() {
-        const ret = wasm.resultarchivedecode_kind(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.resultarchivedecode_kind(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         let v1;
         if (ret[0] !== 0) {
-            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            v1 = getStringFromWasm0(ret[0], ret[1]);
             wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         }
         return v1;
@@ -482,10 +938,16 @@ export class ResultArchiveDecode {
      * @returns {string[] | undefined}
      */
     get legend() {
-        const ret = wasm.resultarchivedecode_legend(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.resultarchivedecode_legend(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         let v1;
         if (ret[0] !== 0) {
-            v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+            v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
             wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         }
         return v1;
@@ -497,23 +959,156 @@ export class ResultArchiveDecode {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.resultarchivedecode_route(this.__wbg_ptr);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.resultarchivedecode_route(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
     /**
      * @returns {Uint32Array | undefined}
      */
     get shape() {
-        const ret = wasm.resultarchivedecode_shape(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.resultarchivedecode_shape(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret;
     }
 }
 if (Symbol.dispose) ResultArchiveDecode.prototype[Symbol.dispose] = ResultArchiveDecode.prototype.free;
+
+/**
+ * Every send, poll, download and hand-over decision of an area run.
+ */
+export class RunEngine {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        RunEngineFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_runengine_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+    /**
+     * The facts of analysis `analysis` now (JSON).
+     * @param {number} analysis
+     * @returns {string}
+     */
+    facts(analysis) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.runengine_facts(this.__wbg_ptr, analysis);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+        }
+    }
+    /**
+     * `config`: the engine `Config` as JSON.
+     * @param {string} config
+     */
+    constructor(config) {
+        const ptr0 = passStringToWasm0(config, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.runengine_new(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        RunEngineFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * `now_us`: whole microseconds (a number, no BigInt); `events`: a JSON
+     * list of events. Returns the `Step` as JSON.
+     * @param {number} now_us
+     * @param {string} events
+     * @returns {string}
+     */
+    step(now_us, events) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(events, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.runengine_step(this.__wbg_ptr, now_us, ptr0, len0);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+        }
+    }
+}
+if (Symbol.dispose) RunEngine.prototype[Symbol.dispose] = RunEngine.prototype.free;
 
 /**
  * One area site, read once, answering per tile range.
@@ -533,7 +1128,13 @@ export class Site {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_site_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_site_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
      * Every tile's membership and ownership answer, as ONE JSON array of the
@@ -544,7 +1145,13 @@ export class Site {
         let deferred2_0;
         let deferred2_1;
         try {
-            const ret = wasm.site_allTileIds(this.__wbg_ptr);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.site_allTileIds(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             var ptr1 = ret[0];
             var len1 = ret[1];
             if (ret[3]) {
@@ -555,8 +1162,32 @@ export class Site {
             deferred2_1 = len1;
             return getStringFromWasm0(ptr1, len1);
         } finally {
-            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
+    }
+    /**
+     * The artifacts of an `artifactsStart` task (see there).
+     * @param {PoolTask} task
+     * @returns {any}
+     */
+    static artifactsEnd(task) {
+        _assertClass(task, PoolTask);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_artifactsEnd(task.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * Tiles `start..end`'s IRBF geometry artifacts: `SiteAssignment.artifacts`'
@@ -568,21 +1199,25 @@ export class Site {
      *
      * D249: the TypeScript host never boxes trees; the kernel still carries
      * the `box_trees` parameter for the .NET binding, so this calls it with
-     * `false`.
+     * `false`. Returns a `PoolTask` at once (`pool_task`); `artifactsEnd`
+     * gives the object.
      * @param {number} start
      * @param {number} end
      * @param {bigint} max_total_bytes
      * @param {number} max_metadata_bytes
      * @param {bigint} max_meshes
      * @param {bigint} max_instances
-     * @returns {any}
+     * @returns {PoolTask}
      */
-    artifacts(start, end, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
-        const ret = wasm.site_artifacts(this.__wbg_ptr, start, end, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
+    artifactsStart(start, end, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_artifactsStart(this.__wbg_ptr, start, end, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        } catch(e) {
+            __wbg_handle_catch(e);
         }
-        return takeFromExternrefTable0(ret[0]);
+        return PoolTask.__wrap(ret);
     }
     /**
      * Tiles `start..end`'s wire bodies and kernel group hashes, as
@@ -598,7 +1233,13 @@ export class Site {
      * @returns {any}
      */
     bodies(start, end) {
-        const ret = wasm.site_bodies(this.__wbg_ptr, start, end);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_bodies(this.__wbg_ptr, start, end);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -611,44 +1252,174 @@ export class Site {
      * @param {number} end
      */
     checkTerrain(start, end) {
-        const ret = wasm.site_checkTerrain(this.__wbg_ptr, start, end);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_checkTerrain(this.__wbg_ptr, start, end);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
     }
     /**
-     * Geometry-free facade policy and saved records in; selected batch ID
-     * records out. The shared core parses both policy versions.
-     * @param {number} start
-     * @param {number} end
-     * @param {string} request_json
+     * The one warning of the context hole (D293), or `undefined` when it
+     * removed no context triangle. The host logs it as it is.
+     * @returns {string | undefined}
+     */
+    contextWarning() {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_contextWarning(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        let v1;
+        if (ret[0] !== 0) {
+            v1 = getStringFromWasm0(ret[0], ret[1]);
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v1;
+    }
+    /**
+     * The records of a `facadeBatchesStart` task (see there).
+     * @param {PoolTask} task
      * @returns {string}
      */
-    facadeBatches(start, end, request_json) {
-        let deferred3_0;
-        let deferred3_1;
+    static facadeBatchesEnd(task) {
+        let deferred2_0;
+        let deferred2_1;
         try {
-            const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.site_facadeBatches(this.__wbg_ptr, start, end, ptr0, len0);
-            var ptr2 = ret[0];
-            var len2 = ret[1];
+            _assertClass(task, PoolTask);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.site_facadeBatchesEnd(task.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            var ptr1 = ret[0];
+            var len1 = ret[1];
             if (ret[3]) {
-                ptr2 = 0; len2 = 0;
+                ptr1 = 0; len1 = 0;
                 throw takeFromExternrefTable0(ret[2]);
             }
-            deferred3_0 = ptr2;
-            deferred3_1 = len2;
-            return getStringFromWasm0(ptr2, len2);
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
         } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
     /**
+     * Geometry-free facade policy and saved records in; selected batch ID
+     * records out (JSON text). The shared core parses both policy versions.
+     * Returns a `PoolTask` at once (the sensor counts run on the pool);
+     * `facadeBatchesEnd` gives the text.
+     * @param {number} start
+     * @param {number} end
+     * @param {string} request_json
+     * @returns {PoolTask}
+     */
+    facadeBatchesStart(start, end, request_json) {
+        const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeBatchesStart(this.__wbg_ptr, start, end, ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        return PoolTask.__wrap(ret);
+    }
+    /**
+     * The holds of a `facadeCapturesStart` task (see there).
+     * @param {PoolTask} task
+     * @returns {Array<any>}
+     */
+    static facadeCapturesEnd(task) {
+        _assertClass(task, PoolTask);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeCapturesEnd(task.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * The captures of many facade jobs (given as for `facadeFrames`, with
+     * the request's `alignment`), put straight into `store`. Returns a
+     * `PoolTask` at once; `facadeCapturesEnd` gives one `CaptureHold` per
+     * job, or `{error}` for a job the kernel refuses
+     * (D-2026101110-iris-nectar-maple). No capture is copied to JavaScript;
+     * the keys are hashed on the pool in the threaded core.
+     * @param {Uint32Array} tiles
+     * @param {Uint32Array} id_counts
+     * @param {string[]} ids
+     * @param {string | null | undefined} alignment
+     * @param {CaptureStore} store
+     * @returns {PoolTask}
+     */
+    facadeCapturesStart(tiles, id_counts, ids, alignment, store) {
+        const ptr0 = passArray32ToWasm0(tiles, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(id_counts, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayJsValueToWasm0(ids, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        var ptr3 = isLikeNone(alignment) ? 0 : passStringToWasm0(alignment, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len3 = WASM_VECTOR_LEN;
+        _assertClass(store, CaptureStore);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeCapturesStart(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, store.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return PoolTask.__wrap(ret[0]);
+    }
+    /**
+     * The jobs of a `facadeFramesStart` task (see there).
+     * @param {PoolTask} task
+     * @returns {Array<any>}
+     */
+    static facadeFramesEnd(task) {
+        _assertClass(task, PoolTask);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeFramesEnd(task.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Many facade jobs in one call (WP3). Job `j` is tile `tiles[j]` with the
-     * next `idCounts[j]` ids of `ids` as its targets. For each job, in job
-     * order, an object with the parts asked for: `body` (`{bytes, offsets,
-     * hashes}`, the five-group arena of `bodies(tile, tile + 1)`), `identity`
+     * next `idCounts[j]` ids of `ids` as its targets. Returns a `PoolTask`
+     * at once; `facadeFramesEnd` gives, for each job, in job order, an
+     * object with the parts asked for: `body` (`{bytes, offsets, hashes}`,
+     * the five-group arena of `bodies(tile, tile + 1)`), `identity`
      * (`{present, meshGroupHashes}`), `capture` (the pretty capture with the
      * request's `terrain-alignment`: `alignment`, or `undefined` when the
      * request does not send it) and `artifact` (`{targetIds, archive,
@@ -672,9 +1443,9 @@ export class Site {
      * @param {number} max_metadata_bytes
      * @param {bigint} max_meshes
      * @param {bigint} max_instances
-     * @returns {Array<any>}
+     * @returns {PoolTask}
      */
-    facadeFrames(tiles, id_counts, ids, body, identity, capture, alignment, artifact, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+    facadeFramesStart(tiles, id_counts, ids, body, identity, capture, alignment, artifact, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
         const ptr0 = passArray32ToWasm0(tiles, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray32ToWasm0(id_counts, wasm.__wbindgen_malloc);
@@ -683,7 +1454,32 @@ export class Site {
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(alignment) ? 0 : passStringToWasm0(alignment, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.site_facadeFrames(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, body, identity, capture, ptr3, len3, artifact, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeFramesStart(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, body, identity, capture, ptr3, len3, artifact, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return PoolTask.__wrap(ret[0]);
+    }
+    /**
+     * The scenes and jobs of a `facadeScenesStart` task (see there).
+     * @param {PoolTask} task
+     * @returns {object}
+     */
+    static facadeScenesEnd(task) {
+        _assertClass(task, PoolTask);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeScenesEnd(task.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -692,11 +1488,12 @@ export class Site {
     /**
      * One scene frame per tile and a target range per job (#602). The jobs
      * are given as for `facadeFrames`; give every job of a tile in one call.
-     * Returns `{scenes, jobs}`: a scene is `{tile, archive, artifactDigest,
-     * contentDigest, encoding, frameByteLength, metadataByteLength,
-     * meshCount, instanceCount}`; a job is `{targets: {scene, start, count},
-     * targetIds}` (a range of `scenes[scene]`'s `geometries`), `{artifact}`
-     * (its own frame, as `facadeFrames` answers it) or `{error}`.
+     * Returns a `PoolTask` at once; `facadeScenesEnd` gives `{scenes, jobs}`:
+     * a scene is `{tile, archive, artifactDigest, contentDigest, encoding,
+     * frameByteLength, metadataByteLength, meshCount, instanceCount}`; a job
+     * is `{targets: {scene, start, count}, targetIds}` (a range of
+     * `scenes[scene]`'s `geometries`), `{artifact}` (its own frame, as
+     * `facadeFrames` answers it) or `{error}`.
      *
      * D249: the TypeScript host never boxes trees; the kernel still carries
      * the `box_trees` parameter for the .NET binding, so this calls it with
@@ -708,20 +1505,26 @@ export class Site {
      * @param {number} max_metadata_bytes
      * @param {bigint} max_meshes
      * @param {bigint} max_instances
-     * @returns {object}
+     * @returns {PoolTask}
      */
-    facadeScenes(tiles, id_counts, ids, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
+    facadeScenesStart(tiles, id_counts, ids, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
         const ptr0 = passArray32ToWasm0(tiles, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray32ToWasm0(id_counts, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passArrayJsValueToWasm0(ids, wasm.__wbindgen_malloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.site_facadeScenes(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_facadeScenesStart(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
-        return takeFromExternrefTable0(ret[0]);
+        return PoolTask.__wrap(ret[0]);
     }
     /**
      * Tiles `start..end`'s presence masks (`present`: one byte per tile, bit
@@ -733,7 +1536,13 @@ export class Site {
      * @returns {any}
      */
     identity(start, end) {
-        const ret = wasm.site_identity(this.__wbg_ptr, start, end);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_identity(this.__wbg_ptr, start, end);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -748,7 +1557,13 @@ export class Site {
      * group the run does not carry), which must name the meshes the packed
      * site holds; `polygonJson`, the source polygon the tree and
      * ground-material assigners project with; `terrainMarginM`, the caller's
-     * extra terrain reach. The tile list is always the whole grid.
+     * extra terrain reach; `contextReachM`, how far outside a tile core a
+     * `context-geometry` mesh still reaches that tile (`undefined` = the
+     * kernel default, `null` = every tile); `contextIndices` and
+     * `contextIndexOffsets`, the context group's index buffer in place of its
+     * `context-geometry` document (empty offsets = send the document);
+     * `contextBufferM`, the hole round
+     * each tile's detailed area (`null` = no hole). The tile list is always the whole grid.
      * @param {string[]} building_ids
      * @param {Uint8Array} building_coordinates
      * @param {Uint32Array} building_offsets
@@ -769,9 +1584,11 @@ export class Site {
      * @param {string | null | undefined} vegetation
      * @param {string | null | undefined} ground_materials
      * @param {string} polygon_json
-     * @param {number | null} [terrain_margin_m]
+     * @param {Uint32Array} context_indices
+     * @param {Uint32Array} context_index_offsets
+     * @param {string | null} [options]
      */
-    constructor(building_ids, building_coordinates, building_offsets, context_ids, context_coordinates, context_offsets, rows, cols, tile_ids, inference_size_m, context_size_m, step_m, site_lon, site_lat, geometries, context_geometry, ground_geometry, vegetation, ground_materials, polygon_json, terrain_margin_m) {
+    constructor(building_ids, building_coordinates, building_offsets, context_ids, context_coordinates, context_offsets, rows, cols, tile_ids, inference_size_m, context_size_m, step_m, site_lon, site_lat, geometries, context_geometry, ground_geometry, vegetation, ground_materials, polygon_json, context_indices, context_index_offsets, options) {
         const ptr0 = passArrayJsValueToWasm0(building_ids, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(building_coordinates, wasm.__wbindgen_malloc);
@@ -802,7 +1619,19 @@ export class Site {
         var len13 = WASM_VECTOR_LEN;
         const ptr14 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len14 = WASM_VECTOR_LEN;
-        const ret = wasm.site_new(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, inference_size_m, context_size_m, step_m, site_lon, site_lat, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12, ptr13, len13, ptr14, len14, !isLikeNone(terrain_margin_m), isLikeNone(terrain_margin_m) ? 0 : terrain_margin_m);
+        const ptr15 = passArray32ToWasm0(context_indices, wasm.__wbindgen_malloc);
+        const len15 = WASM_VECTOR_LEN;
+        const ptr16 = passArray32ToWasm0(context_index_offsets, wasm.__wbindgen_malloc);
+        const len16 = WASM_VECTOR_LEN;
+        var ptr17 = isLikeNone(options) ? 0 : passStringToWasm0(options, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len17 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_new(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, inference_size_m, context_size_m, step_m, site_lon, site_lat, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12, ptr13, len13, ptr14, len14, ptr15, len15, ptr16, len16, ptr17, len17);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -811,27 +1640,52 @@ export class Site {
         return this;
     }
     /**
+     * Share the facade parts between the `analyses` facade analyses of one
+     * run (`Site::share_facade_parts`); `0` at the end of the run.
+     * @param {number} analyses
+     */
+    shareFacadeParts(analyses) {
+        __wbg_call_guard();
+        try {
+            wasm.site_shareFacadeParts(this.__wbg_ptr, analyses);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+    /**
      * How many tiles the site has; every range is within `0..tileCount()`.
      * @returns {number}
      */
     tileCount() {
-        const ret = wasm.site_tileCount(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_tileCount(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret >>> 0;
     }
     /**
-     * Ids the shrink band gave up that NO tile's core took (D63).
-     * @returns {string[]}
+     * Point trees without z when the site has terrain, else 0: the count
+     * `treeZWarning` takes.
+     * @returns {number}
      */
-    unowned() {
-        const ret = wasm.site_unowned(this.__wbg_ptr);
-        var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
+    treesWithoutZ() {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_treesWithoutZ(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        return ret >>> 0;
     }
     /**
      * The constructor with the site's terrain read once (`SiteTerrain`, WP1)
      * in place of the `ground-geometry` document: the same arguments less
-     * that one, and the handle last. A building edit reads no terrain.
+     * that one, then the handle, then the site options JSON. A building edit reads
+     * no terrain.
      * @param {string[]} building_ids
      * @param {Uint8Array} building_coordinates
      * @param {Uint32Array} building_offsets
@@ -851,11 +1705,13 @@ export class Site {
      * @param {string | null | undefined} vegetation
      * @param {string | null | undefined} ground_materials
      * @param {string} polygon_json
-     * @param {number | null | undefined} terrain_margin_m
      * @param {SiteTerrain} terrain
+     * @param {Uint32Array} context_indices
+     * @param {Uint32Array} context_index_offsets
+     * @param {string | null} [options]
      * @returns {Site}
      */
-    static withTerrain(building_ids, building_coordinates, building_offsets, context_ids, context_coordinates, context_offsets, rows, cols, tile_ids, inference_size_m, context_size_m, step_m, site_lon, site_lat, geometries, context_geometry, vegetation, ground_materials, polygon_json, terrain_margin_m, terrain) {
+    static withTerrain(building_ids, building_coordinates, building_offsets, context_ids, context_coordinates, context_offsets, rows, cols, tile_ids, inference_size_m, context_size_m, step_m, site_lon, site_lat, geometries, context_geometry, vegetation, ground_materials, polygon_json, terrain, context_indices, context_index_offsets, options) {
         const ptr0 = passArrayJsValueToWasm0(building_ids, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(building_coordinates, wasm.__wbindgen_malloc);
@@ -885,7 +1741,19 @@ export class Site {
         const ptr13 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len13 = WASM_VECTOR_LEN;
         _assertClass(terrain, SiteTerrain);
-        const ret = wasm.site_withTerrain(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, inference_size_m, context_size_m, step_m, site_lon, site_lat, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12, ptr13, len13, !isLikeNone(terrain_margin_m), isLikeNone(terrain_margin_m) ? 0 : terrain_margin_m, terrain.__wbg_ptr);
+        const ptr14 = passArray32ToWasm0(context_indices, wasm.__wbindgen_malloc);
+        const len14 = WASM_VECTOR_LEN;
+        const ptr15 = passArray32ToWasm0(context_index_offsets, wasm.__wbindgen_malloc);
+        const len15 = WASM_VECTOR_LEN;
+        var ptr16 = isLikeNone(options) ? 0 : passStringToWasm0(options, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len16 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.site_withTerrain(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, inference_size_m, context_size_m, step_m, site_lon, site_lat, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12, ptr13, len13, terrain.__wbg_ptr, ptr14, len14, ptr15, len15, ptr16, len16);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -906,7 +1774,41 @@ export class SiteTerrain {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_siteterrain_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_siteterrain_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+    /**
+     * SHA-256 hex of the document text this handle was read from: the
+     * terrain's content key. The host writes the document once.
+     * @returns {string}
+     */
+    get contentKey() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.siteterrain_contentKey(this.__wbg_ptr);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+        }
     }
     /**
      * The kernel group hash of the whole terrain (`geometryGroupHash` of
@@ -915,10 +1817,16 @@ export class SiteTerrain {
      * @returns {string | undefined}
      */
     get groupHash() {
-        const ret = wasm.siteterrain_groupHash(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.siteterrain_groupHash(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         let v1;
         if (ret[0] !== 0) {
-            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            v1 = getStringFromWasm0(ret[0], ret[1]);
             wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         }
         return v1;
@@ -932,7 +1840,13 @@ export class SiteTerrain {
     constructor(document) {
         const ptr0 = passStringToWasm0(document, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.siteterrain_new(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.siteterrain_new(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -943,62 +1857,286 @@ export class SiteTerrain {
 }
 if (Symbol.dispose) SiteTerrain.prototype[Symbol.dispose] = SiteTerrain.prototype.free;
 
-export class SurfaceArchive {
+/**
+ * Decoded surface archives, held in the kernel until
+ * `SurfaceJoinStream.pushMany` takes them. Call `free()` when done.
+ */
+export class SurfaceJobs {
     static __wrap(ptr) {
-        const obj = Object.create(SurfaceArchive.prototype);
+        const obj = Object.create(SurfaceJobs.prototype);
         obj.__wbg_ptr = ptr;
-        SurfaceArchiveFinalization.register(obj, obj.__wbg_ptr, obj);
+        SurfaceJobsFinalization.register(obj, obj.__wbg_ptr, obj);
         return obj;
-    }
-    static __unwrap(jsValue) {
-        if (!(jsValue instanceof SurfaceArchive)) {
-            return 0;
-        }
-        return jsValue.__destroy_into_raw();
     }
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
-        SurfaceArchiveFinalization.unregister(this);
+        SurfaceJobsFinalization.unregister(this);
         return ptr;
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_surfacearchive_free(ptr, 0);
-    }
-    /**
-     * Why a batch decode refused this archive; `undefined` otherwise.
-     * @returns {string | undefined}
-     */
-    get error() {
-        const ret = wasm.surfacearchive_error(this.__wbg_ptr);
-        let v1;
-        if (ret[0] !== 0) {
-            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_surfacejobs_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
         }
-        return v1;
+
+    }
+}
+if (Symbol.dispose) SurfaceJobs.prototype[Symbol.dispose] = SurfaceJobs.prototype.free;
+
+/**
+ * One analysis's join, fed per engine turn (see the module documentation).
+ */
+export class SurfaceJoinStream {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SurfaceJoinStreamFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_surfacejoinstream_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     /**
-     * `"surface"`, `"not-surface"` for a valid result of another shape (a
-     * grid, other JSON, another IRBF family), or `"error"` for an archive a
-     * batch decode refused.
+     * The columns of a `finishStart` task, with `jobIds` (the capture id of
+     * each argument job, in arrival order).
+     * @param {PoolTask} task
+     * @returns {any}
+     */
+    finishEnd(task) {
+        _assertClass(task, PoolTask);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.surfacejoinstream_finishEnd(this.__wbg_ptr, task.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Join every pushed job on the pool; returns a `PoolTask` at once. The
+     * stream is empty afterwards. `finishEnd` gives the columns.
+     * @param {CaptureStore} store
+     * @param {boolean} emit_cell_tris
+     * @returns {PoolTask}
+     */
+    finishStart(store, emit_cell_tris) {
+        _assertClass(store, CaptureStore);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.surfacejoinstream_finishStart(this.__wbg_ptr, store.__wbg_ptr, emit_cell_tris);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return PoolTask.__wrap(ret[0]);
+    }
+    constructor() {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.surfacejoinstream_new();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        this.__wbg_ptr = ret;
+        SurfaceJoinStreamFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Keep the jobs of a `pushManyStart` task; one item per argument job:
+     * `undefined`, or the reason the join refuses it.
+     * @param {PoolTask} task
+     * @returns {Array<any>}
+     */
+    pushManyEnd(task) {
+        _assertClass(task, PoolTask);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.surfacejoinstream_pushManyEnd(this.__wbg_ptr, task.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Take the decoded jobs `indices` of `jobs` (one `decodeSurfaceJobs`
+     * batch): job `k` is schedule entry `entryIds[k]`, tile SW offset
+     * `anchors[2k]`, `anchors[2k + 1]`, capture id `jobIds[k]` in `store`
+     * (`undefined`: none); `emitCellTris`: the run asked for triangles.
+     * Builds their layouts in ONE synthesis call (the jobs of a tile share
+     * their ground) on the pool, and returns a `PoolTask` at once.
+     * `pushManyEnd` keeps the jobs for the join and returns one item per job:
+     * `undefined`, or the reason the join refuses it (that job is not kept).
+     * @param {SurfaceJobs} jobs
+     * @param {Uint32Array} indices
+     * @param {string[]} entry_ids
+     * @param {Float64Array} anchors
+     * @param {CaptureStore} store
+     * @param {Array<any>} job_ids
+     * @param {boolean} emit_cell_tris
+     * @returns {PoolTask}
+     */
+    pushManyStart(jobs, indices, entry_ids, anchors, store, job_ids, emit_cell_tris) {
+        _assertClass(jobs, SurfaceJobs);
+        const ptr0 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayJsValueToWasm0(entry_ids, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(anchors, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        _assertClass(store, CaptureStore);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.surfacejoinstream_pushManyStart(this.__wbg_ptr, jobs.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, store.__wbg_ptr, job_ids, emit_cell_tris);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return PoolTask.__wrap(ret[0]);
+    }
+}
+if (Symbol.dispose) SurfaceJoinStream.prototype[Symbol.dispose] = SurfaceJoinStream.prototype.free;
+
+/**
+ * One weather catalog, read once.
+ */
+export class WeatherCatalog {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WeatherCatalogFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_weathercatalog_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
+    }
+    /**
+     * One station by `uuid`, else by `fileName`, as a JSON
+     * `{uuid, fileName, location_data}`. Throws the not-in-the-catalog text
+     * when there is none; that is its only failure.
+     * @param {string} identifier
      * @returns {string}
      */
-    get route() {
+    find(identifier) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(identifier, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.weathercatalog_find(this.__wbg_ptr, ptr0, len0);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
+        }
+    }
+    /**
+     * The stations within `radiusKm` of `(lat, lon)`, nearest first, at most
+     * `limit`, as a JSON array of `{uuid, fileName, location_data}`. Equal
+     * distances keep catalog order.
+     * @param {number} lat
+     * @param {number} lon
+     * @param {number} radius_km
+     * @param {number} limit
+     * @returns {string}
+     */
+    nearest(lat, lon, radius_km, limit) {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.surfacearchive_route(this.__wbg_ptr);
+            let ret;
+            __wbg_call_guard();
+            try {
+                ret = wasm.weathercatalog_nearest(this.__wbg_ptr, lat, lon, radius_km, limit);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            __wbg_call_guard();
+            try {
+                wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+            } catch(e) {
+                __wbg_handle_catch(e);
+            }
         }
     }
+    /**
+     * Read the catalog (`{"stations": [...]}` as UTF-8 bytes). Throws when it
+     * is not JSON, not an object, or its `stations` member is not a list.
+     * @param {Uint8Array} catalog
+     */
+    constructor(catalog) {
+        const ptr0 = passArray8ToWasm0(catalog, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weathercatalog_new(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        WeatherCatalogFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
 }
-if (Symbol.dispose) SurfaceArchive.prototype[Symbol.dispose] = SurfaceArchive.prototype.free;
+if (Symbol.dispose) WeatherCatalog.prototype[Symbol.dispose] = WeatherCatalog.prototype.free;
 
 /**
  * Read a gbXML document into the analytical building model v1 (JSON).
@@ -1016,7 +2154,13 @@ export function analyticalFromGbxml(data) {
     try {
         const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.analyticalFromGbxml(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.analyticalFromGbxml(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -1027,7 +2171,42 @@ export function analyticalFromGbxml(data) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The one sentence for a refused API key (HTTP 401 or 403): the text of a
+ * refused key in a run error, for a host error that has no run around it.
+ * @param {number} status
+ * @returns {string}
+ */
+export function apiKeyRefusedMessage(status) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.apiKeyRefusedMessage(status);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1041,7 +2220,13 @@ export function archetypeMeshes() {
     let deferred2_0;
     let deferred2_1;
     try {
-        const ret = wasm.archetypeMeshes();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.archetypeMeshes();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr1 = ret[0];
         var len1 = ret[1];
         if (ret[3]) {
@@ -1052,8 +2237,83 @@ export function archetypeMeshes() {
         deferred2_1 = len1;
         return getStringFromWasm0(ptr1, len1);
     } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
+}
+
+/**
+ * The estimate of a run, as JSON. `plannedJobs` is a safe integer.
+ * @param {number} planned_jobs
+ * @param {number} tokens_per_job
+ * @returns {string}
+ */
+export function areaEstimate(planned_jobs, tokens_per_job) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.areaEstimate(planned_jobs, tokens_per_job);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The error of an analysis that finished with `outcome`, as JSON, or
+ * `undefined` for `ok`.
+ * @param {string} outcome
+ * @param {string} facts
+ * @param {string} analysis_type
+ * @param {number} area_timeout_s
+ * @returns {string | undefined}
+ */
+export function areaFinalError(outcome, facts, analysis_type, area_timeout_s) {
+    const ptr0 = passStringToWasm0(outcome, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(facts, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.areaFinalError(ptr0, len0, ptr1, len1, ptr2, len2, area_timeout_s);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    let v4;
+    if (ret[0] !== 0) {
+        v4 = getStringFromWasm0(ret[0], ret[1]);
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v4;
 }
 
 /**
@@ -1072,12 +2332,23 @@ export function areaIdempotencyKey(run_id, job_key, attempt) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(job_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.areaIdempotencyKey(ptr0, len0, ptr1, len1, attempt);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.areaIdempotencyKey(ptr0, len0, ptr1, len1, attempt);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred3_0 = ret[0];
         deferred3_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1087,7 +2358,13 @@ export function areaIdempotencyKey(run_id, job_key, attempt) {
  * @returns {number}
  */
 export function areaRetryMaxAttempts() {
-    const ret = wasm.areaRetryMaxAttempts();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.areaRetryMaxAttempts();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret >>> 0;
 }
 
@@ -1111,7 +2388,13 @@ export function assignBuildingsToTiles(buildings_json, tiles_json, analysis_type
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.assignBuildingsToTiles(ptr0, len0, ptr1, len1, ptr2, len2, strict);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.assignBuildingsToTiles(ptr0, len0, ptr1, len1, ptr2, len2, strict);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -1122,7 +2405,12 @@ export function assignBuildingsToTiles(buildings_json, tiles_json, analysis_type
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1148,7 +2436,13 @@ export function assignGroundMaterialsToTiles(layers_json, tiles_json, polygon_js
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.assignGroundMaterialsToTiles(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.assignGroundMaterialsToTiles(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -1159,7 +2453,12 @@ export function assignGroundMaterialsToTiles(layers_json, tiles_json, polygon_js
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1193,7 +2492,13 @@ export function assignVegetationToTiles(vegetation_json, tiles_json, polygon_jso
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.assignVegetationToTiles(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.assignVegetationToTiles(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -1204,7 +2509,12 @@ export function assignVegetationToTiles(vegetation_json, tiles_json, polygon_jso
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1223,7 +2533,13 @@ export function batchBuildings(buildings_json, batch_size, halo_radius_m) {
     try {
         const ptr0 = passStringToWasm0(buildings_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.batchBuildings(ptr0, len0, batch_size, !isLikeNone(halo_radius_m), isLikeNone(halo_radius_m) ? 0 : halo_radius_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.batchBuildings(ptr0, len0, batch_size, !isLikeNone(halo_radius_m), isLikeNone(halo_radius_m) ? 0 : halo_radius_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -1234,7 +2550,12 @@ export function batchBuildings(buildings_json, batch_size, halo_radius_m) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1252,7 +2573,13 @@ export function batchBuildings(buildings_json, batch_size, halo_radius_m) {
 export function bboxMeetsRows(rows, west, south, east, north) {
     const ptr0 = passArrayF64ToWasm0(rows, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.bboxMeetsRows(ptr0, len0, west, south, east, north);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.bboxMeetsRows(ptr0, len0, west, south, east, north);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -1268,7 +2595,13 @@ export function bboxMeetsRows(rows, west, south, east, north) {
  * @returns {Array<any>}
  */
 export function binaryGeometryFields() {
-    const ret = wasm.binaryGeometryFields();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.binaryGeometryFields();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -1285,7 +2618,13 @@ export function buildCatMap(categories_json) {
     try {
         const ptr0 = passStringToWasm0(categories_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.buildCatMap(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.buildCatMap(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -1296,7 +2635,12 @@ export function buildCatMap(categories_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1348,7 +2692,13 @@ export function buildingsAssignAndExtrude(fc, source, tiles, default_height) {
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(tiles, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.buildingsAssignAndExtrude(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.buildingsAssignAndExtrude(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -1359,7 +2709,12 @@ export function buildingsAssignAndExtrude(fc, source, tiles, default_height) {
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1379,7 +2734,13 @@ export function buildingsAssignAndExtrudeBytes(fc, source, tiles, default_height
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArray8ToWasm0(tiles, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.buildingsAssignAndExtrudeBytes(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.buildingsAssignAndExtrudeBytes(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -1413,7 +2774,13 @@ export function buildingsAssignAndExtrudeWithAttributes(fc, source, tiles, defau
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(tiles, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.buildingsAssignAndExtrudeWithAttributes(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.buildingsAssignAndExtrudeWithAttributes(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -1424,7 +2791,12 @@ export function buildingsAssignAndExtrudeWithAttributes(fc, source, tiles, defau
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1444,7 +2816,13 @@ export function buildingsAssignAndExtrudeWithAttributesBytes(fc, source, tiles, 
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArray8ToWasm0(tiles, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.buildingsAssignAndExtrudeWithAttributesBytes(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.buildingsAssignAndExtrudeWithAttributesBytes(ptr0, len0, ptr1, len1, ptr2, len2, default_height);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -1473,7 +2851,13 @@ export function buildingsNormalize(fc_json, source) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.buildingsNormalize(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.buildingsNormalize(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -1484,7 +2868,12 @@ export function buildingsNormalize(fc_json, source) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1498,7 +2887,13 @@ export function buildingsNormalize(fc_json, source) {
 export function canonicalMetadataJson(metadata_json, max_bytes, max_depth) {
     const ptr0 = passStringToWasm0(metadata_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.canonicalMetadataJson(ptr0, len0, max_bytes, max_depth);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.canonicalMetadataJson(ptr0, len0, max_bytes, max_depth);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -1506,46 +2901,43 @@ export function canonicalMetadataJson(metadata_json, max_bytes, max_depth) {
 }
 
 /**
- * Refuse a per-job sensor cap the exact policy cannot take, before planning.
- * The rule is `ir_simprep::surface_batch::exact_batch_policy`.
- * @param {number} max_sensors_per_job
+ * Refuse a pedestrian wind comfort pair the worker cannot fit.
+ * @param {Float64Array} speeds
+ * @param {Float64Array} directions
  */
-export function checkMaxSensorsPerJob(max_sensors_per_job) {
-    const ret = wasm.checkMaxSensorsPerJob(max_sensors_per_job);
+export function checkPwcWind(speeds, directions) {
+    const ptr0 = passArrayF64ToWasm0(speeds, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(directions, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.checkPwcWind(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
 }
 
 /**
- * The next step after one keyed tile submit send (D224): `"resend"`,
- * `"uncertain"`, `"definite_fail"` or `"accepted"`. `answer` is `"status"`
- * (with `status`), `"before_send"`, `"after_send"` or `"unreadable_2xx"`.
- * `sends_done` counts the sends of this key so far, at least 1. Throws on an
- * unknown `answer`. See `ir_geo::area_retry`.
- * @param {string} answer
- * @param {number} sends_done
- * @param {number | null} [status]
- * @returns {string}
+ * The `maxSensorsPerJob` rule of a fresh run or a retry; throws.
+ * @param {number | null} [requested]
+ * @param {boolean | null} [retry]
+ * @param {number | null} [saved]
  */
-export function classifySubmitSend(answer, sends_done, status) {
-    let deferred3_0;
-    let deferred3_1;
+export function checkSensorCap(requested, retry, saved) {
+    let ret;
+    __wbg_call_guard();
     try {
-        const ptr0 = passStringToWasm0(answer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.classifySubmitSend(ptr0, len0, sends_done, isLikeNone(status) ? 0xFFFFFF : status);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
-        if (ret[3]) {
-            ptr2 = 0; len2 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        ret = wasm.checkSensorCap(!isLikeNone(requested), isLikeNone(requested) ? 0 : requested, isLikeNone(retry) ? 0xFFFFFF : retry ? 1 : 0, !isLikeNone(saved), isLikeNone(saved) ? 0 : saved);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
     }
 }
 
@@ -1561,7 +2953,13 @@ export function classifySubmitSend(answer, sends_done, status) {
  * @returns {object}
  */
 export function cleanMesh(coordinates, indices) {
-    const ret = wasm.cleanMesh(coordinates, indices);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.cleanMesh(coordinates, indices);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -1586,7 +2984,13 @@ export function cleanMeshes(coordinates, vert_offsets, indices, face_offsets) {
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArray32ToWasm0(face_offsets, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.cleanMeshes(coordinates, ptr0, len0, ptr1, len1, ptr2, len2);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.cleanMeshes(coordinates, ptr0, len0, ptr1, len1, ptr2, len2);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -1613,7 +3017,13 @@ export function clipToPolygon(grid_bin, rows, cols, polygon_meters_json, origin_
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(polygon_meters_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.clipToPolygon(ptr0, len0, rows, cols, ptr1, len1, origin_x, origin_y, cell_size_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.clipToPolygon(ptr0, len0, rows, cols, ptr1, len1, origin_x, origin_y, cell_size_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -1624,7 +3034,12 @@ export function clipToPolygon(grid_bin, rows, cols, polygon_meters_json, origin_
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1648,7 +3063,13 @@ export function composeHash(child_hashes, level) {
         const len0 = WASM_VECTOR_LEN;
         var ptr1 = isLikeNone(level) ? 0 : passStringToWasm0(level, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.composeHash(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.composeHash(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -1659,7 +3080,12 @@ export function composeHash(child_hashes, level) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1686,7 +3112,13 @@ export function composeTilePayloads(categories_json, tiles_json, polygon_json, a
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.composeTilePayloads(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.composeTilePayloads(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -1697,7 +3129,12 @@ export function composeTilePayloads(categories_json, tiles_json, polygon_json, a
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1721,7 +3158,13 @@ export function computeGridBounds(polygon_json, num_rows, num_cols, config_json)
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.computeGridBounds(ptr0, len0, num_rows, num_cols, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.computeGridBounds(ptr0, len0, num_rows, num_cols, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -1732,7 +3175,12 @@ export function computeGridBounds(polygon_json, num_rows, num_cols, config_json)
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1755,7 +3203,13 @@ export function configGroupHash(model, name, group_json) {
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(group_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.configGroupHash(ptr0, len0, ptr1, len1, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.configGroupHash(ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -1766,8 +3220,61 @@ export function configGroupHash(model, name, group_json) {
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
+}
+
+/**
+ * Hash of one mesh group in buffers, for `configHashV2`'s group hashes: the
+ * same value `configGroupHash` gives for the group as JSON. Mesh `i` owns
+ * `coordinates[coordinateOffsets[i]..coordinateOffsets[i+1]]` and
+ * `indices[indexOffsets[i]..indexOffsets[i+1]]`. `coordinates` is a
+ * `Float64Array` or a `Float32Array`. A group with no mesh gives the empty
+ * marker `""`; a group with no mesh rule on `model` gives `undefined` (hash
+ * it as JSON with `configGroupHash`).
+ * @param {string} model
+ * @param {string} name
+ * @param {string[]} ids
+ * @param {any} coordinates
+ * @param {Uint32Array} coordinate_offsets
+ * @param {Uint32Array} indices
+ * @param {Uint32Array} index_offsets
+ * @returns {string | undefined}
+ */
+export function configGroupHashBuffers(model, name, ids, coordinates, coordinate_offsets, indices, index_offsets) {
+    const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayJsValueToWasm0(ids, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ptr3 = passArray32ToWasm0(coordinate_offsets, wasm.__wbindgen_malloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ptr4 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+    const len4 = WASM_VECTOR_LEN;
+    const ptr5 = passArray32ToWasm0(index_offsets, wasm.__wbindgen_malloc);
+    const len5 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.configGroupHashBuffers(ptr0, len0, ptr1, len1, ptr2, len2, coordinates, ptr3, len3, ptr4, len4, ptr5, len5);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    let v7;
+    if (ret[0] !== 0) {
+        v7 = getStringFromWasm0(ret[0], ret[1]);
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v7;
 }
 
 /**
@@ -1793,12 +3300,23 @@ export function configHash(config_json) {
     try {
         const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.configHash(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.configHash(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred2_0 = ret[0];
         deferred2_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1825,7 +3343,13 @@ export function configHashV2(model, control_json, group_hashes_json) {
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(group_hashes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.configHashV2(ptr0, len0, ptr1, len1, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.configHashV2(ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -1836,7 +3360,12 @@ export function configHashV2(model, control_json, group_hashes_json) {
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1883,7 +3412,13 @@ export function conformScene(solids_json, sensor_points, terrain_coordinates, te
         var len4 = WASM_VECTOR_LEN;
         var ptr5 = isLikeNone(edge_rule) ? 0 : passStringToWasm0(edge_rule, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len5 = WASM_VECTOR_LEN;
-        const ret = wasm.conformScene(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, !isLikeNone(skirt_depth_m), isLikeNone(skirt_depth_m) ? 0 : skirt_depth_m, !isLikeNone(epsilon_m), isLikeNone(epsilon_m) ? 0 : epsilon_m, ptr5, len5);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.conformScene(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, !isLikeNone(skirt_depth_m), isLikeNone(skirt_depth_m) ? 0 : skirt_depth_m, !isLikeNone(epsilon_m), isLikeNone(epsilon_m) ? 0 : epsilon_m, ptr5, len5);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr7 = ret[0];
         var len7 = ret[1];
         if (ret[3]) {
@@ -1894,7 +3429,50 @@ export function conformScene(solids_json, sensor_points, terrain_coordinates, te
         deferred8_1 = len7;
         return getStringFromWasm0(ptr7, len7);
     } finally {
-        wasm.__wbindgen_free(deferred8_0, deferred8_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred8_0, deferred8_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The context options as the site key names them, resolved by the kernel:
+ * an omitted option and its explicit default give the same text (D293).
+ * @param {string | null} [options]
+ * @returns {string}
+ */
+export function contextKey(options) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        var ptr0 = isLikeNone(options) ? 0 : passStringToWasm0(options, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.contextKey(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1905,12 +3483,23 @@ export function coreVersion() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.coreVersion();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.coreVersion();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -1945,7 +3534,13 @@ export function countSurfaces(geometries_json, mode, grid_size, offset, work_bud
     var len3 = WASM_VECTOR_LEN;
     var ptr4 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len4 = WASM_VECTOR_LEN;
-    const ret = wasm.countSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr4, len4);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.countSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr4, len4);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -1961,7 +3556,13 @@ export function countSurfaces(geometries_json, mode, grid_size, offset, work_bud
 export function daylightFrameFromJson(result) {
     const ptr0 = passArray8ToWasm0(result, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.daylightFrameFromJson(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.daylightFrameFromJson(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -1978,7 +3579,13 @@ export function daylightFrameFromJson(result) {
 export function daylightJsonFromFrame(frame) {
     const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.daylightJsonFromFrame(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.daylightJsonFromFrame(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -1999,7 +3606,13 @@ export function daylightMerge(plan, results) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayJsValueToWasm0(results, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.daylightMerge(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.daylightMerge(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -2022,7 +3635,13 @@ export function daylightMergeBinary(plan, parts) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayJsValueToWasm0(parts, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.daylightMergeBinary(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.daylightMergeBinary(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -2043,7 +3662,13 @@ export function daylightPartBody(request, part) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(part, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.daylightPartBody(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.daylightPartBody(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -2067,7 +3692,13 @@ export function daylightParts(request, target) {
     try {
         const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.daylightParts(ptr0, len0, isLikeNone(target) ? Number.MAX_SAFE_INTEGER : (target) >>> 0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.daylightParts(ptr0, len0, isLikeNone(target) ? Number.MAX_SAFE_INTEGER : (target) >>> 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2078,7 +3709,12 @@ export function daylightParts(request, target) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2096,7 +3732,13 @@ export function daylightSensorCounts(request) {
     try {
         const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.daylightSensorCounts(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.daylightSensorCounts(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2107,7 +3749,12 @@ export function daylightSensorCounts(request) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2127,7 +3774,13 @@ export function daylightSensorCounts(request) {
  * @returns {any}
  */
 export function decodeBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values) {
-    const ret = wasm.decodeBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2147,7 +3800,13 @@ export function decodeBinaryResult(buffer, max_total_bytes, max_metadata_bytes, 
 export function decodeDaylightResult(frame) {
     const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.decodeDaylightResult(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeDaylightResult(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2164,7 +3823,13 @@ export function decodeGridDocument(response_bytes, expected_kind) {
     const len0 = WASM_VECTOR_LEN;
     var ptr1 = isLikeNone(expected_kind) ? 0 : passStringToWasm0(expected_kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.decodeGridDocument(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeGridDocument(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2181,11 +3846,59 @@ export function decodeGridResponse(response_json, expected_kind) {
     const len0 = WASM_VECTOR_LEN;
     var ptr1 = isLikeNone(expected_kind) ? 0 : passStringToWasm0(expected_kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.decodeGridResponse(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeGridResponse(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return GridDecode.__wrap(ret[0]);
+}
+
+/**
+ * The decoded tiles of a `decodeGridTilesStart` task.
+ * @param {PoolTask} task
+ * @returns {GridTiles}
+ */
+export function decodeGridTilesEnd(task) {
+    _assertClass(task, PoolTask);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeGridTilesEnd(task.__wbg_ptr);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return GridTiles.__wrap(ret[0]);
+}
+
+/**
+ * Decode many grid tile archives (ZIP or GZIP, JSON or strict IRBF) in ONE
+ * call: on the rayon pool in the threaded core, one after the other in the
+ * serial core. The result is the same. An archive that does not decode is
+ * not an error here: `pushMany` gives its reason. `...Start` returns a
+ * `PoolTask` at once; `decodeGridTilesEnd` takes the decoded tiles.
+ * @param {Uint8Array[]} archives
+ * @returns {PoolTask}
+ */
+export function decodeGridTilesStart(archives) {
+    const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeGridTilesStart(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    return PoolTask.__wrap(ret);
 }
 
 /**
@@ -2199,53 +3912,17 @@ export function decodeGridResponse(response_json, expected_kind) {
 export function decodeResultArchive(archive) {
     const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.decodeResultArchive(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeResultArchive(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return ResultArchiveDecode.__wrap(ret[0]);
-}
-
-/**
- * Decode one downloaded surface result archive (ZIP or GZIP, one entry,
- * JSON or strict IRBF). The four limits are the strict IRBF result limits.
- * @param {Uint8Array} archive
- * @param {bigint} max_total_bytes
- * @param {number} max_metadata_bytes
- * @param {bigint} max_cells
- * @param {bigint} max_triangle_values
- * @returns {SurfaceArchive}
- */
-export function decodeSurfaceArchive(archive, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values) {
-    const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.decodeSurfaceArchive(ptr0, len0, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return SurfaceArchive.__wrap(ret[0]);
-}
-
-/**
- * Decode several downloaded archives in one call, in order: the threaded
- * Node build (D205) decodes them on the pool, the default build one after
- * the other. Same limits and handles as `decodeSurfaceArchive`, one per
- * archive; an archive that fails gets route `"error"` and its `error`, so
- * the host can name the job.
- * @param {Uint8Array[]} archives
- * @param {bigint} max_total_bytes
- * @param {number} max_metadata_bytes
- * @param {bigint} max_cells
- * @param {bigint} max_triangle_values
- * @returns {SurfaceArchive[]}
- */
-export function decodeSurfaceArchives(archives, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values) {
-    const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.decodeSurfaceArchives(ptr0, len0, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values);
-    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v2;
 }
 
 /**
@@ -2258,7 +3935,13 @@ export function decodeSurfaceIdentity(response_json) {
     try {
         const ptr0 = passStringToWasm0(response_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.decodeSurfaceIdentity(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.decodeSurfaceIdentity(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2269,35 +3952,60 @@ export function decodeSurfaceIdentity(response_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
 /**
- * `ground_materials.dedup.dedup_material_features` port. JSON array of features
- * in → deduped JSON array out (first-seen by geometry).
- * @param {string} features_json
- * @returns {string}
+ * The decoded jobs of a `decodeSurfaceJobsStart` task.
+ * @param {PoolTask} task
+ * @returns {SurfaceJobs}
  */
-export function dedupMaterialFeatures(features_json) {
-    let deferred3_0;
-    let deferred3_1;
+export function decodeSurfaceJobsEnd(task) {
+    _assertClass(task, PoolTask);
+    let ret;
+    __wbg_call_guard();
     try {
-        const ptr0 = passStringToWasm0(features_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.dedupMaterialFeatures(ptr0, len0);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
-        if (ret[3]) {
-            ptr2 = 0; len2 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        ret = wasm.decodeSurfaceJobsEnd(task.__wbg_ptr);
+    } catch(e) {
+        __wbg_handle_catch(e);
     }
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return SurfaceJobs.__wrap(ret[0]);
+}
+
+/**
+ * Decode many surface archives (ZIP or GZIP, JSON or IRBF) in ONE call: on
+ * the rayon pool in the threaded core, one after the other in the serial
+ * core. The result is the same. An archive that does not decode is not an
+ * error here: `pushMany` gives its reason. The limits are those of
+ * `SurfaceJoinStream`'s constructor. Returns a `PoolTask` at once
+ * (`pool_task`); `decodeSurfaceJobsEnd` takes the decoded jobs.
+ * @param {Uint8Array[]} archives
+ * @param {bigint} max_total_bytes
+ * @param {number} max_metadata_bytes
+ * @param {bigint} max_cells
+ * @param {bigint} max_triangle_values
+ * @returns {PoolTask}
+ */
+export function decodeSurfaceJobsStart(archives, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values) {
+    const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.decodeSurfaceJobsStart(ptr0, len0, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    return PoolTask.__wrap(ret);
 }
 
 /**
@@ -2316,7 +4024,13 @@ export function dedupTrees(features_json, radius_m, preferred_sources, same_sour
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArrayJsValueToWasm0(preferred_sources, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.dedupTrees(ptr0, len0, radius_m, ptr1, len1, isLikeNone(same_source_dedup) ? 0xFFFFFF : same_source_dedup ? 1 : 0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.dedupTrees(ptr0, len0, radius_m, ptr1, len1, isLikeNone(same_source_dedup) ? 0xFFFFFF : same_source_dedup ? 1 : 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -2327,13 +4041,18 @@ export function dedupTrees(features_json, radius_m, preferred_sources, same_sour
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
 /**
- * `vegetation.dedup.dedup_vegetation_features` port. JSON array of per-tile
- * FeatureCollections (or `null`) → `{dedup_key: feature}` JSON (first-seen).
+ * The area tree dedup. JSON array of per-tile FeatureCollections (or `null`)
+ * → `{dedup_key: feature}` JSON (first-seen); each feature keeps its own text.
  * @param {string} tile_results_json
  * @returns {string}
  */
@@ -2343,7 +4062,13 @@ export function dedupVegetationFeatures(tile_results_json) {
     try {
         const ptr0 = passStringToWasm0(tile_results_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.dedupVegetationFeatures(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.dedupVegetationFeatures(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2354,7 +4079,12 @@ export function dedupVegetationFeatures(tile_results_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2363,8 +4093,14 @@ export function dedupVegetationFeatures(tile_results_json) {
  * @returns {any[]}
  */
 export function defaultPrecedence() {
-    const ret = wasm.defaultPrecedence();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.defaultPrecedence();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v1;
 }
@@ -2382,12 +4118,23 @@ export function defaultTransport(analysis_type) {
     try {
         const ptr0 = passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.defaultTransport(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.defaultTransport(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred2_0 = ret[0];
         deferred2_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2414,7 +4161,13 @@ export function dropToGrade(coordinates, offsets) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArray32ToWasm0(offsets, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.dropToGrade(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.dropToGrade(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2440,7 +4193,13 @@ export function encodeCategoricalGrid(grid_json, cat_map_json) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(cat_map_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.encodeCategoricalGrid(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.encodeCategoricalGrid(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -2451,7 +4210,12 @@ export function encodeCategoricalGrid(grid_json, cat_map_json) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2465,7 +4229,13 @@ export function encodeCategoricalGrid(grid_json, cat_map_json) {
 export function encodeSurfaceArchive(archive) {
     const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.encodeSurfaceArchive(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.encodeSurfaceArchive(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -2484,8 +4254,45 @@ export function encodeSurfaceArchive(archive) {
  * @returns {number}
  */
 export function energyBalanceYear(year, now_year, rows) {
-    const ret = wasm.energyBalanceYear(isLikeNone(year) ? Number.MAX_SAFE_INTEGER : (year) >> 0, now_year, rows);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.energyBalanceYear(isLikeNone(year) ? Number.MAX_SAFE_INTEGER : (year) >> 0, now_year, rows);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
+}
+
+/**
+ * What an error of `RunEngine.step` means: `{"kind", "status"?, "message"}`.
+ * @param {string} message
+ * @returns {string}
+ */
+export function engineStop(message) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(message, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.engineStop(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -2518,7 +4325,13 @@ export function entityHashGroundLayer(material, collection_json) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(collection_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.entityHashGroundLayer(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.entityHashGroundLayer(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -2529,7 +4342,12 @@ export function entityHashGroundLayer(material, collection_json) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2565,7 +4383,13 @@ export function entityHashInstances(template, tuples, registry_version) {
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(registry_version, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.entityHashInstances(ptr0, len0, ptr1, len1, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.entityHashInstances(ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -2576,7 +4400,12 @@ export function entityHashInstances(template, tuples, registry_version) {
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2600,7 +4429,13 @@ export function entityHashMesh(coordinates, indices) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.entityHashMesh(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.entityHashMesh(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -2611,7 +4446,12 @@ export function entityHashMesh(coordinates, indices) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2639,7 +4479,13 @@ export function estimateSunContextLoss(lat, start_month, start_day, start_hour, 
     let deferred2_0;
     let deferred2_1;
     try {
-        const ret = wasm.estimateSunContextLoss(lat, start_month, start_day, start_hour, end_month, end_day, end_hour, !isLikeNone(lon), isLikeNone(lon) ? 0 : lon, !isLikeNone(timezone_offset_h), isLikeNone(timezone_offset_h) ? 0 : timezone_offset_h, !isLikeNone(buffer_m), isLikeNone(buffer_m) ? 0 : buffer_m, !isLikeNone(typical_building_height_m), isLikeNone(typical_building_height_m) ? 0 : typical_building_height_m, !isLikeNone(max_building_height_m), isLikeNone(max_building_height_m) ? 0 : max_building_height_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.estimateSunContextLoss(lat, start_month, start_day, start_hour, end_month, end_day, end_hour, !isLikeNone(lon), isLikeNone(lon) ? 0 : lon, !isLikeNone(timezone_offset_h), isLikeNone(timezone_offset_h) ? 0 : timezone_offset_h, !isLikeNone(buffer_m), isLikeNone(buffer_m) ? 0 : buffer_m, !isLikeNone(typical_building_height_m), isLikeNone(typical_building_height_m) ? 0 : typical_building_height_m, !isLikeNone(max_building_height_m), isLikeNone(max_building_height_m) ? 0 : max_building_height_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr1 = ret[0];
         var len1 = ret[1];
         if (ret[3]) {
@@ -2650,7 +4496,12 @@ export function estimateSunContextLoss(lat, start_month, start_day, start_hour, 
         deferred2_1 = len1;
         return getStringFromWasm0(ptr1, len1);
     } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2672,7 +4523,13 @@ export function expandInstances(instances_json, registry_json, expected_registry
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(expected_registry_version, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.expandInstances(ptr0, len0, ptr1, len1, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.expandInstances(ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -2683,7 +4540,68 @@ export function expandInstances(instances_json, registry_json, expected_registry
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * Write a named mesh batch as text: `format` `"dotbim"` (the open JSON mesh
+ * format), `"obj"` (Wavefront OBJ) or `"json"` (the SDK geometry dict, the
+ * form `context-geometry` takes). `types` is the dotbim element type per
+ * name (empty or `""` = `"Context"`).
+ * @param {string[]} names
+ * @param {any} coordinates
+ * @param {Uint32Array} vert_offsets
+ * @param {Uint32Array} indices
+ * @param {Uint32Array} face_offsets
+ * @param {string} format
+ * @param {string[] | null} [types]
+ * @returns {string}
+ */
+export function exportMeshes(names, coordinates, vert_offsets, indices, face_offsets, format, types) {
+    let deferred8_0;
+    let deferred8_1;
+    try {
+        const ptr0 = passArrayJsValueToWasm0(names, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(vert_offsets, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray32ToWasm0(face_offsets, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passStringToWasm0(format, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len4 = WASM_VECTOR_LEN;
+        var ptr5 = isLikeNone(types) ? 0 : passArrayJsValueToWasm0(types, wasm.__wbindgen_malloc);
+        var len5 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.exportMeshes(ptr0, len0, coordinates, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr7 = ret[0];
+        var len7 = ret[1];
+        if (ret[3]) {
+            ptr7 = 0; len7 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred8_0 = ptr7;
+        deferred8_1 = len7;
+        return getStringFromWasm0(ptr7, len7);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred8_0, deferred8_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2716,7 +4634,13 @@ export function extrudeFootprintsToDotbim(fc, origin_lon, origin_lat, default_he
     try {
         const ptr0 = passStringToWasm0(fc, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.extrudeFootprintsToDotbim(ptr0, len0, origin_lon, origin_lat, default_height);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.extrudeFootprintsToDotbim(ptr0, len0, origin_lon, origin_lat, default_height);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2727,7 +4651,12 @@ export function extrudeFootprintsToDotbim(fc, origin_lon, origin_lat, default_he
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2748,7 +4677,13 @@ export function extrudeFootprintsWithAttributes(fc, origin_lon, origin_lat, defa
     try {
         const ptr0 = passStringToWasm0(fc, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.extrudeFootprintsWithAttributes(ptr0, len0, origin_lon, origin_lat, default_height);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.extrudeFootprintsWithAttributes(ptr0, len0, origin_lon, origin_lat, default_height);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2759,7 +4694,12 @@ export function extrudeFootprintsWithAttributes(fc, origin_lon, origin_lat, defa
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2775,7 +4715,13 @@ export function extrudeFootprintsWithAttributes(fc, origin_lon, origin_lat, defa
 export function facadeLayoutFromBytes(bytes) {
     const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.facadeLayoutFromBytes(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.facadeLayoutFromBytes(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2805,7 +4751,13 @@ export function fgbDecodeRangeFeatures(header, features_bytes, min_lon, min_lat,
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(features_bytes, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.fgbDecodeRangeFeatures(ptr0, len0, ptr1, len1, min_lon, min_lat, max_lon, max_lat);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.fgbDecodeRangeFeatures(ptr0, len0, ptr1, len1, min_lon, min_lat, max_lon, max_lat);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -2816,7 +4768,12 @@ export function fgbDecodeRangeFeatures(header, features_bytes, min_lon, min_lat,
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2851,7 +4808,13 @@ export function fgbDecodeRangeFeatures(header, features_bytes, min_lon, min_lat,
 export function fgbIndexSearchStep(header, min_lon, min_lat, max_lon, max_lat, file_size, fetched_nodes, merge_gap_bytes) {
     const ptr0 = passArray8ToWasm0(header, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.fgbIndexSearchStep(ptr0, len0, min_lon, min_lat, max_lon, max_lat, file_size, fetched_nodes, !isLikeNone(merge_gap_bytes), isLikeNone(merge_gap_bytes) ? 0 : merge_gap_bytes);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.fgbIndexSearchStep(ptr0, len0, min_lon, min_lat, max_lon, max_lat, file_size, fetched_nodes, !isLikeNone(merge_gap_bytes), isLikeNone(merge_gap_bytes) ? 0 : merge_gap_bytes);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2873,7 +4836,13 @@ export function fgbIndexSearchStep(header, min_lon, min_lat, max_lon, max_lat, f
 export function fgbLayout(prefix) {
     const ptr0 = passArray8ToWasm0(prefix, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.fgbLayout(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.fgbLayout(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -2891,7 +4860,13 @@ export function fgbToFeatures(bytes) {
     try {
         const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.fgbToFeatures(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.fgbToFeatures(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2902,7 +4877,12 @@ export function fgbToFeatures(bytes) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2921,7 +4901,13 @@ export function fgbToFeaturesBbox(bytes, west, south, east, north) {
     try {
         const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.fgbToFeaturesBbox(ptr0, len0, west, south, east, north);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.fgbToFeaturesBbox(ptr0, len0, west, south, east, north);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -2932,7 +4918,12 @@ export function fgbToFeaturesBbox(bytes, west, south, east, north) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2946,12 +4937,58 @@ export function fieldRegistryJson() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.fieldRegistryJson();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.fieldRegistryJson();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The buildings fingerprint (version 4): the per-tile kernel group hashes,
+ * sorted, and the optional attributes hash, folded to `v4:<sha256>`.
+ * @param {string[]} hashes
+ * @param {string | null} [attributes_hash]
+ * @returns {string}
+ */
+export function foldBuildingsFingerprint(hashes, attributes_hash) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArrayJsValueToWasm0(hashes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        var ptr1 = isLikeNone(attributes_hash) ? 0 : passStringToWasm0(attributes_hash, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len1 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.foldBuildingsFingerprint(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -2997,7 +5034,13 @@ export function frameReanchor(document, lon0, lat0, lon1, lat1) {
     try {
         const ptr0 = passStringToWasm0(document, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.frameReanchor(ptr0, len0, lon0, lat0, lon1, lat1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.frameReanchor(ptr0, len0, lon0, lat0, lon1, lat1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -3008,7 +5051,12 @@ export function frameReanchor(document, lon0, lat0, lon1, lat1) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3026,7 +5074,13 @@ export function frameReanchor(document, lon0, lat0, lon1, lat1) {
 export function frameReanchorBytes(document, lon0, lat0, lon1, lat1) {
     const ptr0 = passArray8ToWasm0(document, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.frameReanchorBytes(ptr0, len0, lon0, lat0, lon1, lat1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.frameReanchorBytes(ptr0, len0, lon0, lat0, lon1, lat1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -3062,7 +5116,13 @@ export function generateTilesForPolygon(polygon_json, analysis_type, max_tiles_o
         const len0 = WASM_VECTOR_LEN;
         var ptr1 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.generateTilesForPolygon(ptr0, len0, ptr1, len1, isLikeNone(max_tiles_override) ? Number.MAX_SAFE_INTEGER : (max_tiles_override) >>> 0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.generateTilesForPolygon(ptr0, len0, ptr1, len1, isLikeNone(max_tiles_override) ? Number.MAX_SAFE_INTEGER : (max_tiles_override) >>> 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -3073,7 +5133,12 @@ export function generateTilesForPolygon(polygon_json, analysis_type, max_tiles_o
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3089,7 +5154,13 @@ export function geojsonLayersToDotbim(layers_json) {
     try {
         const ptr0 = passStringToWasm0(layers_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.geojsonLayersToDotbim(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.geojsonLayersToDotbim(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -3100,7 +5171,12 @@ export function geojsonLayersToDotbim(layers_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3120,7 +5196,13 @@ export function geojsonLayersToDotbim(layers_json) {
 export function geometryArtifact(body_json, max_total_bytes, max_metadata_bytes, max_meshes, max_instances) {
     const ptr0 = passStringToWasm0(body_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.geometryArtifact(ptr0, len0, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.geometryArtifact(ptr0, len0, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3140,7 +5222,13 @@ export function geometryDocumentJson(frame) {
     try {
         const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.geometryDocumentJson(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.geometryDocumentJson(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -3151,7 +5239,12 @@ export function geometryDocumentJson(frame) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3170,7 +5263,13 @@ export function geometryGroupHash(group_name, group_json) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(group_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.geometryGroupHash(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.geometryGroupHash(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3182,7 +5281,13 @@ export function geometryGroupHash(group_name, group_json) {
  * @returns {Array<any>}
  */
 export function geometryGroups() {
-    const ret = wasm.geometryGroups();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.geometryGroups();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -3192,7 +5297,13 @@ export function geometryGroups() {
  * @returns {number}
  */
 export function geometrySchemaVersion() {
-    const ret = wasm.geometrySchemaVersion();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.geometrySchemaVersion();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -3207,7 +5318,13 @@ export function getTilingConfig(analysis_type) {
     try {
         var ptr0 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len0 = WASM_VECTOR_LEN;
-        const ret = wasm.getTilingConfig(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.getTilingConfig(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -3218,7 +5335,12 @@ export function getTilingConfig(analysis_type) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3267,7 +5389,13 @@ export function gridToPng(values, width, height, vmin, vmax, colors, alpha, bad_
     const len0 = WASM_VECTOR_LEN;
     var ptr1 = isLikeNone(colors) ? 0 : passArray8ToWasm0(colors, wasm.__wbindgen_malloc);
     var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.gridToPng(ptr0, len0, width, height, !isLikeNone(vmin), isLikeNone(vmin) ? 0 : vmin, !isLikeNone(vmax), isLikeNone(vmax) ? 0 : vmax, ptr1, len1, isLikeNone(alpha) ? 0xFFFFFF : alpha, isLikeNone(bad_r) ? 0xFFFFFF : bad_r, isLikeNone(bad_g) ? 0xFFFFFF : bad_g, isLikeNone(bad_b) ? 0xFFFFFF : bad_b, isLikeNone(bad_a) ? 0xFFFFFF : bad_a, isLikeNone(max_long_axis_px) ? Number.MAX_SAFE_INTEGER : (max_long_axis_px) >>> 0, isLikeNone(reverse_rows) ? 0xFFFFFF : reverse_rows ? 1 : 0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.gridToPng(ptr0, len0, width, height, !isLikeNone(vmin), isLikeNone(vmin) ? 0 : vmin, !isLikeNone(vmax), isLikeNone(vmax) ? 0 : vmax, ptr1, len1, isLikeNone(alpha) ? 0xFFFFFF : alpha, isLikeNone(bad_r) ? 0xFFFFFF : bad_r, isLikeNone(bad_g) ? 0xFFFFFF : bad_g, isLikeNone(bad_b) ? 0xFFFFFF : bad_b, isLikeNone(bad_a) ? 0xFFFFFF : bad_a, isLikeNone(max_long_axis_px) ? Number.MAX_SAFE_INTEGER : (max_long_axis_px) >>> 0, isLikeNone(reverse_rows) ? 0xFFFFFF : reverse_rows ? 1 : 0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -3295,7 +5423,13 @@ export function groundCleanV3(layers_json, latitude, longitude, distance, defaul
         const len0 = WASM_VECTOR_LEN;
         var ptr1 = isLikeNone(default_layer) ? 0 : passStringToWasm0(default_layer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.groundCleanV3(ptr0, len0, latitude, longitude, distance, ptr1, len1, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.groundCleanV3(ptr0, len0, latitude, longitude, distance, ptr1, len1, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -3306,7 +5440,12 @@ export function groundCleanV3(layers_json, latitude, longitude, distance, defaul
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3343,7 +5482,13 @@ export function groundCleanV3OnTerrain(layers_json, latitude, longitude, distanc
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(default_layer) ? 0 : passStringToWasm0(default_layer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.groundCleanV3OnTerrain(ptr0, len0, latitude, longitude, distance, ptr1, len1, ptr2, len2, frame_origin_lon, frame_origin_lat, ptr3, len3, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.groundCleanV3OnTerrain(ptr0, len0, latitude, longitude, distance, ptr1, len1, ptr2, len2, frame_origin_lon, frame_origin_lat, ptr3, len3, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -3354,7 +5499,12 @@ export function groundCleanV3OnTerrain(layers_json, latitude, longitude, distanc
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3370,11 +5520,17 @@ export function groundCleanV3OnTerrain(layers_json, latitude, longitude, distanc
 export function groundMaterialLeaves(layers_json) {
     const ptr0 = passStringToWasm0(layers_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.groundMaterialLeaves(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.groundMaterialLeaves(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
-    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]);
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v2;
 }
@@ -3390,7 +5546,7 @@ export function groundMaterialLeaves(layers_json) {
  * **`originLon` / `originLat` is the AOI-level frame origin — the tiling
  * polygon-bbox south-west corner — and must be the SAME for every tile of
  * one area**, or overlapping tiles buffer the same road to two different
- * vertex sets and every duplicate survives `dedupMaterialFeatures`.
+ * vertex sets and every duplicate survives the tile-layer merge.
  * `minLon`..`maxLat` is the TILE query bbox; Overture features are clipped
  * to it, as the reference clips them at fetch time.
  *
@@ -3414,7 +5570,13 @@ export function groundMaterialsCompose(roads_fc, overture_fc, origin_lon, origin
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(overture_fc, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.groundMaterialsCompose(ptr0, len0, ptr1, len1, origin_lon, origin_lat, min_lon, min_lat, max_lon, max_lat);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.groundMaterialsCompose(ptr0, len0, ptr1, len1, origin_lon, origin_lat, min_lon, min_lat, max_lon, max_lat);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -3425,7 +5587,12 @@ export function groundMaterialsCompose(roads_fc, overture_fc, origin_lon, origin
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3470,7 +5637,13 @@ export function groundMaterialsComposeAndMerge(roads_by_tile, overture_fc, origi
         const len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(default_layer) ? 0 : passStringToWasm0(default_layer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.groundMaterialsComposeAndMerge(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2, latitude, longitude, distance, ptr3, len3, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.groundMaterialsComposeAndMerge(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2, latitude, longitude, distance, ptr3, len3, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -3481,7 +5654,12 @@ export function groundMaterialsComposeAndMerge(roads_by_tile, overture_fc, origi
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3509,7 +5687,13 @@ export function groundMaterialsComposeAndMergeBytes(roads_by_tile, overture_fc, 
     const len2 = WASM_VECTOR_LEN;
     var ptr3 = isLikeNone(default_layer) ? 0 : passStringToWasm0(default_layer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len3 = WASM_VECTOR_LEN;
-    const ret = wasm.groundMaterialsComposeAndMergeBytes(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2, latitude, longitude, distance, ptr3, len3, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.groundMaterialsComposeAndMergeBytes(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2, latitude, longitude, distance, ptr3, len3, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -3566,7 +5750,13 @@ export function groundMaterialsComposeTiles(roads_by_tile, overture_fc, origin_l
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(tiles, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.groundMaterialsComposeTiles(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.groundMaterialsComposeTiles(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -3577,7 +5767,12 @@ export function groundMaterialsComposeTiles(roads_by_tile, overture_fc, origin_l
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3599,7 +5794,13 @@ export function groundMaterialsComposeTilesBytes(roads_by_tile, overture_fc, ori
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArray8ToWasm0(tiles, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.groundMaterialsComposeTilesBytes(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.groundMaterialsComposeTilesBytes(ptr0, len0, ptr1, len1, origin_lon, origin_lat, ptr2, len2);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -3625,7 +5826,13 @@ export function groundMaterialsLayerHash(layers_json) {
     try {
         const ptr0 = passStringToWasm0(layers_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.groundMaterialsLayerHash(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.groundMaterialsLayerHash(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -3636,8 +5843,45 @@ export function groundMaterialsLayerHash(layers_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
+}
+
+/**
+ * The wait in seconds before the next try of a host request outside a run
+ * (`request`: `capability`, `upload` or `public_get`), or `undefined`: give
+ * up. `phase` and `status` are the raw facts of the failure; `tries` counts
+ * the tries made, the failed one included.
+ * `ir_geo::run_engine::host_retry_wait_seconds`.
+ * @param {string} request
+ * @param {string} phase
+ * @param {number | null | undefined} status
+ * @param {number} tries
+ * @param {number} jitter
+ * @param {number | null} [retry_after_s]
+ * @returns {number | undefined}
+ */
+export function hostRetryWaitSeconds(request, phase, status, tries, jitter, retry_after_s) {
+    const ptr0 = passStringToWasm0(request, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(phase, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.hostRetryWaitSeconds(ptr0, len0, ptr1, len1, isLikeNone(status) ? 0xFFFFFF : status, tries, jitter, !isLikeNone(retry_after_s), isLikeNone(retry_after_s) ? 0 : retry_after_s);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    return ret[0] === 0 ? undefined : ret[1];
 }
 
 /**
@@ -3649,8 +5893,14 @@ export function groundMaterialsLayerHash(layers_json) {
 export function inertKeys(model) {
     const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.inertKeys(ptr0, len0);
-    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.inertKeys(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]);
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v2;
 }
@@ -3660,7 +5910,13 @@ export function inertKeys(model) {
  * @returns {Promise<any>}
  */
 export function initThreadPool(num_threads) {
-    const ret = wasm.initThreadPool(num_threads);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.initThreadPool(num_threads);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -3679,7 +5935,13 @@ export function initThreadPool(num_threads) {
  * @returns {any}
  */
 export function inspectBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values) {
-    const ret = wasm.inspectBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.inspectBinaryResult(buffer, max_total_bytes, max_metadata_bytes, max_sections, max_elements_per_section, max_metadata_depth, max_cells, max_triangle_values);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3687,12 +5949,16 @@ export function inspectBinaryResult(buffer, max_total_bytes, max_metadata_bytes,
 }
 
 /**
- * Make every kernel panic and allocation failure, on any thread, end the
- * process. The SDK calls it once, before `initThreadPool`; the hooks are
- * shared by all threads.
+ * Make an allocation failure, on any thread, end the process. The SDK calls
+ * it once, before `initThreadPool`; the hook is shared by all threads.
  */
-export function installPanicAbort() {
-    wasm.installPanicAbort();
+export function installOomAbort() {
+    __wbg_call_guard();
+    try {
+        wasm.installOomAbort();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
 }
 
 /**
@@ -3716,7 +5982,13 @@ export function instancesFromPoints(features_json, reference_lon, reference_lat,
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(registry_version, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.instancesFromPoints(ptr0, len0, reference_lon, reference_lat, ptr1, len1, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.instancesFromPoints(ptr0, len0, reference_lon, reference_lat, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -3727,7 +5999,12 @@ export function instancesFromPoints(features_json, reference_lon, reference_lat,
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3759,48 +6036,13 @@ export function interiorArtifact(request, model, max_total_bytes, max_metadata_b
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.interiorArtifact(ptr0, len0, ptr1, len1, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.interiorArtifact(ptr0, len0, ptr1, len1, max_total_bytes, max_metadata_bytes, max_meshes, max_instances);
+    } catch(e) {
+        __wbg_handle_catch(e);
     }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * Join every job of one surface area run, in the canonical job order
- * (#579): the rows, the triangle groups, `triangles.positions` and each
- * fallback's `job` follow the canonical order of `entryIds`, not the
- * argument order; `jobOrder[g]` is the argument index of job `g`.
- *
- * `archives[i]` is job `i`'s `decodeSurfaceArchive` handle (consumed, also
- * on an error), `entryIds[i]` its schedule entry, `anchors[2i..2i+2]` its
- * tile SW offset, `jobIds[i]` the id its capture was remembered under in
- * `store` (a `CaptureStore`), or `undefined` for a job without one. The join
- * releases every job it consumes, also on an error.
- * `emitCellTris` (the join input flag, default `false` in the kernel) asks for
- * the per-cell triangle table and `triangles.positions`; the OUTLINE of every
- * surface (`SurfaceJoin::outline` in the kernel) is made for every job that has a
- * capture, with or without it. Returns the
- * columns: see `SurfaceJoin` in `ir-simprep` for every field. The triangle
- * positions come back as `triangles.positions[i]`, one `Float32Array` per
- * job in its tile-local frame (empty when the job has none).
- * @param {SurfaceArchive[]} archives
- * @param {string[]} entry_ids
- * @param {Float64Array} anchors
- * @param {CaptureStore} store
- * @param {Array<any>} job_ids
- * @param {boolean} emit_cell_tris
- * @returns {any}
- */
-export function joinSurfaceJobs(archives, entry_ids, anchors, store, job_ids, emit_cell_tris) {
-    const ptr0 = passArrayJsValueToWasm0(archives, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArrayJsValueToWasm0(entry_ids, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passArrayF64ToWasm0(anchors, wasm.__wbindgen_malloc);
-    const len2 = WASM_VECTOR_LEN;
-    _assertClass(store, CaptureStore);
-    const ret = wasm.joinSurfaceJobs(ptr0, len0, ptr1, len1, ptr2, len2, store.__wbg_ptr, job_ids, emit_cell_tris);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3829,7 +6071,13 @@ export function landuseClassify(fc) {
     try {
         const ptr0 = passStringToWasm0(fc, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.landuseClassify(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.landuseClassify(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -3840,7 +6088,12 @@ export function landuseClassify(fc) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3848,8 +6101,14 @@ export function landuseClassify(fc) {
  * @returns {string[]}
  */
 export function lawsonLabels() {
-    const ret = wasm.lawsonLabels();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.lawsonLabels();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v1;
 }
@@ -3883,7 +6142,13 @@ export function legendRange(values, mode, fixed_min, fixed_max, divisor, valid) 
     var len0 = WASM_VECTOR_LEN;
     var ptr1 = isLikeNone(valid) ? 0 : passArray8ToWasm0(valid, wasm.__wbindgen_malloc);
     var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.legendRange(values, ptr0, len0, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max, isLikeNone(divisor) ? Number.MAX_SAFE_INTEGER : (divisor) >>> 0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.legendRange(values, ptr0, len0, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max, isLikeNone(divisor) ? Number.MAX_SAFE_INTEGER : (divisor) >>> 0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -3935,7 +6200,13 @@ export function maskHash(geo_hash, mode, grid_size, offset, max_sensors, terrain
         var len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.maskHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.maskHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -3946,7 +6217,12 @@ export function maskHash(geo_hash, mode, grid_size, offset, max_sensors, terrain
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -3958,7 +6234,13 @@ export function maskHash(geo_hash, mode, grid_size, offset, max_sensors, terrain
 export function materialRank(name) {
     const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.materialRank(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.materialRank(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret >>> 0;
 }
 
@@ -3968,7 +6250,13 @@ export function materialRank(name) {
  * @returns {number}
  */
 export function maxSensorsPerJob() {
-    const ret = wasm.maxSensorsPerJob();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.maxSensorsPerJob();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret >>> 0;
 }
 
@@ -4010,7 +6298,13 @@ export function mergeAndCleanTileLayers(tile_layers_json, latitude, longitude, d
         const len0 = WASM_VECTOR_LEN;
         var ptr1 = isLikeNone(default_layer) ? 0 : passStringToWasm0(default_layer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeAndCleanTileLayers(ptr0, len0, latitude, longitude, distance, ptr1, len1, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeAndCleanTileLayers(ptr0, len0, latitude, longitude, distance, ptr1, len1, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -4021,7 +6315,12 @@ export function mergeAndCleanTileLayers(tile_layers_json, latitude, longitude, d
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4041,7 +6340,13 @@ export function mergeAndCleanTileLayersBytes(tile_layers, latitude, longitude, d
     const len0 = WASM_VECTOR_LEN;
     var ptr1 = isLikeNone(default_layer) ? 0 : passStringToWasm0(default_layer, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeAndCleanTileLayersBytes(ptr0, len0, latitude, longitude, distance, ptr1, len1, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.mergeAndCleanTileLayersBytes(ptr0, len0, latitude, longitude, distance, ptr1, len1, !isLikeNone(z_step), isLikeNone(z_step) ? 0 : z_step);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -4069,7 +6374,13 @@ export function mergeTerrainLeaf(entries_json) {
     try {
         const ptr0 = passStringToWasm0(entries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeTerrainLeaf(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeTerrainLeaf(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4080,7 +6391,12 @@ export function mergeTerrainLeaf(entries_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4098,7 +6414,13 @@ export function mergeTerrainMesh(entries_json) {
     try {
         const ptr0 = passStringToWasm0(entries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeTerrainMesh(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeTerrainMesh(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4109,12 +6431,17 @@ export function mergeTerrainMesh(entries_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
 /**
- * `ground_materials.dedup.merge_tile_layers` port. JSON array of per-tile
+ * The ground tile-layer merge. JSON array of per-tile
  * `{layer: FeatureCollection}` (or `null`) → merged+deduped `{layer: FC}` JSON.
  * @param {string} tile_results_json
  * @returns {string}
@@ -4125,7 +6452,13 @@ export function mergeTileLayers(tile_results_json) {
     try {
         const ptr0 = passStringToWasm0(tile_results_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeTileLayers(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeTileLayers(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4136,7 +6469,12 @@ export function mergeTileLayers(tile_results_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4150,7 +6488,13 @@ export function mergeTileLayers(tile_results_json) {
 export function mergeTileLayersBytes(tile_results) {
     const ptr0 = passArray8ToWasm0(tile_results, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeTileLayersBytes(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.mergeTileLayersBytes(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -4177,7 +6521,13 @@ export function mergeTiles(tiles_json, num_rows, num_cols, config_json) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeTiles(ptr0, len0, num_rows, num_cols, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeTiles(ptr0, len0, num_rows, num_cols, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -4188,7 +6538,12 @@ export function mergeTiles(tiles_json, num_rows, num_cols, config_json) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4212,7 +6567,13 @@ export function mergeTilesDirectional(tiles_json, num_rows, num_cols, config_jso
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeTilesDirectional(ptr0, len0, num_rows, num_cols, ptr1, len1, wind_direction_deg);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeTilesDirectional(ptr0, len0, num_rows, num_cols, ptr1, len1, wind_direction_deg);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -4223,7 +6584,12 @@ export function mergeTilesDirectional(tiles_json, num_rows, num_cols, config_jso
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4250,7 +6616,13 @@ export function mergeTilesSmart(tiles_json, num_rows, num_cols, config_json, win
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.mergeTilesSmart(ptr0, len0, num_rows, num_cols, ptr1, len1, wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.mergeTilesSmart(ptr0, len0, num_rows, num_cols, ptr1, len1, wind_direction_deg, isLikeNone(block) ? Number.MAX_SAFE_INTEGER : (block) >>> 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -4261,7 +6633,12 @@ export function mergeTilesSmart(tiles_json, num_rows, num_cols, config_json, win
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4277,7 +6654,13 @@ export function normalizeAreaCategoricalDense(values, legends_json, tile_cells) 
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(legends_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.normalizeAreaCategoricalDense(ptr0, len0, ptr1, len1, tile_cells);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.normalizeAreaCategoricalDense(ptr0, len0, ptr1, len1, tile_cells);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4293,7 +6676,13 @@ export function normalizeAreaCategoricalDense(values, legends_json, tile_cells) 
 export function normalizeAreaCategoricalLabels(tiles_json, tile_cells) {
     const ptr0 = passStringToWasm0(tiles_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.normalizeAreaCategoricalLabels(ptr0, len0, tile_cells);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.normalizeAreaCategoricalLabels(ptr0, len0, tile_cells);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4322,7 +6711,13 @@ export function normalizeAreaCategoricalMixed(dense_values, dense_legends_json, 
     const len3 = WASM_VECTOR_LEN;
     const ptr4 = passArray32ToWasm0(label_indices, wasm.__wbindgen_malloc);
     const len4 = WASM_VECTOR_LEN;
-    const ret = wasm.normalizeAreaCategoricalMixed(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, tile_count, tile_cells);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.normalizeAreaCategoricalMixed(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, tile_count, tile_cells);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4343,7 +6738,13 @@ export function normalizeAreaCategoricalMixed(dense_values, dense_legends_json, 
 export function overlayAoiIntersectsPolygon(polygon_geojson, west, south, east, north) {
     const ptr0 = passStringToWasm0(polygon_geojson, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.overlayAoiIntersectsPolygon(ptr0, len0, west, south, east, north);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.overlayAoiIntersectsPolygon(ptr0, len0, west, south, east, north);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4367,7 +6768,13 @@ export function overlayBboxCandidates(sources_json, west, south, east, north) {
     try {
         const ptr0 = passStringToWasm0(sources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.overlayBboxCandidates(ptr0, len0, west, south, east, north);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.overlayBboxCandidates(ptr0, len0, west, south, east, north);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4378,7 +6785,12 @@ export function overlayBboxCandidates(sources_json, west, south, east, north) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4393,11 +6805,35 @@ export function overlayBboxCandidates(sources_json, west, south, east, north) {
 export function overlayPointInPolygon(polygon_geojson, lon, lat) {
     const ptr0 = passStringToWasm0(polygon_geojson, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.overlayPointInPolygon(ptr0, len0, lon, lat);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.overlayPointInPolygon(ptr0, len0, lon, lat);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return ret[0] !== 0;
+}
+
+/**
+ * The planned-bytes limit of one Overture read in `runtime`.
+ * @param {string} runtime
+ * @returns {number}
+ */
+export function overturePlannedBytesLimit(runtime) {
+    const ptr0 = passStringToWasm0(runtime, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.overturePlannedBytesLimit(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    return ret;
 }
 
 /**
@@ -4412,11 +6848,17 @@ export function overlayPointInPolygon(polygon_geojson, lon, lat) {
 export function overtureSelectFiles(manifest_json, west, south, east, north) {
     const ptr0 = passStringToWasm0(manifest_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.overtureSelectFiles(ptr0, len0, west, south, east, north);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.overtureSelectFiles(ptr0, len0, west, south, east, north);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
-    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]);
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v2;
 }
@@ -4433,7 +6875,13 @@ export function packCoordinates(coordinates) {
     try {
         const ptr0 = passArrayF64ToWasm0(coordinates, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.packCoordinates(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.packCoordinates(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4444,7 +6892,12 @@ export function packCoordinates(coordinates) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4461,7 +6914,13 @@ export function packIndices(indices) {
     try {
         const ptr0 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.packIndices(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.packIndices(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4472,7 +6931,12 @@ export function packIndices(indices) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4489,7 +6953,13 @@ export function packIndices(indices) {
 export function packMesh(coordinates, indices) {
     const ptr0 = passArrayF64ToWasm0(coordinates, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.packMesh(ptr0, len0, indices);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.packMesh(ptr0, len0, indices);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4509,7 +6979,13 @@ export function packMesh(coordinates, indices) {
  * @returns {any}
  */
 export function packMeshBatch(coordinates, indices, spans, max_meshes, max_coordinate_values, max_indices, max_output_bytes) {
-    const ret = wasm.packMeshBatch(coordinates, indices, spans, max_meshes, max_coordinate_values, max_indices, max_output_bytes);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.packMeshBatch(coordinates, indices, spans, max_meshes, max_coordinate_values, max_indices, max_output_bytes);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4528,7 +7004,13 @@ export function packMeshBatch(coordinates, indices, spans, max_meshes, max_coord
  * @returns {any}
  */
 export function packMeshBatchArrays(coordinates, indices, spans, max_meshes, max_coordinate_values, max_indices, max_output_bytes) {
-    const ret = wasm.packMeshBatchArrays(coordinates, indices, spans, max_meshes, max_coordinate_values, max_indices, max_output_bytes);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.packMeshBatchArrays(coordinates, indices, spans, max_meshes, max_coordinate_values, max_indices, max_output_bytes);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4543,7 +7025,13 @@ export function packMeshBatchArrays(coordinates, indices, spans, max_meshes, max
 export function packedIndexCount(indices_bin) {
     const ptr0 = passStringToWasm0(indices_bin, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.packedIndexCount(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.packedIndexCount(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4554,13 +7042,20 @@ export function packedIndexCount(indices_bin) {
  * TEST ONLY: a parallel map over `items` whose item `at` panics on a pool
  * thread, or, with `at >= items`, a panic on the CALLING thread before the
  * map (the main thread in Node: rayon runs a pool map on the pool's own
- * workers, so this is how the main thread panics). `tests/area/threaded-panic`.
+ * workers, so this is how the main thread panics). Both come back to the
+ * caller as a thrown error. `tests/area/threaded-panic`.
  * @param {number} items
  * @param {number} at
  * @returns {number}
  */
 export function panicInPoolForTest(items, at) {
-    const ret = wasm.panicInPoolForTest(items, at);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.panicInPoolForTest(items, at);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret >>> 0;
 }
 
@@ -4595,7 +7090,13 @@ export function partitionFacadeCoreContext(geometries_json, core_x_m, core_y_m, 
     try {
         const ptr0 = passStringToWasm0(geometries_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.partitionFacadeCoreContext(ptr0, len0, core_x_m, core_y_m, !isLikeNone(nominal_x_m), isLikeNone(nominal_x_m) ? 0 : nominal_x_m, !isLikeNone(nominal_y_m), isLikeNone(nominal_y_m) ? 0 : nominal_y_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.partitionFacadeCoreContext(ptr0, len0, core_x_m, core_y_m, !isLikeNone(nominal_x_m), isLikeNone(nominal_x_m) ? 0 : nominal_x_m, !isLikeNone(nominal_y_m), isLikeNone(nominal_y_m) ? 0 : nominal_y_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4606,7 +7107,12 @@ export function partitionFacadeCoreContext(geometries_json, core_x_m, core_y_m, 
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4648,7 +7154,13 @@ export function partitionFacadeCoreContextF64(ids, coordinates, offsets, core_x_
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passArray32ToWasm0(offsets, wasm.__wbindgen_malloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.partitionFacadeCoreContextF64(ptr0, len0, ptr1, len1, ptr2, len2, core_x_m, core_y_m, !isLikeNone(nominal_x_m), isLikeNone(nominal_x_m) ? 0 : nominal_x_m, !isLikeNone(nominal_y_m), isLikeNone(nominal_y_m) ? 0 : nominal_y_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.partitionFacadeCoreContextF64(ptr0, len0, ptr1, len1, ptr2, len2, core_x_m, core_y_m, !isLikeNone(nominal_x_m), isLikeNone(nominal_x_m) ? 0 : nominal_x_m, !isLikeNone(nominal_y_m), isLikeNone(nominal_y_m) ? 0 : nominal_y_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -4659,7 +7171,12 @@ export function partitionFacadeCoreContextF64(ids, coordinates, offsets, core_x_
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4675,7 +7192,13 @@ export function planAreaRetry(input) {
     try {
         const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.planAreaRetry(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.planAreaRetry(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4686,7 +7209,12 @@ export function planAreaRetry(input) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4716,7 +7244,13 @@ export function planExactSurfaceBatches(geometries_json, mode, grid_size, offset
         var len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.planExactSurfaceBatches(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.planExactSurfaceBatches(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -4727,7 +7261,12 @@ export function planExactSurfaceBatches(geometries_json, mode, grid_size, offset
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4759,7 +7298,13 @@ export function planExactSurfaceBatchesCapped(geometries_json, mode, grid_size, 
         var len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.planExactSurfaceBatchesCapped(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, !isLikeNone(max_sensors_per_job), isLikeNone(max_sensors_per_job) ? 0 : max_sensors_per_job, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.planExactSurfaceBatchesCapped(ptr0, len0, ptr1, len1, grid_size, offset, work_budget, ptr2, len2, auto_align, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, !isLikeNone(max_sensors_per_job), isLikeNone(max_sensors_per_job) ? 0 : max_sensors_per_job, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -4770,7 +7315,12 @@ export function planExactSurfaceBatchesCapped(geometries_json, mode, grid_size, 
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4792,7 +7342,13 @@ export function planGeometryReuse(current_json, state_json, now, sizes_json) {
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(sizes_json) ? 0 : passStringToWasm0(sizes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.planGeometryReuse(ptr0, len0, ptr1, len1, now, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.planGeometryReuse(ptr0, len0, ptr1, len1, now, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -4803,7 +7359,12 @@ export function planGeometryReuse(current_json, state_json, now, sizes_json) {
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4812,7 +7373,13 @@ export function planGeometryReuse(current_json, state_json, now, sizes_json) {
  * @returns {number}
  */
 export function pollDefaultTimeoutSeconds() {
-    const ret = wasm.pollDefaultTimeoutSeconds();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.pollDefaultTimeoutSeconds();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -4825,7 +7392,13 @@ export function pollDefaultTimeoutSeconds() {
  * @returns {number}
  */
 export function pollErrorDelaySeconds(consecutive_errors, jitter_unit, retry_after_s) {
-    const ret = wasm.pollErrorDelaySeconds(consecutive_errors, jitter_unit, !isLikeNone(retry_after_s), isLikeNone(retry_after_s) ? 0 : retry_after_s);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.pollErrorDelaySeconds(consecutive_errors, jitter_unit, !isLikeNone(retry_after_s), isLikeNone(retry_after_s) ? 0 : retry_after_s);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -4834,7 +7407,13 @@ export function pollErrorDelaySeconds(consecutive_errors, jitter_unit, retry_aft
  * @returns {number}
  */
 export function pollFirstDelaySeconds() {
-    const ret = wasm.pollFirstDelaySeconds();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.pollFirstDelaySeconds();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -4846,8 +7425,130 @@ export function pollFirstDelaySeconds() {
  * @returns {number}
  */
 export function pollIntervalSeconds(elapsed_s, sweep_requests) {
-    const ret = wasm.pollIntervalSeconds(elapsed_s, sweep_requests);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.pollIntervalSeconds(elapsed_s, sweep_requests);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
+}
+
+/**
+ * TEST ONLY: the sum of a `poolSumStart` task.
+ * @param {PoolTask} task
+ * @returns {number}
+ */
+export function poolSumEnd(task) {
+    _assertClass(task, PoolTask);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.poolSumEnd(task.__wbg_ptr);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0];
+}
+
+/**
+ * TEST ONLY: a pool task that sums `0..n` in parallel after a busy spin of
+ * `spin_ms` milliseconds on the pool (`panic_at < n`: item `panic_at`
+ * panics). `poolSumEnd` takes the sum. `tests/pool-task`.
+ * @param {number} n
+ * @param {number} spin_ms
+ * @param {number} panic_at
+ * @returns {PoolTask}
+ */
+export function poolSumStart(n, spin_ms, panic_at) {
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.poolSumStart(n, spin_ms, panic_at);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    return PoolTask.__wrap(ret);
+}
+
+/**
+ * How long a fetched price list is used, seconds (20 minutes).
+ * @returns {number}
+ */
+export function priceCacheTtlSeconds() {
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.priceCacheTtlSeconds();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    return ret;
+}
+
+/**
+ * Where a price came from: `"live"`, `"cached"` or `"stale"`.
+ * @param {boolean} fetched
+ * @param {number} age_s
+ * @returns {string}
+ */
+export function priceSource(fetched, age_s) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.priceSource(fetched, age_s);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The price list URL for the client's API base URL.
+ * @param {string} base_url
+ * @returns {string}
+ */
+export function pricingUrl(base_url) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(base_url, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.pricingUrl(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -4864,7 +7565,13 @@ export function projectPolygonToMeters(polygon_json) {
     try {
         const ptr0 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.projectPolygonToMeters(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.projectPolygonToMeters(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -4875,7 +7582,50 @@ export function projectPolygonToMeters(polygon_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The kernel's decision for one byte-range read event; JSON in, JSON out
+ * (`ir_geodata::range_read::range_read_step`).
+ * @param {string} request
+ * @returns {string}
+ */
+export function rangeReadStep(request) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(request, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.rangeReadStep(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -4889,7 +7639,13 @@ export function projectPolygonToMeters(polygon_json) {
 export function recenterF32(coordinates) {
     const ptr0 = passArrayF64ToWasm0(coordinates, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.recenterF32(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.recenterF32(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
     return v2;
@@ -4911,7 +7667,13 @@ export function rectUnionDecompose(clip, rectangles) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayF64ToWasm0(rectangles, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.rectUnionDecompose(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.rectUnionDecompose(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4927,7 +7689,13 @@ export function rectUnionDecompose(clip, rectangles) {
 export function rectUnionSlabToleranceDeg(rectangles) {
     const ptr0 = passArrayF64ToWasm0(rectangles, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.rectUnionSlabToleranceDeg(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.rectUnionSlabToleranceDeg(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4950,7 +7718,13 @@ export function rectUnionSlabToleranceDeg(rectangles) {
 export function registryFixedRange(config_json) {
     const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.registryFixedRange(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.registryFixedRange(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4995,7 +7769,13 @@ export function renderGridRegistry(values, width, height, config_json, reverse_r
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.renderGridRegistry(ptr0, len0, width, height, ptr1, len1, isLikeNone(reverse_rows) ? 0xFFFFFF : reverse_rows ? 1 : 0, isLikeNone(max_long_axis_px) ? Number.MAX_SAFE_INTEGER : (max_long_axis_px) >>> 0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.renderGridRegistry(ptr0, len0, width, height, ptr1, len1, isLikeNone(reverse_rows) ? 0xFFFFFF : reverse_rows ? 1 : 0, isLikeNone(max_long_axis_px) ? Number.MAX_SAFE_INTEGER : (max_long_axis_px) >>> 0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5016,13 +7796,48 @@ export function renderGridRegistry(values, width, height, config_json, reverse_r
 export function resolveTerrainAlignment(model, alignment_set, has_terrain, has_scene) {
     const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.resolveTerrainAlignment(ptr0, len0, alignment_set, has_terrain, has_scene);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.resolveTerrainAlignment(ptr0, len0, alignment_set, has_terrain, has_scene);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     let v2;
     if (ret[0] !== 0) {
-        v2 = getStringFromWasm0(ret[0], ret[1]).slice();
+        v2 = getStringFromWasm0(ret[0], ret[1]);
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     }
     return v2;
+}
+
+/**
+ * The engine's retry and resend limits as JSON (read-only, issue #873):
+ * `ir_geo::run_engine::retry_policy`.
+ * @returns {string}
+ */
+export function retryPolicy() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.retryPolicy();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -5044,7 +7859,13 @@ export function roadsNormalize(fc) {
     try {
         const ptr0 = passStringToWasm0(fc, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.roadsNormalize(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.roadsNormalize(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -5055,56 +7876,13 @@ export function roadsNormalize(fc) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
-}
-
-/**
- * @param {Float64Array} bbox
- * @param {Float64Array} context
- * @returns {boolean}
- */
-export function scalarBboxMeetsContext(bbox, context) {
-    const ptr0 = passArrayF64ToWasm0(bbox, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArrayF64ToWasm0(context, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.scalarBboxMeetsContext(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return ret[0] !== 0;
-}
-
-/**
- * @param {Uint8Array} coordinates
- * @returns {Float64Array}
- */
-export function scalarBuildingBboxF64(coordinates) {
-    const ptr0 = passArray8ToWasm0(coordinates, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.scalarBuildingBboxF64(ptr0, len0);
-    if (ret[3]) {
-        throw takeFromExternrefTable0(ret[2]);
-    }
-    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-    return v2;
-}
-
-/**
- * @param {number} row
- * @param {number} col
- * @param {number} step_m
- * @param {number} inference_size_m
- * @param {number} context_size_m
- * @returns {Float64Array}
- */
-export function scalarContextBound(row, col, step_m, inference_size_m, context_size_m) {
-    const ret = wasm.scalarContextBound(row, col, step_m, inference_size_m, context_size_m);
-    var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-    return v1;
 }
 
 /**
@@ -5115,7 +7893,13 @@ export function scalarContextBound(row, col, step_m, inference_size_m, context_s
  * @returns {Float64Array}
  */
 export function scalarFrameAffine(lon0, lat0, lon1, lat1) {
-    const ret = wasm.scalarFrameAffine(lon0, lat0, lon1, lat1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.scalarFrameAffine(lon0, lat0, lon1, lat1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5131,7 +7915,13 @@ export function scalarFrameAffine(lon0, lat0, lon1, lat1) {
 export function scalarPolygonOriginF64(positions) {
     const ptr0 = passArray8ToWasm0(positions, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.scalarPolygonOriginF64(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.scalarPolygonOriginF64(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5150,7 +7940,13 @@ export function scalarReanchorF64(coordinates, affine) {
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayF64ToWasm0(affine, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.scalarReanchorF64(ptr0, len0, ptr1, len1);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.scalarReanchorF64(ptr0, len0, ptr1, len1);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5169,7 +7965,13 @@ export function scalarReanchorF64(coordinates, affine) {
  * @returns {Float64Array}
  */
 export function scalarSiteToTileAffine(row, col, step_m, inference_size_m, origin_lon, origin_lat) {
-    const ret = wasm.scalarSiteToTileAffine(row, col, step_m, inference_size_m, origin_lon, origin_lat);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.scalarSiteToTileAffine(row, col, step_m, inference_size_m, origin_lon, origin_lat);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5186,7 +7988,13 @@ export function scalarSiteToTileAffine(row, col, step_m, inference_size_m, origi
  * @returns {Float64Array}
  */
 export function scalarUnproject(origin_lon, origin_lat, x, y) {
-    const ret = wasm.scalarUnproject(origin_lon, origin_lat, x, y);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.scalarUnproject(origin_lon, origin_lat, x, y);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5203,7 +8011,13 @@ export function scalarUnproject(origin_lon, origin_lat, x, y) {
  * @returns {number}
  */
 export function sendBudgetSeconds(byte_length) {
-    const ret = wasm.sendBudgetSeconds(byte_length);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.sendBudgetSeconds(byte_length);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5215,7 +8029,13 @@ export function sendBudgetSeconds(byte_length) {
  * @returns {number}
  */
 export function sendStallSeconds() {
-    const ret = wasm.sendStallSeconds();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.sendStallSeconds();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret;
 }
 
@@ -5266,7 +8086,13 @@ export function sensorLayoutHash(entity_hashes, mode, grid_size, offset, max_sen
         var len2 = WASM_VECTOR_LEN;
         var ptr3 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len3 = WASM_VECTOR_LEN;
-        const ret = wasm.sensorLayoutHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr3, len3);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.sensorLayoutHash(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, ptr3, len3);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -5277,7 +8103,12 @@ export function sensorLayoutHash(entity_hashes, mode, grid_size, offset, max_sen
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -5304,11 +8135,232 @@ export function sharedLegendRange(grids, mode, fixed_min, fixed_max) {
     const len0 = WASM_VECTOR_LEN;
     var ptr1 = isLikeNone(mode) ? 0 : passStringToWasm0(mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.sharedLegendRange(ptr0, len0, ptr1, len1, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.sharedLegendRange(ptr0, len0, ptr1, len1, !isLikeNone(fixed_min), isLikeNone(fixed_min) ? 0 : fixed_min, !isLikeNone(fixed_max), isLikeNone(fixed_max) ? 0 : fixed_max);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Simplify many meshes in one call, each on its own: exact weld, then
+ * quadric edge collapse. The kept vertices are input vertices with their
+ * input values. Every `undefined` takes the kernel default.
+ *
+ * `targetRatio`: kept triangle share (`undefined` = no count limit).
+ * `maxErrorM`: error limit in metres, the simplifier's estimate, not a bound
+ * (`Infinity` = no limit). `lockBorder` keeps every open edge.
+ * Returns `{ coordinates, vertOffsets, indices, faceOffsets, errorsM, kept }`:
+ * `kept` is the input index of each output mesh; a mesh that collapses to no
+ * triangle is left out.
+ * @param {any} coordinates
+ * @param {Uint32Array} vert_offsets
+ * @param {Uint32Array} indices
+ * @param {Uint32Array} face_offsets
+ * @param {number | null} [target_ratio]
+ * @param {number | null} [max_error_m]
+ * @param {boolean | null} [lock_border]
+ * @returns {object}
+ */
+export function simplifyMeshes(coordinates, vert_offsets, indices, face_offsets, target_ratio, max_error_m, lock_border) {
+    const ptr0 = passArray32ToWasm0(vert_offsets, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(face_offsets, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.simplifyMeshes(coordinates, ptr0, len0, ptr1, len1, ptr2, len2, !isLikeNone(target_ratio), isLikeNone(target_ratio) ? 0 : target_ratio, !isLikeNone(max_error_m), isLikeNone(max_error_m) ? 0 : max_error_m, isLikeNone(lock_border) ? 0xFFFFFF : lock_border ? 1 : 0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * The read chunks of `site` (`[west, south, east, north]`), each with its
+ * compose pieces over the flat tile `rectangles`,
+ * as JSON `[{"id", "bbox", "pieces": [{"id", "bbox"}]}]`
+ * (`ir_geodata::site_chunks`).
+ * @param {Float64Array} site
+ * @param {Float64Array} rectangles
+ * @returns {string}
+ */
+export function siteChunks(site, rectangles) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passArrayF64ToWasm0(site, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(rectangles, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.siteChunks(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The one-frame warnings `site` earns, in order (area, then extent), as a
+ * JSON string array; `[]` for a site one local frame covers.
+ * @param {Float64Array} site
+ * @returns {string}
+ */
+export function siteFrameWarnings(site) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArrayF64ToWasm0(site, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.siteFrameWarnings(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The site key over the packed site: the layout of the .NET `SiteKey.cs` plus
+ * group indices and a trailing `family` text. The coordinates are `Float64Array`s; the five
+ * documents are JSON text or `undefined` (a mesh group's document holds no
+ * coordinates). Lowercase hex sha256.
+ * @param {string} building_ids_json
+ * @param {Float64Array} building_coordinates
+ * @param {Uint32Array} building_offsets
+ * @param {Uint32Array} building_indices
+ * @param {Uint32Array} building_index_offsets
+ * @param {string} context_ids_json
+ * @param {Float64Array} context_coordinates
+ * @param {Uint32Array} context_offsets
+ * @param {Uint32Array} context_indices
+ * @param {Uint32Array} context_index_offsets
+ * @param {string | null | undefined} geometries
+ * @param {string | null | undefined} context_geometry
+ * @param {string | null | undefined} ground_geometry
+ * @param {string | null | undefined} vegetation
+ * @param {string | null | undefined} ground_materials
+ * @param {Uint32Array} rows
+ * @param {Uint32Array} cols
+ * @param {string} tile_ids_json
+ * @param {Float64Array} scalars
+ * @param {string} polygon
+ * @param {string} family
+ * @returns {string}
+ */
+export function siteKey(building_ids_json, building_coordinates, building_offsets, building_indices, building_index_offsets, context_ids_json, context_coordinates, context_offsets, context_indices, context_index_offsets, geometries, context_geometry, ground_geometry, vegetation, ground_materials, rows, cols, tile_ids_json, scalars, polygon, family) {
+    let deferred22_0;
+    let deferred22_1;
+    try {
+        const ptr0 = passStringToWasm0(building_ids_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(building_coordinates, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(building_offsets, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray32ToWasm0(building_indices, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArray32ToWasm0(building_index_offsets, wasm.__wbindgen_malloc);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passStringToWasm0(context_ids_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len5 = WASM_VECTOR_LEN;
+        const ptr6 = passArrayF64ToWasm0(context_coordinates, wasm.__wbindgen_malloc);
+        const len6 = WASM_VECTOR_LEN;
+        const ptr7 = passArray32ToWasm0(context_offsets, wasm.__wbindgen_malloc);
+        const len7 = WASM_VECTOR_LEN;
+        const ptr8 = passArray32ToWasm0(context_indices, wasm.__wbindgen_malloc);
+        const len8 = WASM_VECTOR_LEN;
+        const ptr9 = passArray32ToWasm0(context_index_offsets, wasm.__wbindgen_malloc);
+        const len9 = WASM_VECTOR_LEN;
+        var ptr10 = isLikeNone(geometries) ? 0 : passStringToWasm0(geometries, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len10 = WASM_VECTOR_LEN;
+        var ptr11 = isLikeNone(context_geometry) ? 0 : passStringToWasm0(context_geometry, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len11 = WASM_VECTOR_LEN;
+        var ptr12 = isLikeNone(ground_geometry) ? 0 : passStringToWasm0(ground_geometry, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len12 = WASM_VECTOR_LEN;
+        var ptr13 = isLikeNone(vegetation) ? 0 : passStringToWasm0(vegetation, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len13 = WASM_VECTOR_LEN;
+        var ptr14 = isLikeNone(ground_materials) ? 0 : passStringToWasm0(ground_materials, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len14 = WASM_VECTOR_LEN;
+        const ptr15 = passArray32ToWasm0(rows, wasm.__wbindgen_malloc);
+        const len15 = WASM_VECTOR_LEN;
+        const ptr16 = passArray32ToWasm0(cols, wasm.__wbindgen_malloc);
+        const len16 = WASM_VECTOR_LEN;
+        const ptr17 = passStringToWasm0(tile_ids_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len17 = WASM_VECTOR_LEN;
+        const ptr18 = passArrayF64ToWasm0(scalars, wasm.__wbindgen_malloc);
+        const len18 = WASM_VECTOR_LEN;
+        const ptr19 = passStringToWasm0(polygon, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len19 = WASM_VECTOR_LEN;
+        const ptr20 = passStringToWasm0(family, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len20 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.siteKey(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12, ptr13, len13, ptr14, len14, ptr15, len15, ptr16, len16, ptr17, len17, ptr18, len18, ptr19, len19, ptr20, len20);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred22_0 = ret[0];
+        deferred22_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred22_0, deferred22_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -5329,7 +8381,13 @@ export function splitFacadeCoreContext(payload_json, inference_size_m, core_x_m,
     try {
         const ptr0 = passStringToWasm0(payload_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.splitFacadeCoreContext(ptr0, len0, inference_size_m, !isLikeNone(core_x_m), isLikeNone(core_x_m) ? 0 : core_x_m, !isLikeNone(core_y_m), isLikeNone(core_y_m) ? 0 : core_y_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.splitFacadeCoreContext(ptr0, len0, inference_size_m, !isLikeNone(core_x_m), isLikeNone(core_x_m) ? 0 : core_x_m, !isLikeNone(core_y_m), isLikeNone(core_y_m) ? 0 : core_y_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -5340,7 +8398,12 @@ export function splitFacadeCoreContext(payload_json, inference_size_m, core_x_m,
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -5362,7 +8425,13 @@ export function splitFacadeCoreContextReport(payload_json, inference_size_m, cor
     try {
         const ptr0 = passStringToWasm0(payload_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.splitFacadeCoreContextReport(ptr0, len0, inference_size_m, !isLikeNone(core_x_m), isLikeNone(core_x_m) ? 0 : core_x_m, !isLikeNone(core_y_m), isLikeNone(core_y_m) ? 0 : core_y_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.splitFacadeCoreContextReport(ptr0, len0, inference_size_m, !isLikeNone(core_x_m), isLikeNone(core_x_m) ? 0 : core_x_m, !isLikeNone(core_y_m), isLikeNone(core_y_m) ? 0 : core_y_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -5373,26 +8442,17 @@ export function splitFacadeCoreContextReport(payload_json, inference_size_m, cor
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
 /**
- * The wait before the next same-key send of a keyed tile submit, seconds
- * (D224). `retry_after_s` is `undefined` when the response had no
- * `Retry-After`. See `ir_geo::area_retry::submit_resend_delay_seconds`.
- * @param {number} sends_done
- * @param {number} jitter_unit
- * @param {number | null} [retry_after_s]
- * @returns {number}
- */
-export function submitResendDelaySeconds(sends_done, jitter_unit, retry_after_s) {
-    const ret = wasm.submitResendDelaySeconds(sends_done, jitter_unit, !isLikeNone(retry_after_s), isLikeNone(retry_after_s) ? 0 : retry_after_s);
-    return ret;
-}
-
-/**
- * The columns of a blob, in the shape `joinSurfaceJobs` returns, plus
+ * The columns of a blob, in the shape `SurfaceJoinStream.finish` returns, plus
  * `layoutKey` (absent when the blob has none). Refuses a blob the kernel
  * cannot read, an unknown version included.
  * @param {Uint8Array} bytes
@@ -5401,7 +8461,13 @@ export function submitResendDelaySeconds(sends_done, jitter_unit, retry_after_s)
 export function surfaceColumnsFromBytes(bytes) {
     const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.surfaceColumnsFromBytes(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfaceColumnsFromBytes(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5417,13 +8483,79 @@ export function surfaceColumnsFromBytes(bytes) {
 export function surfaceColumnsToBytes(columns, layout_key) {
     var ptr0 = isLikeNone(layout_key) ? 0 : passStringToWasm0(layout_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.surfaceColumnsToBytes(columns, ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfaceColumnsToBytes(columns, ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
     var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v2;
+}
+
+/**
+ * The capture of a one-job surface request `body` (its JSON wire bytes), or
+ * `undefined` when the body has nothing to synthesize.
+ * @param {Uint8Array} body
+ * @returns {Uint8Array | undefined}
+ */
+export function surfaceJobCapture(body) {
+    const ptr0 = passArray8ToWasm0(body, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfaceJobCapture(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    let v2;
+    if (ret[0] !== 0) {
+        v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v2;
+}
+
+/**
+ * The per-cell triangles of job `jobId`'s downloaded `archive`, drawn from
+ * its capture in `store` (released): `{ ids, cellOffsets, triangleOffsets,
+ * drawn, positions, fallbackReasons }` (`triangleOffsets` is empty without
+ * triangles; `positions` holds 9 per triangle).
+ * @param {Uint8Array} archive
+ * @param {CaptureStore} store
+ * @param {string} job_id
+ * @param {bigint} max_total_bytes
+ * @param {number} max_metadata_bytes
+ * @param {bigint} max_cells
+ * @param {bigint} max_triangle_values
+ * @returns {any}
+ */
+export function surfaceJobTriangles(archive, store, job_id, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values) {
+    const ptr0 = passArray8ToWasm0(archive, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    _assertClass(store, CaptureStore);
+    const ptr1 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfaceJobTriangles(ptr0, len0, store.__wbg_ptr, ptr1, len1, max_total_bytes, max_metadata_bytes, max_cells, max_triangle_values);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
@@ -5444,7 +8576,13 @@ export function surfaceColumnsToBytes(columns, layout_key) {
  * @returns {any}
  */
 export function surfaceRenderBuffers(columns) {
-    const ret = wasm.surfaceRenderBuffers(columns);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfaceRenderBuffers(columns);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5471,7 +8609,13 @@ export function surfaceValuesF32(bytes, dtype, divisor, valid, start, end) {
     const len1 = WASM_VECTOR_LEN;
     var ptr2 = isLikeNone(valid) ? 0 : passArray8ToWasm0(valid, wasm.__wbindgen_malloc);
     var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.surfaceValuesF32(ptr0, len0, ptr1, len1, divisor, ptr2, len2, start, end);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfaceValuesF32(ptr0, len0, ptr1, len1, divisor, ptr2, len2, start, end);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5481,14 +8625,57 @@ export function surfaceValuesF32(bytes, dtype, divisor, valid, start, end) {
 }
 
 /**
+ * The wire values of the pinned surface fields (JSON in and out).
+ * @param {string} fields
+ * @returns {string}
+ */
+export function surfaceWireFields(fields) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(fields, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.surfaceWireFields(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
  * The canonical defaults for the three optional synthesis knobs, so a TS caller
  * can import them instead of hardcoding literals that could drift from the
  * kernel. Returns `[partialCells, minCoverage, emitCellTris]`.
  * @returns {any[]}
  */
 export function surfgridDefaults() {
-    const ret = wasm.surfgridDefaults();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfgridDefaults();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v1;
 }
@@ -5499,7 +8686,13 @@ export function surfgridDefaults() {
  * @returns {number}
  */
 export function surfgridVersion() {
-    const ret = wasm.surfgridVersion();
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.surfgridVersion();
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret >>> 0;
 }
 
@@ -5513,7 +8706,13 @@ export function surfgridVersion() {
 export function synthesizeFacadeLayoutHandle(request_json) {
     const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeFacadeLayoutHandle(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.synthesizeFacadeLayoutHandle(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5575,7 +8774,13 @@ export function synthesizeSurfaces(geometries_json, mode, grid_size, offset, max
     const len1 = WASM_VECTOR_LEN;
     var ptr2 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr2, len2);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.synthesizeSurfaces(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr2, len2);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5607,7 +8812,13 @@ export function synthesizeSurfacesFromCapture(capture, mode, grid_size, offset, 
     const len1 = WASM_VECTOR_LEN;
     var ptr2 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfacesFromCapture(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr2, len2);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.synthesizeSurfacesFromCapture(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr2, len2);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -5649,11 +8860,49 @@ export function synthesizeSurfacesOnTerrain(geometries_json, mode, grid_size, of
     const len3 = WASM_VECTOR_LEN;
     var ptr4 = isLikeNone(mesh_cleaning) ? 0 : passStringToWasm0(mesh_cleaning, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len4 = WASM_VECTOR_LEN;
-    const ret = wasm.synthesizeSurfacesOnTerrain(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr4, len4);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.synthesizeSurfacesOnTerrain(ptr0, len0, ptr1, len1, grid_size, offset, max_sensors, ptr2, len2, ptr3, len3, isLikeNone(partial_cells) ? 0xFFFFFF : partial_cells ? 1 : 0, !isLikeNone(min_coverage), isLikeNone(min_coverage) ? 0 : min_coverage, isLikeNone(emit_cell_tris) ? 0xFFFFFF : emit_cell_tris ? 1 : 0, isLikeNone(return_buffers) ? 0xFFFFFF : return_buffers ? 1 : 0, isLikeNone(compact_cells) ? 0xFFFFFF : compact_cells ? 1 : 0, ptr4, len4);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * The content key a terrain document would have (SHA-256 hex of its UTF-8
+ * bytes): what `SiteTerrain.contentKey` gives after a read.
+ * @param {string} document
+ * @returns {string}
+ */
+export function terrainContentKey(document) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(document, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.terrainContentKey(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -5666,8 +8915,53 @@ export function synthesizeSurfacesOnTerrain(geometries_json, mode, grid_size, of
 export function terrainHandleHashApplies(model) {
     const ptr0 = passStringToWasm0(model, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.terrainHandleHashApplies(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.terrainHandleHashApplies(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret !== 0;
+}
+
+/**
+ * The terrain margin of a run: `{"requested_m", "effective_m"}` as JSON.
+ * `marginM` undefined is the kernel default (0 m).
+ * @param {string | null} [analysis_type]
+ * @param {number | null} [margin_m]
+ * @returns {string}
+ */
+export function terrainMargin(analysis_type, margin_m) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        var ptr0 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.terrainMargin(ptr0, len0, !isLikeNone(margin_m), isLikeNone(margin_m) ? 0 : margin_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -5682,13 +8976,51 @@ export function terrainTriangleCap(index_lengths) {
     try {
         const ptr0 = passArray32ToWasm0(index_lengths, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.terrainTriangleCap(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.terrainTriangleCap(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred2_0 = ret[0];
         deferred2_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
+}
+
+/**
+ * `(lon, lat)` of a tile's own frame origin, as the site arena anchors that
+ * tile (`ir_geo::tiling::scalar_port::tile_frame_origin`): what a facade
+ * layout rebuild needs for a job's `tileOrigin`. Not the host's scalar
+ * inverse, which differs in the last place.
+ * @param {number} row
+ * @param {number} col
+ * @param {string | null | undefined} analysis_type
+ * @param {number} site_lon
+ * @param {number} site_lat
+ * @returns {Float64Array}
+ */
+export function tileFrameOrigin(row, col, analysis_type, site_lon, site_lat) {
+    var ptr0 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.tileFrameOrigin(row, col, ptr0, len0, site_lon, site_lat);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
 }
 
 /**
@@ -5700,7 +9032,13 @@ export function terrainTriangleCap(index_lengths) {
 export function tileLocationApplies(analysis_type) {
     const ptr0 = passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.tileLocationApplies(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.tileLocationApplies(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret !== 0;
 }
 
@@ -5717,10 +9055,57 @@ export function tileLocationApplies(analysis_type) {
 export function tileSwOffset(row, col, analysis_type) {
     var ptr0 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.tileSwOffset(row, col, ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.tileSwOffset(row, col, ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
     return v2;
+}
+
+/**
+ * One job's price for `analysisType` in the price list (JSON); throws when
+ * the list has none.
+ * @param {string} pricing
+ * @param {string} analysis_type
+ * @returns {string}
+ */
+export function tokensPerJob(pricing, analysis_type) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(pricing, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.tokensPerJob(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -5735,7 +9120,13 @@ export function tileSwOffset(row, col, analysis_type) {
 export function transformBuildingCoords(coordinates, offset_x, offset_y) {
     const ptr0 = passArrayF64ToWasm0(coordinates, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.transformBuildingCoords(ptr0, len0, offset_x, offset_y);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.transformBuildingCoords(ptr0, len0, offset_x, offset_y);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5759,7 +9150,13 @@ export function translateMeshes(meshes_json, origin_x, origin_y, destination_x, 
     try {
         const ptr0 = passStringToWasm0(meshes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.translateMeshes(ptr0, len0, origin_x, origin_y, destination_x, destination_y);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.translateMeshes(ptr0, len0, origin_x, origin_y, destination_x, destination_y);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -5770,8 +9167,38 @@ export function translateMeshes(meshes_json, origin_x, origin_y, destination_x, 
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
+}
+
+/**
+ * The one tree z warning of a run, or undefined: `treesWithoutZ` (the
+ * site's count) is not zero and `terrainAlignment` is `"as-is"`.
+ * @param {number} trees_without_z
+ * @param {string | null} [terrain_alignment]
+ * @returns {string | undefined}
+ */
+export function treeZWarning(trees_without_z, terrain_alignment) {
+    var ptr0 = isLikeNone(terrain_alignment) ? 0 : passStringToWasm0(terrain_alignment, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.treeZWarning(trees_without_z, ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    let v2;
+    if (ret[0] !== 0) {
+        v2 = getStringFromWasm0(ret[0], ret[1]);
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v2;
 }
 
 /**
@@ -5796,7 +9223,13 @@ export function treesNormalize(fc_json, source, id_prefix) {
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(id_prefix) ? 0 : passStringToWasm0(id_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.treesNormalize(ptr0, len0, ptr1, len1, ptr2, len2);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.treesNormalize(ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr4 = ret[0];
         var len4 = ret[1];
         if (ret[3]) {
@@ -5807,7 +9240,12 @@ export function treesNormalize(fc_json, source, id_prefix) {
         deferred5_1 = len4;
         return getStringFromWasm0(ptr4, len4);
     } finally {
-        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -5822,7 +9260,13 @@ export function treesNormalize(fc_json, source, id_prefix) {
 export function unpackCoordinates(coordinates_bin) {
     const ptr0 = passStringToWasm0(coordinates_bin, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.unpackCoordinates(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.unpackCoordinates(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5841,7 +9285,13 @@ export function unpackCoordinates(coordinates_bin) {
 export function unpackIndices(indices_bin) {
     const ptr0 = passStringToWasm0(indices_bin, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.unpackIndices(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.unpackIndices(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5869,7 +9319,13 @@ export function unpackIndices(indices_bin) {
 export function validateGroundLayers(document) {
     const ptr0 = passStringToWasm0(document, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.validateGroundLayers(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.validateGroundLayers(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
@@ -5885,7 +9341,13 @@ export function validateGroundLayers(document) {
 export function validateMeshIndices(indices_json, vertex_count) {
     const ptr0 = passStringToWasm0(indices_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.validateMeshIndices(ptr0, len0, vertex_count);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.validateMeshIndices(ptr0, len0, vertex_count);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
@@ -5906,7 +9368,13 @@ export function validatePolygon(polygon_json) {
     try {
         const ptr0 = passStringToWasm0(polygon_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.validatePolygon(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.validatePolygon(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -5917,7 +9385,12 @@ export function validatePolygon(polygon_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -5949,7 +9422,13 @@ export function validateSceneAlignment(solids_json, sensor_points, terrain_coord
         const len2 = WASM_VECTOR_LEN;
         const ptr3 = passArray32ToWasm0(terrain_indices, wasm.__wbindgen_malloc);
         const len3 = WASM_VECTOR_LEN;
-        const ret = wasm.validateSceneAlignment(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, !isLikeNone(skirt_depth_m), isLikeNone(skirt_depth_m) ? 0 : skirt_depth_m, !isLikeNone(epsilon_m), isLikeNone(epsilon_m) ? 0 : epsilon_m);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.validateSceneAlignment(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, !isLikeNone(skirt_depth_m), isLikeNone(skirt_depth_m) ? 0 : skirt_depth_m, !isLikeNone(epsilon_m), isLikeNone(epsilon_m) ? 0 : epsilon_m);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr5 = ret[0];
         var len5 = ret[1];
         if (ret[3]) {
@@ -5960,7 +9439,52 @@ export function validateSceneAlignment(solids_json, sensor_points, terrain_coord
         deferred6_1 = len5;
         return getStringFromWasm0(ptr5, len5);
     } finally {
-        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * Check one analysis window (JSON) and return it; throws.
+ * @param {string} window
+ * @param {string | null} [analysis_type]
+ * @returns {string}
+ */
+export function validateTimeWindow(window, analysis_type) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(window, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        var ptr1 = isLikeNone(analysis_type) ? 0 : passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len1 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.validateTimeWindow(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -5971,12 +9495,23 @@ export function vegetationDimensionKeys() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.vegetationDimensionKeys();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.vegetationDimensionKeys();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -5997,7 +9532,13 @@ export function vegetationPointsToMeshes(features_json, reference_lon, reference
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(registry_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.vegetationPointsToMeshes(ptr0, len0, reference_lon, reference_lat, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.vegetationPointsToMeshes(ptr0, len0, reference_lon, reference_lat, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6008,7 +9549,12 @@ export function vegetationPointsToMeshes(features_json, reference_lon, reference
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6024,12 +9570,23 @@ export function vegetationRegistry() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.vegetationRegistry();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.vegetationRegistry();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6042,12 +9599,23 @@ export function vegetationRegistryDocument() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.vegetationRegistryDocument();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.vegetationRegistryDocument();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6060,12 +9628,23 @@ export function vegetationRegistryVersion() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.vegetationRegistryVersion();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.vegetationRegistryVersion();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6083,7 +9662,13 @@ export function verifyGeometryAck(accept_body_json, expected_groups) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArrayJsValueToWasm0(expected_groups, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.verifyGeometryAck(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.verifyGeometryAck(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6094,7 +9679,12 @@ export function verifyGeometryAck(accept_body_json, expected_groups) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6127,7 +9717,13 @@ export function walkGraphBuild(segments, connectors, origin_lon, origin_lat, wal
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(connectors, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.walkGraphBuild(ptr0, len0, ptr1, len1, origin_lon, origin_lat, walk_speed_kph);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.walkGraphBuild(ptr0, len0, ptr1, len1, origin_lon, origin_lat, walk_speed_kph);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6138,7 +9734,12 @@ export function walkGraphBuild(segments, connectors, origin_lon, origin_lat, wal
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6157,23 +9758,46 @@ export class wbg_rayon_PoolBuilder {
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wbg_rayon_poolbuilder_free(ptr, 0);
+        __wbg_call_guard();
+        try {
+            wasm.__wbg_wbg_rayon_poolbuilder_free(ptr, 0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+
     }
     build() {
-        wasm.wbg_rayon_poolbuilder_build(this.__wbg_ptr);
+        __wbg_call_guard();
+        try {
+            wasm.wbg_rayon_poolbuilder_build(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
     /**
      * @returns {number}
      */
     numThreads() {
-        const ret = wasm.wbg_rayon_poolbuilder_numThreads(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.wbg_rayon_poolbuilder_numThreads(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret >>> 0;
     }
     /**
      * @returns {number}
      */
     receiver() {
-        const ret = wasm.wbg_rayon_poolbuilder_receiver(this.__wbg_ptr);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.wbg_rayon_poolbuilder_receiver(this.__wbg_ptr);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         return ret >>> 0;
     }
 }
@@ -6183,7 +9807,56 @@ if (Symbol.dispose) wbg_rayon_PoolBuilder.prototype[Symbol.dispose] = wbg_rayon_
  * @param {number} receiver
  */
 export function wbg_rayon_start_worker(receiver) {
-    wasm.wbg_rayon_start_worker(receiver);
+    __wbg_call_guard();
+    try {
+        wasm.wbg_rayon_start_worker(receiver);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+}
+
+/**
+ * The weather arrays `analysisType` reads, by request name, from catalog
+ * weather (JSON), as JSON; throws on a gap, a bad window or a bad wind pair.
+ * @param {string} weather
+ * @param {string} analysis_type
+ * @param {string | null} [time_period]
+ * @returns {string}
+ */
+export function weatherColumns(weather, analysis_type, time_period) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(weather, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(analysis_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        var ptr2 = isLikeNone(time_period) ? 0 : passStringToWasm0(time_period, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len2 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherColumns(ptr0, len0, ptr1, len1, ptr2, len2);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
 }
 
 /**
@@ -6205,7 +9878,13 @@ export function weatherFilterHours(station_json, time_period_json) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(time_period_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.weatherFilterHours(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherFilterHours(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6216,7 +9895,12 @@ export function weatherFilterHours(station_json, time_period_json) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6239,7 +9923,13 @@ export function weatherIdentity(document) {
     try {
         const ptr0 = passStringToWasm0(document, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.weatherIdentity(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherIdentity(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -6250,7 +9940,12 @@ export function weatherIdentity(document) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6279,7 +9974,13 @@ export function weatherModelInputs(document, request_json) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.weatherModelInputs(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherModelInputs(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6290,41 +9991,12 @@ export function weatherModelInputs(document, request_json) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-}
-
-/**
- * Rank `catalog_json`'s stations by great-circle distance from
- * `(lat, lon)`, matching MongoDB's `$geoNear`: spherical distance at
- * Earth radius 6378.1 km, radius cutoff, `limit` results, ascending,
- * ties broken by catalog (input) order. Returns a JSON array of
- * `{uuid, fileName, location_data}`.
- * @param {string} catalog_json
- * @param {number} lat
- * @param {number} lon
- * @param {number} radius_km
- * @param {number} limit
- * @returns {string}
- */
-export function weatherNearestStations(catalog_json, lat, lon, radius_km, limit) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-        const ptr0 = passStringToWasm0(catalog_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.weatherNearestStations(ptr0, len0, lat, lon, radius_km, limit);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
-        if (ret[3]) {
-            ptr2 = 0; len2 = 0;
-            throw takeFromExternrefTable0(ret[2]);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
 
@@ -6361,7 +10033,13 @@ export function weatherParseEpw(text, options_json) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(options_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.weatherParseEpw(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherParseEpw(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6372,7 +10050,93 @@ export function weatherParseEpw(text, options_json) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The generation folder URL a catalog pointer (`latest.json` bytes) names
+ * under `baseUrl` (no trailing slash). Throws when the pointer is not a JSON
+ * object with a usable `path`.
+ * @param {string} base_url
+ * @param {Uint8Array} pointer
+ * @returns {string}
+ */
+export function weatherPointerFolder(base_url, pointer) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(base_url, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(pointer, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherPointerFolder(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+    }
+}
+
+/**
+ * The records of a `weatherFilterHours` answer: a JSON array with one
+ * `{field: value | null}` object per hour. See `ir_geodata::weather::rows`.
+ * Throws naming a measurement cell that is not numeric.
+ * @param {string} filtered_json
+ * @returns {string}
+ */
+export function weatherRows(filtered_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(filtered_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherRows(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6399,7 +10163,13 @@ export function weatherRunIdentity(inputs_json) {
     try {
         const ptr0 = passStringToWasm0(inputs_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.weatherRunIdentity(ptr0, len0);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.weatherRunIdentity(ptr0, len0);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -6410,8 +10180,47 @@ export function weatherRunIdentity(inputs_json) {
         deferred3_1 = len2;
         return getStringFromWasm0(ptr2, len2);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
+}
+
+/**
+ * Weld many meshes in one call, each on its own: join vertices at most
+ * `toleranceM` apart (metres; `undefined` = the kernel default, 0 =
+ * bit-identical only) to
+ * the first earlier one, then drop the triangles that became degenerate and
+ * exact duplicates. No vertex moves; the winding is kept. Returns
+ * `{ coordinates, vertOffsets, indices, faceOffsets, verticesWelded }`.
+ * @param {any} coordinates
+ * @param {Uint32Array} vert_offsets
+ * @param {Uint32Array} indices
+ * @param {Uint32Array} face_offsets
+ * @param {number | null} [tolerance_m]
+ * @returns {object}
+ */
+export function weldMeshes(coordinates, vert_offsets, indices, face_offsets, tolerance_m) {
+    const ptr0 = passArray32ToWasm0(vert_offsets, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(face_offsets, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.weldMeshes(coordinates, ptr0, len0, ptr1, len1, ptr2, len2, !isLikeNone(tolerance_m), isLikeNone(tolerance_m) ? 0 : tolerance_m);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
@@ -6423,7 +10232,13 @@ export function weatherRunIdentity(inputs_json) {
 export function windClassOrdinal(label) {
     const ptr0 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.windClassOrdinal(ptr0, len0);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.windClassOrdinal(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
     return ret === Number.MAX_SAFE_INTEGER ? undefined : ret;
 }
 
@@ -6440,12 +10255,23 @@ export function windClassOrdinals() {
     let deferred1_0;
     let deferred1_1;
     try {
-        const ret = wasm.windClassOrdinals();
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.windClassOrdinals();
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
@@ -6464,7 +10290,13 @@ export function wrapMeshToBimFile(mesh_json, guid) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(guid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wrapMeshToBimFile(ptr0, len0, ptr1, len1);
+        let ret;
+        __wbg_call_guard();
+        try {
+            ret = wasm.wrapMeshToBimFile(ptr0, len0, ptr1, len1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {
@@ -6475,99 +10307,146 @@ export function wrapMeshToBimFile(mesh_json, guid) {
         deferred4_1 = len3;
         return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        __wbg_call_guard();
+        try {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        } catch(e) {
+            __wbg_handle_catch(e);
+        }
     }
 }
 
 /**
- * Deflate `payload` into the one-entry `payload.json` ZIP archive every
+ * The archives of a `zipPayloadJsonManyStart` task, in payload order.
+ * @param {PoolTask} task
+ * @returns {Uint8Array[]}
+ */
+export function zipPayloadJsonManyEnd(task) {
+    _assertClass(task, PoolTask);
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.zipPayloadJsonManyEnd(task.__wbg_ptr);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+}
+
+/**
+ * Deflate each payload into the one-entry `payload.json` ZIP archive every
  * json submit body and geometry-reference document uses: the same
  * deterministic, fixed-timestamp writer as the D101 tile artifacts
- * (`ir_simprep::site_artifacts::zip_payload_json`), always DEFLATE. Replaces
- * `internal/zip.ts`.
- * @param {Uint8Array} payload
- * @returns {Uint8Array}
+ * (`ir_simprep::site_artifacts::zip_payload_json`), always DEFLATE. ONE call
+ * for all the bodies a host has ready (D299): on the rayon pool in the
+ * threaded core, one after the other in the serial core; the bytes are the
+ * same.
+ *
+ * `...Start` gives the work to the pool and returns at once (a
+ * [`PoolTask`]); `zipPayloadJsonManyEnd` takes the archives.
+ * @param {Uint8Array[]} payloads
+ * @returns {PoolTask}
  */
-export function zipPayloadJson(payload) {
-    const ret = wasm.zipPayloadJson(payload);
-    return ret;
+export function zipPayloadJsonManyStart(payloads) {
+    const ptr0 = passArrayJsValueToWasm0(payloads, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    let ret;
+    __wbg_call_guard();
+    try {
+        ret = wasm.zipPayloadJsonManyStart(ptr0, len0);
+    } catch(e) {
+        __wbg_handle_catch(e);
+    }
+    return PoolTask.__wrap(ret);
 }
 function __wbg_get_imports(memory) {
     const import0 = {
         __proto__: null,
-        __wbg_Error_92b29b0548f8b746: function(arg0, arg1) {
+        __wbg_Error_30c8987f7c2ed4e2: function() { return wrapError(function (arg0, arg1) {
             const ret = Error(getStringFromWasm0(arg0, arg1));
             return ret;
-        },
-        __wbg___wbindgen_boolean_get_fa956cfa2d1bd751: function(arg0) {
+        }, arguments); },
+        __wbg___wbindgen_boolean_get_5b446f51afd21013: function() { return wrapError(function (arg0) {
             const v = arg0;
             const ret = typeof(v) === 'boolean' ? v : undefined;
             return isLikeNone(ret) ? 0xFFFFFF : ret ? 1 : 0;
-        },
-        __wbg___wbindgen_debug_string_c25d447a39f5578f: function(arg0, arg1) {
+        }, arguments); },
+        __wbg___wbindgen_debug_string_4687d8d8c2017d52: function() { return wrapError(function (arg0, arg1) {
             const ret = debugString(arg1);
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len1 = WASM_VECTOR_LEN;
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_is_null_ea9085d691f535d3: function(arg0) {
-            const ret = arg0 === null;
-            return ret;
-        },
-        __wbg___wbindgen_is_string_ea5e6cc2e4141dfe: function(arg0) {
+        }, arguments); },
+        __wbg___wbindgen_is_string_90b56bc79aad6f6c: function() { return wrapError(function (arg0) {
             const ret = typeof(arg0) === 'string';
             return ret;
-        },
-        __wbg___wbindgen_is_undefined_c05833b95a3cf397: function(arg0) {
+        }, arguments); },
+        __wbg___wbindgen_is_undefined_8865fb403f8fe9d8: function() { return wrapError(function (arg0) {
             const ret = arg0 === undefined;
             return ret;
-        },
-        __wbg___wbindgen_memory_de265df8aadd6273: function() {
+        }, arguments); },
+        __wbg___wbindgen_memory_caa4a6165639c8b5: function() { return wrapError(function () {
             const ret = wasm.memory;
             return ret;
-        },
-        __wbg___wbindgen_module_a22faa8909381977: function() {
+        }, arguments); },
+        __wbg___wbindgen_module_7115fb14045f9891: function() { return wrapError(function () {
             const ret = wasmModule;
             return ret;
-        },
-        __wbg___wbindgen_number_get_394265ed1e1b84ee: function(arg0, arg1) {
+        }, arguments); },
+        __wbg___wbindgen_number_get_2e0e7dee9f701a71: function() { return wrapError(function (arg0, arg1) {
             const obj = arg1;
             const ret = typeof(obj) === 'number' ? obj : undefined;
             getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        },
-        __wbg___wbindgen_string_get_b0ca35b86a603356: function(arg0, arg1) {
+        }, arguments); },
+        __wbg___wbindgen_panic_error_1da2bf9da04e868c: function() { return wrapError(function (arg0) {
+            const ret = new PanicError(arg0);
+            return ret;
+        }, arguments); },
+        __wbg___wbindgen_rethrow_cb2e88c6b2a16733: function() { return wrapError(function (arg0) {
+            throw new WebAssembly.Exception(__wbindgen_wrapped_jstag, [arg0]);
+        }, arguments); },
+        __wbg___wbindgen_string_get_0380ccaa2f57f0d9: function() { return wrapError(function (arg0, arg1) {
             const obj = arg1;
             const ret = typeof(obj) === 'string' ? obj : undefined;
             var ptr1 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             var len1 = WASM_VECTOR_LEN;
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
-            throw new Error(getStringFromWasm0(arg0, arg1));
-        },
-        __wbg_from_13e323c65fc8f464: function(arg0) {
+        }, arguments); },
+        __wbg___wbindgen_throw_41e9ee4f547fc59a: function() { return wrapError(function (arg0, arg1) {
+            throw new WebAssembly.Exception(__wbindgen_wrapped_jstag, [new Error(getStringFromWasm0(arg0, arg1))]);
+        }, arguments); },
+        __wbg_capturehold_new: function() { return wrapError(function (arg0) {
+            const ret = CaptureHold.__wrap(arg0);
+            return ret;
+        }, arguments); },
+        __wbg_from_296ca31f8d0f1c52: function() { return wrapError(function (arg0) {
             const ret = Array.from(arg0);
             return ret;
-        },
-        __wbg_get_507a50627bffa49b: function(arg0, arg1) {
-            const ret = arg0[arg1 >>> 0];
-            return ret;
-        },
-        __wbg_get_78f252d074a84d0b: function() { return handleError(function (arg0, arg1) {
+        }, arguments); },
+        __wbg_get_31af05bd4842a84f: function() { return wrapError(function (arg0, arg1) {
             const ret = Reflect.get(arg0, arg1);
             return ret;
         }, arguments); },
-        __wbg_get_unchecked_6e0ad6d2a41b06f6: function(arg0, arg1) {
+        __wbg_get_6c896e0571ddae51: function() { return wrapError(function (arg0, arg1) {
             const ret = arg0[arg1 >>> 0];
             return ret;
-        },
-        __wbg_infraredAbortProcess_7fe4534a4822df5f: function(arg0, arg1, arg2, arg3) {
+        }, arguments); },
+        __wbg_get_unchecked_288889d017702237: function() { return wrapError(function (arg0, arg1) {
+            const ret = arg0[arg1 >>> 0];
+            return ret;
+        }, arguments); },
+        __wbg_infraredAbortProcess_7fe4534a4822df5f: function() { return wrapError(function (arg0, arg1, arg2, arg3) {
             infraredAbortProcess(getStringFromWasm0(arg0, arg1), getStringFromWasm0(arg2, arg3));
-        },
-        __wbg_instanceof_Float32Array_0734a24e43081e98: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Float32Array_595afb0f28b828c9: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Float32Array;
@@ -6576,8 +10455,8 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_instanceof_Float64Array_92032ec8f216bceb: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Float64Array_8a59377f9eec1b8b: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Float64Array;
@@ -6586,8 +10465,8 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_instanceof_Int16Array_14184a9fabaa7da7: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Int16Array_dc79388a406d1748: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Int16Array;
@@ -6596,8 +10475,8 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_instanceof_Uint16Array_4688e2da208e85be: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Uint16Array_eff85aa31096af44: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Uint16Array;
@@ -6606,8 +10485,8 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_instanceof_Uint32Array_27cc9a6a9eb3732e: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Uint32Array_53a4facaf04b8a8b: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Uint32Array;
@@ -6616,8 +10495,8 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_instanceof_Uint8Array_309b927aaf7a3fc7: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Uint8Array_828cef2aaacafc31: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Uint8Array;
@@ -6626,8 +10505,8 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_instanceof_Window_05ba1ee4f6781663: function(arg0) {
+        }, arguments); },
+        __wbg_instanceof_Window_82d71df4eddf88bc: function() { return wrapError(function (arg0) {
             let result;
             try {
                 result = arg0 instanceof Window;
@@ -6636,194 +10515,186 @@ function __wbg_get_imports(memory) {
             }
             const ret = result;
             return ret;
-        },
-        __wbg_isArray_0677c962b281d01a: function(arg0) {
+        }, arguments); },
+        __wbg_isArray_e15a2ff68ffdbef2: function() { return wrapError(function (arg0) {
             const ret = Array.isArray(arg0);
             return ret;
-        },
-        __wbg_length_0133fa10e3234c57: function(arg0) {
+        }, arguments); },
+        __wbg_length_3035e53132b7a991: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_length_1f0964f4a5e2c6d8: function(arg0) {
+        }, arguments); },
+        __wbg_length_511b1f84719d3462: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_length_370319915dc99107: function(arg0) {
+        }, arguments); },
+        __wbg_length_58572db4c38f3c3e: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_length_381d540857ec99e8: function(arg0) {
+        }, arguments); },
+        __wbg_length_7f3c00c40364105e: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_length_530364c9b0329c79: function(arg0) {
+        }, arguments); },
+        __wbg_length_b5f0008bbf60cf59: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_length_98f10d1e2f4ea968: function(arg0) {
+        }, arguments); },
+        __wbg_length_d4bdea10311bd9cf: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_length_f835a518a2e03647: function(arg0) {
+        }, arguments); },
+        __wbg_length_e5fdd54468b9e6ed: function() { return wrapError(function (arg0) {
             const ret = arg0.length;
             return ret;
-        },
-        __wbg_new_32b398fb48b6d94a: function() {
-            const ret = new Array();
-            return ret;
-        },
-        __wbg_new_da52cf8fe3429cb2: function() {
+        }, arguments); },
+        __wbg_new_617a8cdb8bb1130e: function() { return wrapError(function () {
             const ret = new Object();
             return ret;
-        },
-        __wbg_new_from_slice_7568ba55b4a7e81f: function(arg0, arg1) {
-            const ret = new Uint32Array(getArrayU32FromWasm0(arg0, arg1));
+        }, arguments); },
+        __wbg_new_ee2291f50781bf1d: function() { return wrapError(function () {
+            const ret = new Array();
             return ret;
-        },
-        __wbg_new_from_slice_77cdfb7977362f3c: function(arg0, arg1) {
-            const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
-            return ret;
-        },
-        __wbg_new_from_slice_7e254b47c77fb8cc: function(arg0, arg1) {
-            const ret = new Float64Array(getArrayF64FromWasm0(arg0, arg1));
-            return ret;
-        },
-        __wbg_new_from_slice_8ba5ff5ce7af1fe8: function(arg0, arg1) {
+        }, arguments); },
+        __wbg_new_from_slice_23f60f47cde8d664: function() { return wrapError(function (arg0, arg1) {
             const ret = new Uint16Array(getArrayU16FromWasm0(arg0, arg1));
             return ret;
-        },
-        __wbg_new_from_slice_c4333d9b7581f1a8: function(arg0, arg1) {
+        }, arguments); },
+        __wbg_new_from_slice_2443ca2017fac0fd: function() { return wrapError(function (arg0, arg1) {
             const ret = new Int16Array(getArrayI16FromWasm0(arg0, arg1));
             return ret;
-        },
-        __wbg_new_from_slice_ddf8b82c4d6af38e: function(arg0, arg1) {
+        }, arguments); },
+        __wbg_new_from_slice_37a3c3a194266cb8: function() { return wrapError(function (arg0, arg1) {
+            const ret = new Uint32Array(getArrayU32FromWasm0(arg0, arg1));
+            return ret;
+        }, arguments); },
+        __wbg_new_from_slice_9a868026ffa4208a: function() { return wrapError(function (arg0, arg1) {
+            const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
+            return ret;
+        }, arguments); },
+        __wbg_new_from_slice_ca6ad97db1f4779a: function() { return wrapError(function (arg0, arg1) {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
             return ret;
-        },
-        __wbg_new_with_length_e1d8c8061ed4e317: function(arg0) {
-            const ret = new Float32Array(arg0 >>> 0);
+        }, arguments); },
+        __wbg_new_from_slice_f545fd22ddc142b8: function() { return wrapError(function (arg0, arg1) {
+            const ret = new Float64Array(getArrayF64FromWasm0(arg0, arg1));
             return ret;
-        },
-        __wbg_new_with_length_e6785c33c8e4cce8: function(arg0) {
+        }, arguments); },
+        __wbg_new_with_length_3da0ad195f6f63ba: function() { return wrapError(function (arg0) {
             const ret = new Uint8Array(arg0 >>> 0);
             return ret;
-        },
-        __wbg_new_with_length_f8cbc3a5b9ff9368: function(arg0) {
+        }, arguments); },
+        __wbg_new_with_length_469fcc27bd71672e: function() { return wrapError(function (arg0) {
             const ret = new Array(arg0 >>> 0);
             return ret;
-        },
-        __wbg_of_5f1b88183ddb5d94: function(arg0, arg1) {
+        }, arguments); },
+        __wbg_new_with_length_cc0362bfe8499e5a: function() { return wrapError(function (arg0) {
+            const ret = new Float32Array(arg0 >>> 0);
+            return ret;
+        }, arguments); },
+        __wbg_of_20798cb14708764f: function() { return wrapError(function (arg0, arg1) {
             const ret = Array.of(arg0, arg1);
             return ret;
-        },
-        __wbg_parse_1c0d8a8656d7e016: function() { return handleError(function (arg0, arg1) {
+        }, arguments); },
+        __wbg_parse_0fc53dead14b3b42: function() { return wrapError(function (arg0, arg1) {
             const ret = JSON.parse(getStringFromWasm0(arg0, arg1));
             return ret;
         }, arguments); },
-        __wbg_prototypesetcall_21a175a0a8157491: function(arg0, arg1, arg2) {
-            Float64Array.prototype.set.call(getArrayF64FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_prototypesetcall_2d459e246bf63d88: function(arg0, arg1, arg2) {
-            Int16Array.prototype.set.call(getArrayI16FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_prototypesetcall_4770620bbe4688a0: function(arg0, arg1, arg2) {
-            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_prototypesetcall_62396032bc038599: function(arg0, arg1, arg2) {
+        __wbg_prototypesetcall_06eb15da165dee8f: function() { return wrapError(function (arg0, arg1, arg2) {
             Uint32Array.prototype.set.call(getArrayU32FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_prototypesetcall_94e3eb9c867df1e5: function(arg0, arg1, arg2) {
+        }, arguments); },
+        __wbg_prototypesetcall_2ee09b855e324444: function() { return wrapError(function (arg0, arg1, arg2) {
             Uint16Array.prototype.set.call(getArrayU16FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_prototypesetcall_ba9c9a7197c11933: function(arg0, arg1, arg2) {
+        }, arguments); },
+        __wbg_prototypesetcall_8b03c01e2c0f8066: function() { return wrapError(function (arg0, arg1, arg2) {
             Float32Array.prototype.set.call(getArrayF32FromWasm0(arg0, arg1), arg2);
-        },
-        __wbg_push_d2ae3af0c1217ae6: function(arg0, arg1) {
+        }, arguments); },
+        __wbg_prototypesetcall_bc27214492979395: function() { return wrapError(function (arg0, arg1, arg2) {
+            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+        }, arguments); },
+        __wbg_prototypesetcall_d49a4fab5ca427bc: function() { return wrapError(function (arg0, arg1, arg2) {
+            Float64Array.prototype.set.call(getArrayF64FromWasm0(arg0, arg1), arg2);
+        }, arguments); },
+        __wbg_prototypesetcall_f8d32a400a944612: function() { return wrapError(function (arg0, arg1, arg2) {
+            Int16Array.prototype.set.call(getArrayI16FromWasm0(arg0, arg1), arg2);
+        }, arguments); },
+        __wbg_push_2baf45db356cf468: function() { return wrapError(function (arg0, arg1) {
             const ret = arg0.push(arg1);
             return ret;
-        },
-        __wbg_set_4d7dd76f3dae2926: function(arg0, arg1, arg2) {
-            arg0.set(getArrayU8FromWasm0(arg1, arg2));
-        },
-        __wbg_set_8535240470bf2500: function() { return handleError(function (arg0, arg1, arg2) {
+        }, arguments); },
+        __wbg_set_145a351398b48c65: function() { return wrapError(function (arg0, arg1, arg2) {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
-        __wbg_set_8a16b38e4805b298: function(arg0, arg1, arg2) {
+        __wbg_set_575d3ddb70fe831d: function() { return wrapError(function (arg0, arg1, arg2) {
+            arg0.set(getArrayU8FromWasm0(arg1, arg2));
+        }, arguments); },
+        __wbg_set_bea140a88be9b277: function() { return wrapError(function (arg0, arg1, arg2) {
             arg0[arg1 >>> 0] = arg2;
-        },
-        __wbg_slice_50189eefc9ab9fe9: function(arg0, arg1, arg2) {
+        }, arguments); },
+        __wbg_slice_3b71d4886a340363: function() { return wrapError(function (arg0, arg1, arg2) {
             const ret = arg0.slice(arg1 >>> 0, arg2 >>> 0);
             return ret;
-        },
-        __wbg_startWorkers_8b582d57e92bd2d4: function(arg0, arg1, arg2) {
+        }, arguments); },
+        __wbg_startWorkers_8b582d57e92bd2d4: function() { return wrapError(function (arg0, arg1, arg2) {
             const ret = startWorkers(arg0, arg1, wbg_rayon_PoolBuilder.__wrap(arg2));
             return ret;
-        },
-        __wbg_static_accessor_GLOBAL_4ef717fb391d88b7: function() {
+        }, arguments); },
+        __wbg_static_accessor_GLOBAL_266715b9d96ba635: function() { return wrapError(function () {
             const ret = typeof global === 'undefined' ? null : global;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_static_accessor_GLOBAL_THIS_8d1badc68b5a74f4: function() {
+        }, arguments); },
+        __wbg_static_accessor_GLOBAL_THIS_10fb7dc1ae063179: function() { return wrapError(function () {
             const ret = typeof globalThis === 'undefined' ? null : globalThis;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_static_accessor_SELF_146583524fe1469b: function() {
+        }, arguments); },
+        __wbg_static_accessor_SELF_0b583911f537483a: function() { return wrapError(function () {
             const ret = typeof self === 'undefined' ? null : self;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_static_accessor_WINDOW_f2829a2234d7819e: function() {
+        }, arguments); },
+        __wbg_static_accessor_WINDOW_d7f903d1508cbdc4: function() { return wrapError(function () {
             const ret = typeof window === 'undefined' ? null : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_stringify_b54333f60f1e4dad: function() { return handleError(function (arg0) {
+        }, arguments); },
+        __wbg_stringify_52ff602c1cc4fbb6: function() { return wrapError(function (arg0) {
             const ret = JSON.stringify(arg0);
             return ret;
         }, arguments); },
-        __wbg_subarray_3ed232c8a6baee09: function(arg0, arg1, arg2) {
+        __wbg_subarray_002b94d5e13d1411: function() { return wrapError(function (arg0, arg1, arg2) {
             const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
             return ret;
-        },
-        __wbg_surfacearchive_new: function(arg0) {
-            const ret = SurfaceArchive.__wrap(arg0);
-            return ret;
-        },
-        __wbg_surfacearchive_unwrap: function(arg0) {
-            const ret = SurfaceArchive.__unwrap(arg0);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000001: function(arg0) {
+        }, arguments); },
+        __wbindgen_generic_0000000000000001: function() { return wrapError(function (arg0) {
             // Cast intrinsic for `F64 -> Externref`.
             const ret = arg0;
             return ret;
-        },
-        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+        }, arguments); },
+        __wbindgen_generic_0000000000000002: function() { return wrapError(function (arg0, arg1) {
             // Cast intrinsic for `Ref(Slice(F32)) -> NamedExternref("Float32Array")`.
             const ret = getArrayF32FromWasm0(arg0, arg1);
             return ret;
-        },
-        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
+        }, arguments); },
+        __wbindgen_generic_0000000000000003: function() { return wrapError(function (arg0, arg1) {
             // Cast intrinsic for `Ref(Slice(F64)) -> NamedExternref("Float64Array")`.
             const ret = getArrayF64FromWasm0(arg0, arg1);
             return ret;
-        },
-        __wbindgen_cast_0000000000000004: function(arg0, arg1) {
+        }, arguments); },
+        __wbindgen_generic_0000000000000004: function() { return wrapError(function (arg0, arg1) {
             // Cast intrinsic for `Ref(Slice(U32)) -> NamedExternref("Uint32Array")`.
             const ret = getArrayU32FromWasm0(arg0, arg1);
             return ret;
-        },
-        __wbindgen_cast_0000000000000005: function(arg0, arg1) {
+        }, arguments); },
+        __wbindgen_generic_0000000000000005: function() { return wrapError(function (arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
-        },
-        __wbindgen_cast_0000000000000006: function(arg0) {
+        }, arguments); },
+        __wbindgen_generic_0000000000000006: function() { return wrapError(function (arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return ret;
-        },
-        __wbindgen_init_externref_table: function() {
+        }, arguments); },
+        __wbindgen_init_externref_table: function() { return wrapError(function () {
             const table = wasm.__wbindgen_externrefs;
             const offset = table.grow(4);
             table.set(0, undefined);
@@ -6831,7 +10702,9 @@ function __wbg_get_imports(memory) {
             table.set(offset + 1, null);
             table.set(offset + 2, true);
             table.set(offset + 3, false);
-        },
+        }, arguments); },
+        __wbindgen_jstag: __wbindgen_jstag_polyfill,
+        __wbindgen_wrapped_jstag: __wbindgen_wrapped_jstag,
         memory: memory || new WebAssembly.Memory({initial:28,maximum:65536,shared:true}),
     };
     return {
@@ -6840,9 +10713,47 @@ function __wbg_get_imports(memory) {
     };
 }
 
+const __wbindgen_jstag_polyfill = new WebAssembly.Tag({ parameters: ['externref'] });
+
+
+const __wbindgen_wrapped_jstag = new WebAssembly.Tag({ parameters: ['externref'] });
+
+
+let __wbg_terminated_addr;
+let __wbg_called_abort = false;
+function __wbg_call_abort_hook() {
+    __wbg_called_abort = true;
+    try {
+        const idx = getInt32ArrayMemory0()[wasm.__abort_handler.value / 4];
+        if (idx) wasm.__wbindgen_export.get(idx)();
+    } catch(_) {}
+}
+
+function __wbg_handle_catch(e) {
+    if (e instanceof WebAssembly.Exception && e.is(__wbindgen_wrapped_jstag)) {
+        throw e.getArg(__wbindgen_wrapped_jstag, 0);
+    }
+    getInt32ArrayMemory0()[__wbg_terminated_addr] = 1;
+    __wbg_call_abort_hook();
+    throw e;
+}
+
+
+function __wbg_call_guard() {
+    __wbg_terminated_addr ??= wasm.__instance_terminated.value / 4;
+    const flag = getInt32ArrayMemory0()[__wbg_terminated_addr];
+    if (flag) {
+        if (!__wbg_called_abort) {
+            __wbg_call_abort_hook();
+        }throw new Error('Module terminated');
+    }
+}
 const AreaGridMergerFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_areagridmerger_free(ptr, 1));
+const CaptureHoldFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_capturehold_free(ptr, 1));
 const CaptureStoreFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_capturestore_free(ptr, 1));
@@ -6858,18 +10769,36 @@ const GridDecodeFinalization = (typeof FinalizationRegistry === 'undefined')
 const GridDocumentDecodeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_griddocumentdecode_free(ptr, 1));
+const GridTilesFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_gridtiles_free(ptr, 1));
+const JobWaitFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_jobwait_free(ptr, 1));
+const PoolTaskFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_pooltask_free(ptr, 1));
 const ResultArchiveDecodeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_resultarchivedecode_free(ptr, 1));
+const RunEngineFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_runengine_free(ptr, 1));
 const SiteFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_site_free(ptr, 1));
 const SiteTerrainFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_siteterrain_free(ptr, 1));
-const SurfaceArchiveFinalization = (typeof FinalizationRegistry === 'undefined')
+const SurfaceJobsFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_surfacearchive_free(ptr, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_surfacejobs_free(ptr, 1));
+const SurfaceJoinStreamFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_surfacejoinstream_free(ptr, 1));
+const WeatherCatalogFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_weathercatalog_free(ptr, 1));
 const wbg_rayon_PoolBuilderFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wbg_rayon_poolbuilder_free(ptr, 1));
@@ -7024,6 +10953,14 @@ function getInt16ArrayMemory0() {
     return cachedInt16ArrayMemory0;
 }
 
+let cachedInt32ArrayMemory0 = null;
+function getInt32ArrayMemory0() {
+    if (cachedInt32ArrayMemory0 === null || cachedInt32ArrayMemory0.buffer !== wasm.memory.buffer) {
+        cachedInt32ArrayMemory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32ArrayMemory0;
+}
+
 function getStringFromWasm0(ptr, len) {
     return decodeText(ptr >>> 0, len);
 }
@@ -7052,18 +10989,14 @@ function getUint8ArrayMemory0() {
     return cachedUint8ArrayMemory0;
 }
 
-function handleError(f, args) {
-    try {
-        return f.apply(this, args);
-    } catch (e) {
-        const idx = addToExternrefTable0(e);
-        wasm.__wbindgen_exn_store(idx);
-    }
-}
-
 function isLikeNone(x) {
     return x === undefined || x === null;
 }
+
+class PanicError extends Error {}
+Object.defineProperty(PanicError.prototype, 'name', {
+    value: 'PanicError',
+});
 
 function passArray32ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 4, 4) >>> 0;
@@ -7176,6 +11109,15 @@ if (cachedTextEncoder) {
 
 let WASM_VECTOR_LEN = 0;
 
+function wrapError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        if (e instanceof WebAssembly.Exception) throw e;
+        throw new WebAssembly.Exception(__wbindgen_jstag_polyfill, [e], { traceStack: true });
+    }
+}
+
 let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module, thread_stack_size) {
     wasmInstance = instance;
@@ -7185,6 +11127,7 @@ function __wbg_finalize_init(instance, module, thread_stack_size) {
     cachedFloat32ArrayMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
     cachedInt16ArrayMemory0 = null;
+    cachedInt32ArrayMemory0 = null;
     cachedUint16ArrayMemory0 = null;
     cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
@@ -7198,11 +11141,15 @@ function __wbg_finalize_init(instance, module, thread_stack_size) {
 
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
+        if (!module.ok) {
+            throw new Error(`failed to fetch Wasm: ${module.status} ${module.statusText} fetching '${module.url}'`);
+        }
+
         if (typeof WebAssembly.instantiateStreaming === 'function') {
             try {
                 return await WebAssembly.instantiateStreaming(module, imports);
             } catch (e) {
-                const validResponse = module.ok && expectedResponseType(module.type);
+                const validResponse = expectedResponseType(module.type);
 
                 if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
                     console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);

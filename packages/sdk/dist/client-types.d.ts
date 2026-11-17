@@ -6,6 +6,7 @@ import type { OnGeometryReuseProbe } from "./internal/geometry-reuse/types.js";
 import type { GeometryUrlStore } from "./internal/geometry-url-store.js";
 import type { FetchLike } from "./internal/transport.js";
 import type { Logger } from "./logger.js";
+import type { PricingSource } from "./price-list.js";
 /**
  * An analysis request already written with the API's own keys (kebab-case),
  * the form `AnalysisService.execute` takes. It must have an `"analysis-type"`
@@ -107,6 +108,14 @@ export interface InfraredClientConfig extends AuthOptions {
      * ```
      */
     readonly geometryUrlStore?: GeometryUrlStore;
+    /**
+     * Send the jobs of a binary area run in batch submits of up to 100 jobs
+     * when the API offers them: fewer requests, the same jobs. Each job keeps
+     * its own key and its own charge. Default `true` with `apiKey` or `token`;
+     * a client with `getToken` or `auth` sends one request per job, and so
+     * does `false`.
+     */
+    readonly batchSubmit?: boolean;
 }
 /**
  * Another name for `InfraredClientConfig`.
@@ -115,7 +124,9 @@ export interface InfraredClientConfig extends AuthOptions {
  */
 export type InfraredClientOptions = InfraredClientConfig;
 /**
- * A quick estimate of an area run, from `InfraredClient.previewArea`.
+ * An estimate of an area run, from `InfraredClient.previewArea`, priced with
+ * the API price list: the planned jobs times the price of one job, and 10
+ * seconds per job.
  *
  * @category Run an analysis
  */
@@ -126,20 +137,12 @@ export interface AreaPreview {
     readonly estimatedTimeS: number;
     /** The estimated cost in tokens. */
     readonly estimatedCostTokens: number;
-}
-/**
- * An `AreaPreview` priced with the API's current price list, from
- * `InfraredClient.previewAreaWithPricing`.
- *
- * @category Run an analysis
- */
-export interface AreaPreviewWithPricing extends AreaPreview {
     /** The tokens charged for one job of the previewed analysis. */
     readonly tokensPerJob: number;
-    /** `"remote"` when the price came from the API, `"fallback"` when it could not be fetched and the default was used. */
-    readonly pricingSource: "remote" | "fallback";
-    /** The version of the price list used. Present only when `pricingSource` is `"remote"` and the list has a version. */
+    /** The version of the price list used, when the list has one. */
     readonly pricingVersion?: string;
+    /** Where the price came from: `"live"`, `"cached"` (under 20 minutes old) or `"stale"` (the list could not be fetched again). */
+    readonly pricingSource: PricingSource;
 }
 /**
  * Options for `InfraredClient.runAreaAndWait`: everything `runArea` takes,

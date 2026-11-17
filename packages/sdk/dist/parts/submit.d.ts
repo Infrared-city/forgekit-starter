@@ -1,8 +1,7 @@
 /**
- * Submit the parts of a planned request through the area submit pool
- * (`area/submit-pool.ts`): the same POST rules as an area run (an uncertain
- * POST is never sent again, a 402 stops the rest), and the same retry: only
- * the parts that failed.
+ * Submit the parts of a planned request on the kernel run engine
+ * (`area/engine-jobs.ts`): the same POST rules as an area run, and the same
+ * retry: only the parts that failed.
  */
 import type { AreaJobsService } from "../area/run-options.js";
 import { type Logger } from "../logger.js";

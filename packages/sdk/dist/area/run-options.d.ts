@@ -105,11 +105,7 @@ export interface RunAreaOptions {
      * run with a preview first.
      */
     readonly maxTilesOverride?: number;
-    /**
-     * The most requests sent in parallel while submitting jobs. A positive
-     * whole number; default 8. Status polling in `runAreaAndWait` has its own
-     * default of 5 for the same option.
-     */
+    /** @deprecated No effect: the engine sets the widths. Removed in 2.0. */
     readonly maxWorkers?: number;
     /** A URL the API calls when a job reaches one of `webhookEvents`. */
     readonly webhookUrl?: string;
@@ -129,11 +125,38 @@ export interface RunAreaOptions {
      */
     readonly maxSensorsPerJob?: number;
     /**
+     * How a facade run puts buildings into jobs. `"regular"` (default) counts the
+     * sensors of every group of buildings exactly. `"fast"` counts each building
+     * once, alone, and packs the buildings by the sum of those counts: planning
+     * is faster, and a job holds at most 290,000 sensors (or `maxSensorsPerJob`).
+     * The values of each sensor are the same; only which job carries a building
+     * changes, so the number of jobs can differ. A retry replays the saved jobs.
+     */
+    readonly packing?: "regular" | "fast";
+    /**
      * Metres of terrain read beyond each tile so its edges are seated on real
-     * ground. Default 128; the analysis's own minimum wins when it is larger.
+     * ground. Default 0 m; the analysis's own minimum (solar family: 128 m) wins when it is larger.
      * A retry must repeat the saved value.
      */
     readonly terrainContextMarginM?: number;
+    /**
+     * Metres outside each tile's core within which a `contextGeometry` mesh is
+     * sent with that tile (a square box, core ± reach). Default 600. Must be
+     * larger than the tile margin plus `contextBufferM`, because the context
+     * inside that area is removed.
+     * `null` sends every mesh to every tile: use it when you choose the context
+     * yourself. A changed value changes the tile bodies and their hashes.
+     */
+    readonly contextReachM?: number | null;
+    /**
+     * Metres added round each tile's detailed area (tile core plus the
+     * detailed-geometry margin). In each tile, the `contextGeometry` triangles
+     * inside that area are removed and the rest of each mesh stays, so a merged
+     * city mesh or a ground sheet given as context keeps its parts outside the
+     * area. The SDK logs one warning with the count. Default 10; 0 = no extra
+     * buffer.
+     */
+    readonly contextBufferM?: number;
     /**
      * Not for callers: the SDK builds the terrain context itself. Passing it is
      * refused; use `terrainContextMarginM` instead.
@@ -175,7 +198,7 @@ export interface RunAreaOptions {
  * @category Run an analysis
  */
 export interface CheckAreaStateOptions {
-    /** The most status requests in parallel. A positive whole number; default 5. */
+    /** @deprecated No effect: the engine sets the widths. Removed in 2.0. */
     readonly maxWorkers?: number;
     /** Aborts the status check. */
     readonly signal?: AbortSignal;

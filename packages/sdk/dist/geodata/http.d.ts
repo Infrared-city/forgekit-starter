@@ -1,7 +1,5 @@
 import type { Logger } from "../logger.js";
-import { RangeRetry } from "./retry.js";
 import type { FetchLike } from "../internal/transport.js";
-export { MAX_HTTP_200_BYTES, MAX_RANGE_BYTES } from "./range-answer.js";
 /**
  * A west/south/east/north bounding box in WGS84 degrees.
  *
@@ -58,7 +56,7 @@ export declare function bboxIntersects(a: Bbox, b: Bbox): boolean;
  *
  * @category Geodata
  */
-export declare const DATA_USER_AGENT = "infrared-sdk-ts/1.0.1";
+export declare const DATA_USER_AGENT = "infrared-sdk-ts/1.1.0";
 /**
  * Largest JSON document, in bytes (32 MiB), read from a public host; a larger
  * body is refused.
@@ -97,6 +95,18 @@ export interface PublicRequestOptions {
     readonly stallTimeoutMs?: number;
 }
 /**
+ * The retry state of one public read: the headers of the next attempt, and
+ * the kernel's wait after a failure (`undefined`: give up).
+ *
+ * @category Geodata
+ */
+export interface RequestRetry {
+    /** Called once before each attempt; the extra headers it needs. */
+    attempt(): Record<string, string>;
+    /** The wait in ms before the next attempt after `error`, or `undefined`. */
+    next(error: unknown): number | undefined;
+}
+/**
  * Send one GET request to an allowed public host and hand the response to a
  * callback, under a single deadline that covers the headers and the body.
  *
@@ -115,7 +125,7 @@ export interface PublicRequestOptions {
  * @throws {GeodataFetchError} when the request fails, is redirected, times out or is aborted.
  * @category Geodata
  */
-export declare function withRequest<T>(url: string, headers: Record<string, string>, options: PublicRequestOptions, use: (response: Response) => Promise<T>, retry?: RangeRetry): Promise<T>;
+export declare function withRequest<T>(url: string, headers: Record<string, string>, options: PublicRequestOptions, use: (response: Response) => Promise<T>, retry?: RequestRetry): Promise<T>;
 /**
  * GET a public JSON document and return it as unparsed text.
  *

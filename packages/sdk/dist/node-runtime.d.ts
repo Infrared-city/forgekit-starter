@@ -6,8 +6,10 @@
  *
  * - `dist/index.cjs` (root, `require`) re-exports `root`;
  * - `dist/node.js` (root, `import`) re-exports `root` through `index.cjs`;
- * - `dist/node-tiling.js`, `node-geodata.js`, `node-utilities.js` and
- *   `node-billing.js` (the ESM subpaths) re-export their namespace below.
+ * - `dist/node-tiling.js`, `node-geodata.js`, `node-utilities.js`,
+ *   `node-billing.js` and `node-worker.js` (the ESM subpaths) re-export
+ *   their namespace below. The worker subpath in Node can load the packaged
+ *   threaded core (`createWorkerClient({ threads })`).
  *
  * So a Node process has one module graph, one kernel core and one class
  * object per name, whatever mix of `require` and `import` it uses. Before
@@ -21,6 +23,7 @@
  */
 import * as root from "./node.js";
 import * as geodataEntry from "./geodata/index.js";
+import * as workerEntry from "./worker/index.js";
 export { root };
 export declare const tiling: Readonly<{
     initializeCore: typeof root.initializeCore;
@@ -55,8 +58,9 @@ export declare const tiling: Readonly<{
     mergeSurfaceAreaJobs: typeof root.mergeSurfaceAreaJobs;
     areaGridHasValue: typeof root.areaGridHasValue;
     areaGridValuesF32: typeof root.areaGridValuesF32;
-    SCHEDULE_CONTRACT_VERSION: 11;
+    SCHEDULE_CONTRACT_VERSION: 13;
     WeatherIdentityError: typeof root.WeatherIdentityError;
+    TILE_FAILURE_KINDS: readonly ["send_refused", "host_refused", "rate_limited", "payment_required", "uncertain", "server_failed", "download_failed", "timeout"];
     TileFailurePhase: {
         readonly Submit: "submit";
         readonly Compute: "compute";
@@ -83,14 +87,12 @@ export declare const geodata: Readonly<{
     OvertureReadTooLargeError: typeof root.OvertureReadTooLargeError;
     SiteReadError: typeof root.SiteReadError;
     bboxIntersects: typeof geodataEntry.bboxIntersects;
-    DATA_USER_AGENT: "infrared-sdk-ts/1.0.1";
+    DATA_USER_AGENT: "infrared-sdk-ts/1.1.0";
     DEFAULT_PUBLIC_TIMEOUT_MS: 180000;
     fetchPublicBytes: typeof geodataEntry.fetchPublicBytes;
     fetchPublicJson: typeof geodataEntry.fetchPublicJson;
     fetchPublicText: typeof geodataEntry.fetchPublicText;
-    MAX_HTTP_200_BYTES: number;
     MAX_JSON_BYTES: number;
-    MAX_RANGE_BYTES: number;
     pointToBbox: typeof geodataEntry.pointToBbox;
     groundReadDistanceM: typeof root.groundReadDistanceM;
     readMarginM: typeof root.readMarginM;
@@ -100,10 +102,6 @@ export declare const geodata: Readonly<{
     WIDEST_READ_ANALYSIS_TYPE: "solar-radiation";
     bytesRangeTransport: typeof geodataEntry.bytesRangeTransport;
     httpRangeTransport: typeof geodataEntry.httpRangeTransport;
-    MAX_BACKOFF_MS: 1000;
-    MAX_RANGE_ATTEMPTS: 3;
-    MIN_BACKOFF_MS: 250;
-    RangeRetry: typeof geodataEntry.RangeRetry;
     featureCollectionJson: typeof geodataEntry.featureCollectionJson;
     featuresArrayText: typeof geodataEntry.featuresArrayText;
     jsonArrayOf: typeof geodataEntry.jsonArrayOf;
@@ -128,8 +126,6 @@ export declare const geodata: Readonly<{
         indexSearchStep: "fgbIndexSearchStep";
         decodeRangeFeatures: "fgbDecodeRangeFeatures";
     }>;
-    MAX_PLANNED_RANGE_BYTES: number;
-    MAX_PLANNED_TOTAL_BYTES: number;
     COLUMNS_BY_COLLECTION: Readonly<Record<string, readonly string[]>>;
     LAND_COVER_MIN_MAX_ZOOM: 8;
     overtureReaderAvailable: typeof geodataEntry.overtureReaderAvailable;
@@ -152,14 +148,9 @@ export declare const geodata: Readonly<{
     acquireBuildings: typeof geodataEntry.acquireBuildings;
     acquireBuildingsJson: typeof geodataEntry.acquireBuildingsJson;
     acquireBuildingsArea: typeof geodataEntry.acquireBuildingsArea;
-    bboxAreaKm2: typeof geodataEntry.bboxAreaKm2;
     decompose: typeof geodataEntry.decompose;
-    farEndErrorM: typeof geodataEntry.farEndErrorM;
     namePieces: typeof geodataEntry.namePieces;
-    SITE_CHUNK_EDGE_M: 2000;
-    SITE_CHUNK_THRESHOLD_KM2: 4;
     SITE_CHUNKS_IN_FLIGHT: 2;
-    SITE_EXTENT_WARNING_KM: 5;
     siteChunks: typeof geodataEntry.siteChunks;
     siteRectangle: typeof geodataEntry.siteRectangle;
     bboxAreaM2: typeof geodataEntry.bboxAreaM2;
@@ -178,14 +169,20 @@ export declare const utilities: Readonly<{
     WeatherServiceError: typeof root.WeatherServiceError;
 }>;
 export declare const billing: Readonly<{
-    resolveTokensPerJob(pricing: root.PublicPricing, analysisType: root.AnalysesName): number;
     resolveBracketName(pricing: root.PublicPricing, areaKm2: number): string | null;
     estimateWorkflowRunTokens(pricing: root.PublicPricing, workflowId: string, areaKm2: number): {
         readonly tokens: number;
         readonly bracket: string;
     } | null;
-    DEFAULT_TOKENS_PER_JOB: 10;
-    ESTIMATED_SECONDS_PER_TILE: 10;
+    PricingUnavailableError: typeof root.PricingUnavailableError;
+    resolveTokensPerJob: typeof root.resolveTokensPerJob;
     BillingService: typeof root.BillingService;
-    PER_JOB_MODEL_KEYS: Readonly<Record<root.AnalysesName, string>>;
+}>;
+export declare const worker: Readonly<{
+    serveSdkWorker: typeof workerEntry.serveSdkWorker;
+    createWorkerClient: typeof workerEntry.createWorkerClient;
+    WorkerLostError: typeof workerEntry.WorkerLostError;
+    FacadeLayout: typeof root.FacadeLayout;
+    synthesizeFacadeLayout: typeof root.synthesizeFacadeLayout;
+    attachValues: typeof root.attachValues;
 }>;

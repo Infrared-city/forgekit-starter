@@ -5,7 +5,7 @@ import type { AreaScheduleJSON } from "../area/schedule-types.js";
  *
  * @category Worker
  */
-export type WorkerOperation = "runArea" | "mergeAreaJobs" | "mergeSurfaceAreaJobs" | "vegetation.getArea" | "groundMaterials.getArea" | "buildings.getBuildingsInArea";
+export type WorkerOperation = "runArea" | "runAreaStream" | "mergeAreaJobs" | "mergeSurfaceAreaJobs" | "vegetation.getArea" | "groundMaterials.getArea" | "buildings.getBuildingsInArea";
 /**
  * The part of `InfraredClientConfig` that can cross to a worker: no
  * functions. Give `getToken` to `createWorkerClient` and `fetch` to
@@ -21,9 +21,11 @@ export type WorkerClientConfig = Omit<InfraredClientConfig, "getToken" | "auth" 
  */
 export type PageMessage = {
     readonly type: "init";
-    readonly module: WebAssembly.Module;
+    readonly module?: WebAssembly.Module;
     readonly config: WorkerClientConfig;
     readonly getToken: boolean;
+    /** Node only: the packaged threaded core with this many threads, in place of `module`. */
+    readonly threads?: number;
 } | {
     readonly type: "call";
     readonly op: WorkerOperation;
@@ -60,6 +62,12 @@ export type CallMessage = {
     readonly jobId: string;
     readonly tileKey: string;
 } | {
+    readonly type: "item";
+    readonly index: number;
+    readonly analysisType: string;
+    readonly result?: unknown;
+    readonly error?: SerializedError;
+} | {
     readonly type: "done";
     readonly value: unknown;
 } | {
@@ -76,6 +84,10 @@ export interface AbortMessage {
     readonly type: "abort";
     /** The abort reason's message. */
     readonly reason: string;
+}
+/** The message the page sends on a `runAreaStream` call's channel when the caller took an item. */
+export interface TakenMessage {
+    readonly type: "taken";
 }
 /**
  * An SDK error as it crosses the worker boundary: the name, the message and a fixed list of

@@ -1,6 +1,8 @@
-import type { AnalysesName } from "./analysis-types.js";
 import { type ServiceOptions } from "./internal/service.js";
-export { DEFAULT_TOKENS_PER_JOB, ESTIMATED_SECONDS_PER_TILE } from "./pricing.js";
+import { type PriceQuote } from "./price-list.js";
+export { PricingUnavailableError } from "./price-list.js";
+export type { PriceQuote, PricingSource, RunEstimate } from "./price-list.js";
+export { resolveTokensPerJob } from "./legacy-pricing.js";
 /**
  * The price list the API publishes, as returned by
  * `BillingService.getPublicPricing`. Every section is optional, and any
@@ -25,7 +27,7 @@ export interface PublicPricing {
     readonly brackets?: Readonly<Record<string, {
         readonly maxKm2: number | null;
     }>>;
-    /** Older per-job prices, keyed by model (see `PER_JOB_MODEL_KEYS`) with an optional `default`. */
+    /** Older per-job prices, keyed by model, with an optional `default`. */
     readonly perJob?: Readonly<Record<string, {
         readonly tokens?: number;
     }>>;
@@ -43,9 +45,12 @@ export interface PublicPricing {
  * @category Billing
  */
 export declare class BillingService {
-    private readonly transport;
+    private readonly options;
+    private transport;
+    private prices;
     /** Creates the service from the client's base URL, credentials and transport settings. */
     constructor(options: ServiceOptions);
+    private url;
     /**
      * Fetches the current public price list.
      *
@@ -53,29 +58,16 @@ export declare class BillingService {
      * @throws Error when the API returns an empty response, or the request fails.
      */
     getPublicPricing(): Promise<PublicPricing>;
+    /**
+     * The price of one job of an analysis, from the price list. The client
+     * keeps the list for 20 minutes; `pricingSource` says whether the price is
+     * `"live"`, `"cached"` or `"stale"` (the list could not be fetched again).
+     *
+     * @param analysisType - The analysis to price.
+     * @throws {PricingUnavailableError} when the list cannot be fetched and the client has none.
+     */
+    quote(analysisType: string): Promise<PriceQuote>;
 }
-/**
- * For each analysis, the key of its entry in the older `perJob` section of
- * `PublicPricing`. Several analyses can share one key.
- *
- * @category Billing
- */
-export declare const PER_JOB_MODEL_KEYS: Readonly<Record<AnalysesName, string>>;
-/**
- * The tokens one job of an analysis costs, according to a price list.
- *
- * The price listed for the analysis wins. When there is none, the
- * `run-analysis` action price is used, then the older `perJob` entries (the
- * analysis's own, then `default`), and finally `DEFAULT_TOKENS_PER_JOB`.
- * Entries that are not finite, non-negative numbers are skipped.
- *
- * @param pricing - The price list from `BillingService.getPublicPricing`.
- * @param analysisType - The analysis to price.
- * @returns Tokens for one job.
- *
- * @category Billing
- */
-export declare function resolveTokensPerJob(pricing: PublicPricing, analysisType: AnalysesName): number;
 /**
  * The name of the area bracket that an area falls in, according to a price
  * list. Brackets are checked from the smallest upper limit up, and a bracket

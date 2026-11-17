@@ -63,7 +63,7 @@ async function referenceFromPlan(planValue, prepared, snapshot) {
     const digest = await sha256HexParts(parts);
     return digest === undefined ? undefined : { key: `gref1:${digest}`, groups: selected, parts, cached: false };
 }
-function unsafeCandidate(error) {
+function unsafeCandidate(error, keyed) {
     if (error instanceof GeometryReferenceAcknowledgementError)
         throw error;
     if (error instanceof GeometryReferenceRejectedError)
@@ -76,6 +76,12 @@ function unsafeCandidate(error) {
     if (error instanceof SubmissionUncertainError) {
         throw new GeometryReferenceSubmissionError(error.acceptedJobIds, error.status === undefined ? "accepted-response-invalid" : "endpoint-response-uncertain");
     }
+    // A keyed POST with no answer at all (a timeout, a reset): the engine sends
+    // it again with the SAME key, and the server answers with the first job
+    // (accept-lambda `idempotency.rs`), as for a plain POST (D299).
+    if (keyed && error instanceof TransportError && error.phase === "unknown-acceptance" &&
+        error.status === undefined)
+        throw error;
     if (error instanceof TransportError && error.phase === "unknown-acceptance") {
         throw new GeometryReferenceSubmissionError([], "endpoint-post-failed");
     }
@@ -158,8 +164,9 @@ async function executePlan(prepared, analysisType, partitionKey, scopeKey, trans
                         cache.invalidate(partitionKey, scopeKey, reference.key, referenceUrl);
                         await cache.dropUpload(partitionKey, reference.key, referenceUrl);
                     }
-                    if (!(error instanceof GeometryReferenceRejectedError))
-                        unsafeCandidate(error);
+                    if (!(error instanceof GeometryReferenceRejectedError)) {
+                        unsafeCandidate(error, transport.idempotencyKey !== undefined);
+                    }
                     if (!recover)
                         return { kind: "ref-rejected", code: error.code };
                     if (reference.cached && !refreshed && DEAD_REF_CODES.has(error.code)) {

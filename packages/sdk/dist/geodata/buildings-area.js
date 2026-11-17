@@ -28,11 +28,6 @@ import { consoleLogger } from "../logger.js";
  * @category Buildings
  */
 export async function acquireBuildingsArea(site, options) {
-    // The frame rules are the SITE's, not the chunk grid's, so they belong on
-    // this leg too: it reads and extrudes the whole site in one frame and never
-    // calls `siteChunks`, so a buildings-only caller used to be told nothing
-    // about a 10 km site (D57 "Host differences", FINAL-SANITY F5).
-    warnIfOverOneFrame(site, options.logger ?? consoleLogger);
     // `bestAvailable: false` skips the registry, so Overture is the ONLY source
     // this call can have: the missing peer dependency is reported here, before
     // anything else can fail for a reason that is not the real one (WAVE2 F3).
@@ -76,6 +71,12 @@ export async function acquireBuildingsArea(site, options) {
         source = "overture";
         overtureRelease = read.release;
     }
+    // The frame rules are the SITE's, not the chunk grid's, so they belong on
+    // this leg too: it reads and extrudes the whole site in one frame and never
+    // calls `siteChunks` (D57 "Host differences", FINAL-SANITY F5). They are the
+    // kernel's, so they run after the reads: a missing peer dependency is named
+    // first.
+    warnIfOverOneFrame(site, options.logger ?? consoleLogger);
     // ONE normalisation, ONE extrusion call, over the pieces of
     // `site ∩ union(tile rectangles)` (D57): a footprint that no simulation tile
     // will read is not extruded at all. A compact site is ONE piece equal to the
@@ -193,6 +194,7 @@ async function perRectangleArea(site, rectangles, options) {
             }
         }
     }
+    warnIfOverOneFrame(site, options.logger ?? consoleLogger);
     return {
         buildings,
         origin: [site.west, site.south],

@@ -1,7 +1,11 @@
 import { type AreaSubmissionPlan, type SubmissionEntry } from "./planning.js";
 import type { AreaJobsService, RunAreaInput, RunAreaOptions } from "./run-options.js";
-import type { AreaSchedule } from "./schedule-types.js";
+import type { AreaJob, AreaSchedule } from "./schedule-types.js";
 import type { Polygon } from "./types.js";
+import type { CaptureHold } from "./facade-captures.js";
+import type { SiteAnswer } from "./site-assign.js";
+export declare function effectiveOptions(options: RunAreaOptions, analysisType: string): RunAreaOptions;
+export declare function scheduleFromPlan(plan: AreaSubmissionPlan, jobs: ReadonlyMap<string, AreaJob>, failedSubmissions: readonly string[], uncertainSubmissions: readonly string[], invalidReferenceSubmissions: readonly string[], submissionAbortStatus: number | null, options: RunAreaOptions): AreaSchedule;
 /**
  * Thrown when the API accepted a job whose geometry reference turned out to be invalid. The
  * accepted jobs cannot produce a trusted result, so the run stops.
@@ -42,10 +46,10 @@ export declare class AreaGeometryProbeError extends Error {
  * @param service - The jobs service of the run.
  * @param plan - The submission plan.
  * @param entry - The submission entry (one job) to capture.
- * @returns The capture bytes, or `undefined`.
+ * @returns The capture, held in the client's store (D-2026101110-iris-nectar-maple), or `undefined`.
  * @category Run an analysis
  */
-export declare function facadeCaptureFor(service: AreaJobsService, plan: AreaSubmissionPlan, entry: SubmissionEntry): Uint8Array | undefined;
+export declare function facadeCaptureFor(service: AreaJobsService, plan: AreaSubmissionPlan, entry: SubmissionEntry): Promise<CaptureHold | undefined>;
 /**
  * Keeps the capture of one accepted facade job (see `facadeCaptureFor`) so the merge can draw its
  * cell triangles locally. The capture is held per client, on the jobs service; it is never part
@@ -56,17 +60,17 @@ export declare function facadeCaptureFor(service: AreaJobsService, plan: AreaSub
  * @param jobId - The id of the accepted job, or `undefined` for nothing to keep.
  * @category Run an analysis
  */
-export declare function rememberFacadeInputs(service: AreaJobsService, capture: Uint8Array | undefined, jobId: string | undefined, cellTris?: boolean): void;
+export declare function rememberFacadeInputs(service: AreaJobsService, capture: Uint8Array | CaptureHold | undefined, jobId: string | undefined, cellTris?: boolean): void;
 /**
  * Submits an already validated plan, one job per entry, and returns the schedule of the run.
  *
- * A request whose outcome is unknown is not retried; it is recorded in the schedule as uncertain
- * so you can decide. Failed submissions are recorded too. Pass `options.retryFrom` to continue a
+ * A request whose outcome is unknown is sent again with the same idempotency key a few times;
+ * after that it is recorded in the schedule as uncertain so you can decide. Failed submissions are recorded too. Pass `options.retryFrom` to continue a
  * saved schedule.
  *
  * @param service - The jobs service that sends the jobs, for example `client.jobs`.
  * @param plan - The submission plan from `planAreaSubmission`.
- * @param options - The run options: `maxWorkers`, `signal`, `onAccepted`, `onProgress`, `retryFrom`.
+ * @param options - The run options: `signal`, `onAccepted`, `onProgress`, `retryFrom`.
  * @returns The frozen schedule of the run.
  * @throws {AreaGeometryReferenceError} when the API accepted a job with an invalid geometry
  *   reference, or `retryFrom` records one.
@@ -88,11 +92,26 @@ export declare function submitAreaPlan(service: AreaJobsService, plan: AreaSubmi
  * @param polygon - The GeoJSON `Polygon` to analyse.
  * @param options - The run options (see `RunAreaOptions`).
  * @returns The frozen schedule of the run, to poll, merge or save.
- * @throws {TypeError} when the unsupported `binaryResults` option is passed, or
- *   `terrainContextMarginM` is not a finite non-negative number.
+ * @throws {TypeError} when the unsupported `binaryResults` option is passed.
+ * @throws {Error} when `terrainContextMarginM` is not a finite non-negative number.
  * @throws {Error} when `retryFrom` was saved with a different transport or terrain margin.
  * @throws {AreaGeometryReferenceError} when the API accepted a job with an invalid geometry
  *   reference.
  * @category Run an analysis
  */
 export declare function runArea(service: AreaJobsService, input: RunAreaInput, polygon: Polygon, options?: RunAreaOptions): Promise<AreaSchedule>;
+/**
+ * Share each prepared site's facade parts between the facade analyses of one call that plan the
+ * same jobs (`Site.shareFacadeParts`): the kernel makes each tile's groups, captures and scenes
+ * once and drops them when the last analysis took them. A site whose analyses plan different
+ * jobs shares nothing. Returns the release, for the end of the call.
+ */
+export declare function shareFacadeSites(facadeSites: ReadonlyMap<SiteAnswer, readonly string[]>): () => void;
+/**
+ * `runArea` of a list: plans every analysis on one shared site (the mesh groups packed and
+ * hashed once, the facade parts shared), submits them together and returns one schedule per
+ * input, in input order. `retryFrom` describes one analysis's run, so a list refuses it (as
+ * Python's `run_area` does): retry each analysis alone. When a submit throws, the first error in
+ * input order is thrown; `onAccepted` has reported every accepted job.
+ */
+export declare function runAreaMany(service: AreaJobsService, inputs: readonly RunAreaInput[], polygon: Polygon, options?: RunAreaOptions): Promise<AreaSchedule[]>;

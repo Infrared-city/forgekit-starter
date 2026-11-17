@@ -1,4 +1,3 @@
-import type { FacadeOwnership } from "./facade-ownership.js";
 import { type SiteAnswer } from "./site-assign.js";
 import type { Slice } from "./cooperative.js";
 import type { AreaJobsService, RunAreaOptions } from "./run-options.js";
@@ -16,7 +15,6 @@ export interface EntryInputs {
      */
     readonly composed?: Readonly<Record<string, Record<string, unknown>>>;
     readonly byId: ReadonlyMap<string, Tile>;
-    readonly ownership: FacadeOwnership;
     /** The site pass: the facade split reads this tile's `core` off it (D63). */
     readonly site: SiteAnswer;
     readonly surfaceFields: boolean;

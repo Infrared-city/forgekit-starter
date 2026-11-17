@@ -75,8 +75,8 @@ export class GeodataDependencyError extends GeodataError {
 export class GeodataFetchError extends GeodataError {
     status;
     name = "GeodataFetchError";
-    constructor(url, detail, status) {
-        super(`${url}: ${detail}`);
+    constructor(url, detail, status, options) {
+        super(`${url}: ${detail}`, options);
         this.status = status;
     }
 }

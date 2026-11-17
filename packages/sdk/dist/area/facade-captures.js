@@ -26,10 +26,17 @@ export class FacadeCaptures {
     get jobCount() { return this.kernel?.jobCount ?? 0; }
     /** The bytes held: the distinct captures and the syntheses made from them. */
     get heldBytes() { return this.kernel?.heldBytes ?? 0; }
-    /** Keep the capture of an accepted job. `cellTris`: the run asked for the per-cell triangles. */
+    /**
+     * Keep the capture of an accepted job: its bytes, or a capture already held in this store.
+     * `cellTris`: the run asked for the per-cell triangles.
+     */
+    // Maintainer note (not published): a hold is `Site.facadeCaptures`' (D-2026101110-iris-nectar-maple).
     remember(jobId, capture, cellTris) {
         try {
-            this.store.remember(jobId, capture);
+            if (capture instanceof Uint8Array)
+                this.store.remember(jobId, capture);
+            else
+                capture.bind(jobId);
         }
         catch (error) {
             this.lost.add(jobId);

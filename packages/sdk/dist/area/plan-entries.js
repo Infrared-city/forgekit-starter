@@ -25,7 +25,7 @@ function retryIncludesTile(tileId, retry) {
 }
 /** Build every tile's submission bodies, yielding between time slices. */
 export async function buildEntries(tiles, input, slice) {
-    const { service, options, analysisType, base, composed, byId, ownership, site, surfaceFields } = input;
+    const { service, options, analysisType, base, composed, byId, site, surfaceFields } = input;
     const retryFrom = options.retryFrom;
     const entries = [];
     const batchMembership = { ...(retryFrom?.batchMembership ?? {}) };
@@ -62,7 +62,6 @@ export async function buildEntries(tiles, input, slice) {
             // A facade job's body is the kernel's (`area/site-facade.ts`): no tile
             // payload is composed on this path.
             const records = facadeRecords?.get(index) ?? [];
-            ownership.observe(tile.tileId, answer, records.flatMap((record) => record.active_ids));
             const value = facadeTileBase(base, site.carried ?? [], location);
             payloads = facadeBatchesForTile(value, tile.tileId, index, records, site, answer, site.identity().present[index] ?? 0, (record) => input.retry === undefined || input.retry.has(record.key));
         }

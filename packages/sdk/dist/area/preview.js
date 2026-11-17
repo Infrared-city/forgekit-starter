@@ -1,7 +1,7 @@
 // Maintainer note (not published): facade-aware area preview (WP-6, `infrared-core#240` /
 // `#209`).
 //
-// `InfraredClient.previewArea` is synchronous and prices from the grid tile count alone --
+// `InfraredClient.previewArea` prices from the grid tile count alone --
 // correct for a grid analysis (one job per tile), but an UNDER-estimate for a facade
 // (`analysisSurfaces`) run, where a tile can split into several separately billed sub-batches.
 // `planAreaSubmission` already runs that split offline to build the real submission; this
@@ -17,7 +17,7 @@
 // the SAME reason -- `surface-planning.wasm.test.ts` calls `planAreaSubmission` directly to
 // compute a config hash, with a mocked `service`, expecting no network call.
 import { planAreaSubmission } from "./planning.js";
-import { DEFAULT_TOKENS_PER_JOB, ESTIMATED_SECONDS_PER_TILE } from "../pricing.js";
+import { estimateRun } from "../price-list.js";
 // A `#batch` key is synthetic and inherits its parent tile's grid position
 // (`planAreaSubmission`); the ORIGINAL per-tile entry is what `tilePositions` seeds with, one
 // per non-empty grid tile, regardless of whether that tile carries any facade batch at all.
@@ -38,9 +38,10 @@ function sumSensorCounts(counts) {
  * It reports the real number of jobs, which on a facade (`analysisSurfaces`) request can exceed
  * the tile count because a tile may split into several billed batches. On a grid request it
  * gives one job per tile, like `previewArea`. Most callers want
- * `client.previewAreaBatches(input, polygon, options)`, which passes `client.jobs` as `service`.
+ * `client.previewAreaBatches(input, polygon, options)`, which passes `client.jobs` and `client.billing`.
  *
  * @param service - The jobs service the plan is prepared against, for example `client.jobs`.
+ * @param billing - The service that prices a job, for example `client.billing`.
  * @param input - The analysis request fields.
  * @param polygon - The area to analyse.
  * @param options - The same run options `runArea` takes.
@@ -55,15 +56,19 @@ function sumSensorCounts(counts) {
 // only two arguments silently type-errors (`service` narrows against `AreaJobsService`, not
 // `RunAreaInputLike`) rather than failing at runtime, since a caller who calls it that way is
 // missing a required argument, not passing one that merely does the wrong thing.
-export async function previewAreaBatches(service, input, polygon, options = {}) {
+export async function previewAreaBatches(service, billing, input, polygon, options = {}) {
     const plan = await planAreaSubmission(service, input, polygon, options);
     const plannedJobCount = plan.plannedJobCount ?? plan.entries.length;
     const sensorCount = sumSensorCounts(plan.batchSensorCounts);
+    const priced = estimateRun(plannedJobCount, await billing.quote(plan.analysisType));
     return {
         tileCount: gridTileCount(plan.tilePositions),
         plannedJobCount,
-        estimatedTimeS: plannedJobCount * ESTIMATED_SECONDS_PER_TILE,
-        estimatedCostTokens: plannedJobCount * DEFAULT_TOKENS_PER_JOB,
+        estimatedTimeS: priced.estimatedTimeS,
+        estimatedCostTokens: priced.estimatedCostTokens,
+        tokensPerJob: priced.tokensPerJob,
+        pricingSource: priced.pricingSource,
+        ...(priced.pricingVersion === undefined ? {} : { pricingVersion: priced.pricingVersion }),
         ...(sensorCount === undefined ? {} : { sensorCount }),
     };
 }

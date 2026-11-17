@@ -10,6 +10,13 @@ export interface SurfaceEntry extends Record<string, unknown> {
     values: Float64Array | Array<number | null>;
     /** Render triangles of each cell (9 numbers per triangle); absent or `null` when omitted. */
     "cell-tris"?: Array<number[] | null> | null;
+    /**
+     * The per-cell triangles `runAndWait` draws for one facade job with `emitCellTris: true`
+     * (9 floats per triangle; a view on one buffer shared by the surfaces).
+     */
+    cellTris?: Float32Array;
+    /** `cells + 1`: cell `c` owns `cellTris[cellTrisOffsets[c]..cellTrisOffsets[c + 1]]`. */
+    cellTrisOffsets?: Uint32Array;
 }
 /**
  * A validated surface result: the surfaces by id, plus any other fields of the document.

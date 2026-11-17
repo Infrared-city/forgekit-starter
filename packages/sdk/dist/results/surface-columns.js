@@ -2,7 +2,7 @@
 // (D197, D198).
 //
 // The kernel joins every job of a facade / surface run in one call
-// (`joinSurfaceJobs`) and this is what it gives back: one typed array per
+// (`SurfaceJoinStream.finish`) and this is what it gives back: one typed array per
 // per-surface field, one per per-cell field, and a triangle table. There is
 // no object per surface and no array per cell. Every array owns its whole
 // buffer, so the result can be transferred to another thread as it is, and a
@@ -44,6 +44,7 @@ export function surfaceColumnsFromJoin(joined) {
         aggregates: JSON.parse(joined.aggregatesJson),
         minLegend: joined.minLegend, maxLegend: joined.maxLegend, sensorCount: joined.sensorCount,
         ...(joined.fallbackReasons.length === 0 ? {} : { cellTrisFallback: [...joined.fallbackReasons] }),
+        ...(joined.layoutKey === undefined ? {} : { layoutKey: joined.layoutKey }),
     };
 }
 /**

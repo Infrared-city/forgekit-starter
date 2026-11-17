@@ -1,11 +1,10 @@
-// Maintainer note (not published): Join a finished parts run: poll once, download every
-// part, and let the kernel join the part results into the bytes the single request gives:
+// Maintainer note (not published): Join a finished parts run: the run engine asks every
+// part once and downloads it, and let the kernel join the part results into the bytes the single request gives:
 // `daylightMergeBinary` (the IRBF frame, D234; it reads JSON and IRBF parts)
 // or `daylightMerge` (the JSON bytes, as before). All or nothing, like the
 // facade merge: a part without a result stops the join with an
 // `AnalysisPartsError` that names it.
-import { parallel, throwable, workerCount } from "../area/merge-common.js";
-import { checkAreaState, revivePolledOut } from "../area/poll.js";
+import { collectOnEngine } from "../area/engine-jobs.js";
 import { requireCore } from "../internal/core.js";
 import { decompressResultArchive } from "../results/archive.js";
 import { isDaylightFrame } from "./daylight-result.js";
@@ -96,13 +95,19 @@ function missingParts(schedule) {
  * @category Run an analysis
  */
 export async function mergePartsDocument(service, schedule, options = {}) {
-    // An explicit merge is a retry of the poll: its breaker's victims get one
-    // more chance (D115), as in the area merges.
-    revivePolledOut(schedule);
-    await checkAreaState(service, schedule, {
-        ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
+    // The engine asks every part once and downloads the ready ones (goal `available`).
+    const archives = new Map();
+    const { facts } = await collectOnEngine(service, schedule.jobs, { archives }, {
+        goal: "available",
         ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
+    return joinParts(schedule, archives, facts.lost, options);
+}
+/**
+ * Join the parts from the archives the engine downloaded (by job id). `lost`:
+ * the parts whose job succeeded and whose download gave up.
+ */
+export function joinParts(schedule, archives, lost, options = {}) {
     const missing = missingParts(schedule);
     if (missing.length > 0) {
         const uncertain = missing.filter((key) => schedule.uncertainSubmissions.includes(key));
@@ -111,34 +116,18 @@ export async function mergePartsDocument(service, schedule, options = {}) {
             (uncertain.length === 0 ? "" : `; outcome unknown, never resent: ${JSON.stringify(uncertain)}`) +
             ". Pass this error's schedule as retryFrom to send the failed parts again.", missing, schedule);
     }
-    const open = schedule.partKeys.filter((key) => schedule.jobs.get(key)?.status !== "completed");
-    if (open.length > 0) {
-        throw new AnalysisPartsError(`Cannot join the parts: not finished: ${JSON.stringify(open)}; merge this error's schedule again later.`, [], schedule);
-    }
-    const documents = Array(schedule.partKeys.length);
-    const errors = Array(schedule.partKeys.length);
-    await parallel(schedule.partKeys.map((key, index) => ({ key, index })), workerCount(options.maxWorkers), async ({ key, index }) => {
-        const job = schedule.jobs.get(key);
-        try {
-            const result = await service.downloadResults(job.jobId, {
-                ...(job.lastJobSnapshot === undefined ? {} : { job: job.lastJobSnapshot }),
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-            });
-            documents[index] = decompressResultArchive(result.content);
-        }
-        catch (error) {
-            errors[index] = throwable(error);
-        }
-    });
-    if (options.signal?.aborted)
-        throw options.signal.reason ?? new DOMException("aborted", "AbortError");
-    const failed = schedule.partKeys.filter((_key, index) => errors[index] !== undefined);
+    const failed = schedule.partKeys.filter((key) => lost.includes(key));
     if (failed.length > 0) {
         // The results are still on the server: merging the same schedule again
         // downloads them again. Nothing is resubmitted or billed.
         throw new AnalysisPartsError(`Cannot join the parts: download failed for ${JSON.stringify(failed)}; ` +
-            "call mergeParts with this error's schedule to download them again.", [], schedule, failed, { cause: errors[schedule.partKeys.indexOf(failed[0])] });
+            "call mergeParts with this error's schedule to download them again.", [], schedule, failed);
     }
+    const open = schedule.partKeys.filter((key) => schedule.jobs.get(key)?.status !== "completed");
+    if (open.length > 0) {
+        throw new AnalysisPartsError(`Cannot join the parts: not finished: ${JSON.stringify(open)}; merge this error's schedule again later.`, [], schedule);
+    }
+    const documents = schedule.partKeys.map((key) => decompressResultArchive(archives.get(schedule.jobs.get(key).jobId)));
     // Only a daylight-factor schedule has a binary form; any other keeps its JSON join.
     if (!splitsAnalysis(schedule.analysisType))
         return requireCore().daylightMerge(schedule.plan, documents);

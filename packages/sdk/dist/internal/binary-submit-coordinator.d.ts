@@ -15,7 +15,7 @@ export interface SubmitStages {
     /** Send the paid POST in one of the run's POST slots. */
     readonly post: <T>(send: () => Promise<T>) => Promise<T>;
 }
-interface BinarySubmitOptions {
+export interface BinarySubmitOptions {
     readonly prepared: PreparedSubmission;
     readonly prepare: (fresh: boolean) => Promise<PreparedBinary>;
     readonly releasePrepared: () => void;
@@ -40,4 +40,9 @@ interface BinarySubmitOptions {
 }
 /** Coordinate strict shared-URL reuse with one safe, uncached compatibility fallback. */
 export declare function submitPreparedBinary(options: BinarySubmitOptions): Promise<Job>;
-export {};
+/**
+ * Every step of `submitPreparedBinary` except the POST (encode, upload, URL
+ * reuse): the request bytes, for one item of a batch submit. The run engine
+ * sends a refused item alone, so the reused-URL refresh stays on the POST path.
+ */
+export declare function prepareBinaryEnvelope(options: BinarySubmitOptions): Promise<Uint8Array>;

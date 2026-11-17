@@ -1,20 +1,27 @@
 import { requireJson, serviceTransport } from "./internal/service.js";
-import { DEFAULT_TOKENS_PER_JOB } from "./pricing.js";
-// The two prices live in a leaf module with no imports, so `area/tiling.ts` can
-// quote the same number in a cap refusal without pulling the billing service
-// into the lean `/tiling` entry point. Re-exported here because `./billing` is
-// a published subpath and both names have always been part of it.
-export { DEFAULT_TOKENS_PER_JOB, ESTIMATED_SECONDS_PER_TILE } from "./pricing.js";
+import { requireCore } from "./internal/core.js";
+import { consoleLogger } from "./logger.js";
+import { PriceCache } from "./price-list.js";
+export { PricingUnavailableError } from "./price-list.js";
+export { resolveTokensPerJob } from "./legacy-pricing.js";
+const PRICING_PATH = "/billing/pricing";
 /**
  * Reads the API's public price list. Available as `InfraredClient.billing`.
  *
  * @category Billing
  */
 export class BillingService {
+    options;
     transport;
+    prices;
     /** Creates the service from the client's base URL, credentials and transport settings. */
     constructor(options) {
-        this.transport = serviceTransport(options);
+        this.options = options;
+    }
+    // The price list is a public route at the API root, outside `/v2` (`pricingUrl`, a kernel
+    // call, so it runs on first use: a client may be made before `initializeCore`).
+    url() {
+        return requireCore().pricingUrl(String(this.options.baseUrl));
     }
     /**
      * Fetches the current public price list.
@@ -23,57 +30,26 @@ export class BillingService {
      * @throws Error when the API returns an empty response, or the request fails.
      */
     async getPublicPricing() {
-        return requireJson(await this.transport.requestJson("/billing/pricing"), "pricing lookup");
+        this.transport ??= serviceTransport({
+            ...this.options, baseUrl: this.url().slice(0, -PRICING_PATH.length),
+        });
+        return requireJson(await this.transport.requestJson(PRICING_PATH), "pricing lookup");
+    }
+    /**
+     * The price of one job of an analysis, from the price list. The client
+     * keeps the list for 20 minutes; `pricingSource` says whether the price is
+     * `"live"`, `"cached"` or `"stale"` (the list could not be fetched again).
+     *
+     * @param analysisType - The analysis to price.
+     * @throws {PricingUnavailableError} when the list cannot be fetched and the client has none.
+     */
+    quote(analysisType) {
+        this.prices ??= new PriceCache(() => this.getPublicPricing(), this.url(), this.options.logger ?? consoleLogger);
+        return this.prices.quote(analysisType);
     }
 }
-/**
- * For each analysis, the key of its entry in the older `perJob` section of
- * `PublicPricing`. Several analyses can share one key.
- *
- * @category Billing
- */
-export const PER_JOB_MODEL_KEYS = Object.freeze({
-    "wind-speed": "wind_pix2pix",
-    "pedestrian-wind-comfort": "wind_pix2pix",
-    "thermal-comfort-index": "utci",
-    "thermal-comfort-statistics": "utci",
-    "daylight-availability": "daylight_availability",
-    "direct-sun-hours": "dsh",
-    "solar-radiation": "solar_radiation",
-    "sky-view-factors": "svf",
-    "daylight-factor": "daylight_factor",
-});
 function validTokens(value) {
     return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-/**
- * The tokens one job of an analysis costs, according to a price list.
- *
- * The price listed for the analysis wins. When there is none, the
- * `run-analysis` action price is used, then the older `perJob` entries (the
- * analysis's own, then `default`), and finally `DEFAULT_TOKENS_PER_JOB`.
- * Entries that are not finite, non-negative numbers are skipped.
- *
- * @param pricing - The price list from `BillingService.getPublicPricing`.
- * @param analysisType - The analysis to price.
- * @returns Tokens for one job.
- *
- * @category Billing
- */
-// Maintainer note (not published): resolve the actual gateway registry first,
-// then documented legacy fallbacks.
-export function resolveTokensPerJob(pricing, analysisType) {
-    const current = pricing.analysisType?.[analysisType]?.tokens;
-    if (validTokens(current))
-        return current;
-    const action = pricing.actionCatalog?.["run-analysis"]?.tokens;
-    if (validTokens(action))
-        return action;
-    const legacy = pricing.perJob?.[PER_JOB_MODEL_KEYS[analysisType]]?.tokens;
-    if (validTokens(legacy))
-        return legacy;
-    const fallback = pricing.perJob?.default?.tokens;
-    return validTokens(fallback) ? fallback : DEFAULT_TOKENS_PER_JOB;
 }
 /**
  * The name of the area bracket that an area falls in, according to a price

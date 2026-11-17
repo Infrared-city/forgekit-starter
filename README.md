@@ -134,7 +134,7 @@ GeoJSON layers, and the hill as a terrain mesh (`groundGeometry` with
 `terrainAlignment: 'auto-align'`). `apps/examples/scripts/precompute-demo.ts`
 ran every analysis on Infrared staging (SDK 0.12.13-next.18, 400
 AItokens for a full run) and stored the results. The stored results have not
-been re-run on SDK 1.0.1. To run it again (needs Node 22.18
+been re-run on SDK 1.1.0. To run it again (needs Node 22.18
 or newer, and spends AItokens). The script turns on the SDK's threaded core
 (`initializeCore({ threads: 4 })`), which makes the facade merge about twice as
 fast on large runs. Do the same in your own Node scripts. The browser app
@@ -243,14 +243,14 @@ More details: [docs/cloudflare.md](./docs/cloudflare.md).
 ### Update the SDK
 
 `packages/sdk` holds the **built** output of `@infrared-city/infrared-sdk`
-(no source, no source maps). The current copy is **1.0.1**, from the public
+(no source, no source maps). The current copy is **1.1.0**, from the public
 npm registry. Since 1.0 the result arrays keep the type the server stored
 (for example half-float bits): read values with `areaGridValuesF32` and
 `surfaceValuesF32`, see "SDK reference" in `AGENTS.md`. To update (no token
 needed):
 
 ```bash
-npm run update-sdk -- 1.0.1
+npm run update-sdk -- 1.1.0
 npm install
 npm run typecheck && npm run build && npm test
 ```
@@ -259,7 +259,7 @@ npm run typecheck && npm run build && npm test
 and its Apache-2.0 license, and replaces `packages/sdk` with `dist/`, the WASM
 glue, `LICENSE`, `NOTICE` and a trimmed `package.json`. The SDK is now on
 public npm, so the vendored copy could also become a normal npm dependency
-(`"@infrared-city/infrared-sdk": "^1.0.1"`); that is a separate change.
+(`"@infrared-city/infrared-sdk": "^1.1.0"`); that is a separate change.
 
 After an update, run the four examples against staging once (put
 the staging `INFRARED_BASE_URL` and a staging key in

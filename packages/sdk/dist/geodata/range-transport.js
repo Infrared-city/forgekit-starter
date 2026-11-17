@@ -1,21 +1,17 @@
 /**
  * The byte-range seam: one remote object, read a window at a time.
  *
- * Split out of `http.ts` so that neither file passes 400 lines once the
- * range read gained a retry. `http.ts` owns the request itself — the
- * allow-list, the deadline, the credential-free headers — and this module
- * owns what a `Range` answer must prove and what is worth asking again.
- *
- * The retry is described in `retry.ts`. Two of its rules are visible here:
- * a `200` answer to a `Range` request is asked again BEFORE its body is
- * read, and the entity tag of every answer is recorded so a second attempt
- * cannot silently read a file that was replaced meanwhile.
+ * `http.ts` owns the request itself — the allow-list, the deadline, the
+ * credential-free headers. What a `Range` answer must prove, what is worth
+ * asking again, the waits and the entity-tag pin are the kernel's
+ * (`rangeReadStep`, the rule the Python host calls too); this module sends
+ * the facts of each answer and reads the body under the cap it is given.
  */
-import { GeodataFetchError, GeodataRangeError } from "./errors.js";
+import { GeodataError, GeodataFetchError, GeodataRangeError } from "./errors.js";
 import { withRequest } from "./http.js";
-import { readPartialAnswer, readWholeObjectAnswer } from "./range-answer.js";
-import { RangeRetry } from "./retry.js";
-import { cancelBody } from "../internal/capped-body.js";
+import { cancelBody, readCappedBody } from "../internal/capped-body.js";
+import { requireCore } from "../internal/core.js";
+import { consoleLogger } from "../logger.js";
 /**
  * Create a {@link RangeTransport} that reads objects over HTTP `Range` requests,
  * with a per-instance object-size cache.
@@ -31,50 +27,8 @@ export function httpRangeTransport(options = {}) {
     const sizes = new Map();
     async function ranged(url, start, endExclusive, read) {
         const range = endExclusive === undefined ? `bytes=${start}-` : `bytes=${start}-${endExclusive - 1}`;
-        // The retry state holds the caller's `If-Match` as well, so ONE place
-        // decides which entity tag every attempt of this read carries.
-        const retry = new RangeRetry(url, read?.ifMatch, options.logger);
-        const answer = await withRequest(url, {
-            Range: range,
-            // Lengths are checked on decoded bytes, so an encoded range answer
-            // cannot be checked at all. Browser handling of this header varies;
-            // the answer is checked as well as asked for. Hosts must allow it
-            // in CORS when a browser sends it.
-            "Accept-Encoding": "identity",
-        }, options, async (response) => {
-            if (response.status === 412) {
-                cancelBody(response);
-                throw new GeodataRangeError(url, "the object changed between two ranges of one read (If-Match failed)", 412);
-            }
-            if (response.status !== 200 && response.status !== 206) {
-                cancelBody(response);
-                throw new GeodataFetchError(url, `HTTP ${response.status}`, response.status);
-            }
-            // A host that ignores `If-Match` answers 200 or 206 under the NEW
-            // entity tag. That is the same event a 412 names, and it is reported
-            // the same way rather than decoded. Only a 200 or a 206 reaches this
-            // line, so an error page's own entity tag can never pin the read.
-            try {
-                retry.observe(response.headers.get("etag") ?? undefined);
-            }
-            catch (stale) {
-                // Every other refusal in this file releases the body first.
-                cancelBody(response);
-                throw stale;
-            }
-            if (response.status === 200 && retry.willAskAgainForWholeObject()) {
-                // Before a byte is read: a 200 means the range was ignored, and on
-                // the world FlatGeobufs the whole object is gigabytes.
-                cancelBody(response);
-                throw new GeodataRangeError(url, "a range request was answered with 200; the range is asked for once more", 200);
-            }
-            return response.status === 200
-                ? await readWholeObjectAnswer(url, response, start, endExclusive)
-                : await readPartialAnswer(url, response, start, endExclusive);
-        }, retry);
-        // The streamed length of a 200 and the `Content-Range` total of a 206
-        // are the only sizes this reader trusts. A total of `*` names none, so
-        // the size cache stays empty for it.
+        const state = new KernelRangeRead(url, start, endExclusive, read?.ifMatch, options.logger);
+        const answer = await withRequest(url, { Range: range, "Accept-Encoding": "identity" }, options, (response) => state.answer(response), state);
         if (answer.totalSize !== undefined)
             sizes.set(url, answer.totalSize);
         return answer;
@@ -130,4 +84,129 @@ export function bytesRangeTransport(bytes, url = "https://geo.infrared.city/in-m
             });
         },
     };
+}
+/** The kernel's wait for an answer it wants asked again; never leaves this module. */
+class AskAgain extends Error {
+    waitMs;
+    constructor(waitMs) {
+        super("asked again");
+        this.waitMs = waitMs;
+    }
+}
+function step(event) {
+    return JSON.parse(requireCore().rangeReadStep(JSON.stringify(event)));
+}
+function header(response, name) {
+    return response.headers.get(name);
+}
+function numberHeader(response, name) {
+    const raw = header(response, name);
+    const value = raw === null ? Number.NaN : Number(raw.trim());
+    return Number.isFinite(value) && value >= 0 ? value : null;
+}
+/** One logical range read: the host does the HTTP, the kernel decides. */
+class KernelRangeRead {
+    url;
+    logger;
+    read;
+    host;
+    constructor(url, start, endExclusive, ifMatch, logger = consoleLogger) {
+        this.url = url;
+        this.logger = logger;
+        this.read = {
+            start,
+            end: endExclusive === undefined ? null : endExclusive - 1,
+            tries: 0,
+            pinned: ifMatch ?? null,
+        };
+        let host = url;
+        try {
+            host = new URL(url).hostname || url;
+        }
+        catch { /* not a URL: keep it */ }
+        this.host = host;
+    }
+    attempt() {
+        this.read = { ...this.read, tries: this.read.tries + 1 };
+        return this.read.pinned === null ? {} : { "If-Match": this.read.pinned };
+    }
+    next(error) {
+        const waitMs = error instanceof AskAgain
+            ? error.waitMs
+            : error instanceof GeodataError
+                ? undefined
+                : this.afterFailure();
+        if (waitMs !== undefined) {
+            this.logger.warn(`range read retry attempt=${this.read.tries + 1} path=${this.path()} ` +
+                `wait_ms=${Math.round(waitMs)}`);
+        }
+        return waitMs;
+    }
+    async answer(response) {
+        const decided = step({
+            event: "answer",
+            read: this.read,
+            answer: {
+                status: response.status,
+                content_range: header(response, "content-range"),
+                content_type: header(response, "content-type"),
+                content_encoding: header(response, "content-encoding"),
+                content_length: numberHeader(response, "content-length"),
+                etag: header(response, "etag"),
+                retry_after_s: numberHeader(response, "retry-after"),
+            },
+            jitter: Math.random(),
+            host: this.host,
+        });
+        if (decided.do !== "body")
+            cancelBody(response);
+        if (decided.do === "again") {
+            this.read = decided.read;
+            throw new AskAgain(decided.wait_s * 1_000);
+        }
+        if (decided.do === "stale")
+            throw new GeodataRangeError(this.url, decided.message, 412);
+        if (decided.do === "refuse") {
+            if (response.status !== 200 && response.status !== 206) {
+                throw new GeodataFetchError(this.url, `HTTP ${response.status}`, response.status);
+            }
+            throw new GeodataRangeError(this.url, decided.message, response.status);
+        }
+        this.read = decided.read;
+        const bytes = await readCappedBody(response, {
+            cap: decided.cap,
+            fail: (detail) => new GeodataRangeError(this.url, decided.whole
+                ? `${this.host} answered 200 to a Range request (host cache configuration); report it ` +
+                    "at https://github.com/Infrared-city/infrared-core/issues"
+                : `the range answer ${detail}`, response.status),
+        });
+        const checked = step({
+            event: "body", read: this.read, whole: decided.whole, cap: decided.cap, body_len: bytes.byteLength,
+        });
+        if (typeof checked["refuse"] === "string") {
+            throw new GeodataRangeError(this.url, checked["refuse"], response.status);
+        }
+        const etag = header(response, "etag") ?? undefined;
+        const offset = checked["offset"];
+        const length = checked["length"];
+        const total = decided.whole ? bytes.byteLength : decided.total;
+        return {
+            bytes: decided.whole ? bytes.subarray(offset, offset + length) : bytes,
+            ...(total === null ? {} : { totalSize: total }),
+            ...(etag === undefined ? {} : { etag }),
+        };
+    }
+    afterFailure() {
+        const decided = step({ event: "failure", read: this.read, phase: "after_send", jitter: Math.random() });
+        const waitS = decided["wait_s"];
+        return typeof waitS === "number" ? waitS * 1_000 : undefined;
+    }
+    path() {
+        try {
+            return new URL(this.url).pathname;
+        }
+        catch {
+            return this.url;
+        }
+    }
 }

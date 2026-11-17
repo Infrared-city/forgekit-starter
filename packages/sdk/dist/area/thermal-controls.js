@@ -6,6 +6,7 @@
  * what the conversion does when a caller aims them at a model that does not.
  * Splitting the guards from the list they guard is how the two drift.
  */
+import { consoleLogger } from "../logger.js";
 import { knownValues, registryModel } from "./field-registry.js";
 /**
  * The six global thermal controls: `physics`, `wallAlbedo`, `wallAbsorptivity`,
@@ -190,7 +191,7 @@ const physicsWarned = new Set();
  *
  * A deprecated value still runs and bills the same: this warns only. Uses
  * Node's own deprecation-warning channel (`process.emitWarning`, type
- * `DeprecationWarning`) and falls back to `console.warn` where `process` does
+ * `DeprecationWarning`) and falls back to `consoleLogger` where `process` does
  * not exist (browser build).
  */
 function warnPhysicsDeprecated(value) {
@@ -203,6 +204,6 @@ function warnPhysicsDeprecated(value) {
         process.emitWarning(message, "DeprecationWarning");
     }
     else {
-        console.warn(`DeprecationWarning: ${message}`);
+        consoleLogger.warn(`DeprecationWarning: ${message}`);
     }
 }

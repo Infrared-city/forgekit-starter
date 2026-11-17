@@ -26,22 +26,4 @@ export interface WeatherStationRow extends Readonly<Record<string, unknown>> {
 export declare function failWeather(message: string, statusCode: number, operation: string): never;
 export declare function decodeUtf8(bytes: Uint8Array, subject: string, operation: string): string;
 export declare function parseJsonObject(text: string, subject: string, operation: string): Record<string, unknown>;
-export declare function decodeJsonObject(bytes: Uint8Array, subject: string, operation: string): Record<string, unknown>;
 export declare function gunzipIfNeeded(bytes: Uint8Array, uuid: string, operation: string): Uint8Array;
-/**
- * The indexes built from a weather catalog: stations by `uuid` and by `fileName`, plus a
- * compact list of positions used to find the nearest stations.
- *
- * A catalog row is a candidate for nearest-station ranking only when it has a non-empty
- * `uuid`, a non-empty `fileName` and finite numeric `lat` and `lon`.
- */
-export interface StationIndex {
-    readonly byUuid: ReadonlyMap<string, WeatherStationRow>;
-    readonly byFileName: ReadonlyMap<string, WeatherStationRow>;
-    /** Stations that can be ranked by distance, keyed by `uuid`. */
-    readonly byRankKey: ReadonlyMap<string, WeatherStationRow>;
-    /** `{stations: [{uuid, lat, lon}]}` as JSON text, the compact input for nearest-station ranking. */
-    readonly rankingJson: string;
-}
-export declare function indexStations(catalog: Record<string, unknown>, operation: string): StationIndex;
-export declare function projectRankedStations(ranked: ReadonlyArray<Record<string, unknown>>, index: StationIndex, operation: string): Array<Record<string, unknown>>;

@@ -79,3 +79,10 @@ export function jobFromResponse(input) {
         ...(binary === undefined ? {} : { binary }),
     };
 }
+/**
+ * A status answer (2xx) for a different job than the one asked. Still a plain `Error` to a
+ * caller; the run engine takes it as an unusable answer and asks again later (as 1.0.0 did).
+ */
+export class JobResponseMismatchError extends Error {
+    constructor() { super("job response ID does not match requested jobId"); }
+}

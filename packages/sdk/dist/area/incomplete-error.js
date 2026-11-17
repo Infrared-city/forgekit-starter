@@ -1,3 +1,4 @@
+import { retryPolicy } from "./run-engine.js";
 /**
  * A grid the caller PAID for and did not get (#342, D110). The recovery is in
  * the message, not a field: the caller already holds the schedule both halves
@@ -37,7 +38,14 @@ export function incomplete(schedule, missing) {
         const job = schedule.jobs.get(tile.tileId);
         return uncertain.has(tile.tileId) && job?.jobId !== undefined && job.status === "failed";
     });
-    const named = missing.map((tile) => `${tile.tileId} (${tile.phase ?? "unknown"}: ${tile.error})`);
+    const kindText = (tile) => tile.kind === undefined ? "" :
+        `; kind=${tile.kind}${tile.status === undefined ? "" : `, status=${tile.status}`}`;
+    const named = missing.map((tile) => `${tile.tileId} (${tile.phase ?? "unknown"}: ${tile.error}${kindText(tile)})`);
+    const advice = retryPolicy().failureAdvice;
+    const adviceNote = [...new Set(missing.flatMap((tile) => tile.kind === undefined ? [] : [tile.kind]))]
+        .map((kind) => ` [${kind}] ${advice[kind]}`).join("");
+    // The union with the missing tiles: a tile that never got a job is not in `jobs`.
+    const totalTiles = new Set([...schedule.jobs.keys(), ...missing.map((tile) => tile.tileId)]).size;
     const cause = missing.find((tile) => tile.exception !== undefined)?.exception;
     const uncertainNote = unreachable.length === 0 ? "" :
         ` ${unreachable.length} of them (${unreachable.map((tile) => tile.tileId).join(", ")}) ` +
@@ -51,8 +59,7 @@ export function incomplete(schedule, missing) {
             `there is no result for mergeAreaJobs to fetch. This SDK will not resubmit it for you ` +
             `either, for the same reason — check the job's own error, or call runArea for just that ` +
             `tile knowing the cost.`;
-    return new Error(`Area run is incomplete: ${missing.length} of ${schedule.jobs.size} tiles did not ` +
+    return new Error(`Area run is incomplete: ${missing.length} of ${totalTiles} tiles did not ` +
         `contribute to the grid. Call mergeAreaJobs again with this schedule to fetch a ` +
-        `result that is already computed, or runArea with retryFrom to resubmit a tile that ` +
-        `was never accepted.${uncertainNote}${failedNote} Missing: ${named.join("; ")}`, cause === undefined ? {} : { cause });
+        `result that is already computed.${adviceNote}${uncertainNote}${failedNote} Missing: ${named.join("; ")}`, cause === undefined ? {} : { cause });
 }

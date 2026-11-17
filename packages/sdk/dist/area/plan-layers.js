@@ -98,6 +98,8 @@ export async function composeTiles(groups, tiles, polygon, options, slice) {
     const run = beginCompose(groups, tiles, polygon, {
         analysisType: options.analysisType,
         terrainContext: { margin_m: options.terrainContextMarginM },
+        ...(options.contextReachM === undefined ? {} : { contextReachM: options.contextReachM }),
+        ...(options.contextBufferM === undefined ? {} : { contextBufferM: options.contextBufferM }),
     }, options.keepKernelSite ?? false, options.texts, true, options.terrain);
     let parsed;
     const composed = (tileSlice) => parsed ??= (async () => {

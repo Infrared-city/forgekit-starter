@@ -19,6 +19,11 @@ export interface PlannedRequest {
     /** The kernel plan, when there is one. */
     readonly plan?: KernelPartsPlan;
     readonly planText?: string;
+    /**
+     * The caller asked for the per-cell triangles (`emitCellTris`). The body asks the server
+     * for none (the kernel pins it); the one-job wait draws them (`cell-tris.ts`).
+     */
+    readonly cellTris?: true;
 }
 /**
  * Prepare the request once and ask the kernel for its parts. A request that

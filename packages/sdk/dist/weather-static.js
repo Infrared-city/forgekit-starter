@@ -7,9 +7,10 @@
 // `public/python/src/infrared_sdk/layers/weather_static.py`; the constants, error semantics
 // and kernel calls are the same on both hosts.
 //
-// The reader owns HTTP and the catalog cache, nothing else. Ranking stations by distance and
-// filtering hours are LOGIC and run in the bundled kernel (`weatherNearestStations`,
-// `weatherFilterHours`). Reads go to a public, unauthenticated host through the geodata
+// The reader owns HTTP and the cache of kernel handles, nothing else. The catalog rules (which
+// rows count, ranking by distance, a station by uuid or fileName, the pointer to the generation
+// folder) and the hour filter are LOGIC and run in the bundled kernel (`WeatherCatalog`,
+// `weatherPointerFolder`, `weatherFilterHours`, D-2026101012-heron-quartz-maple). Reads go to a public, unauthenticated host through the geodata
 // transport: allow-list check, `redirect: "error"`, the SDK User-Agent, ONE deadline over
 // headers and body, and a cap kept by the streamed total rather than by a header.
 //
@@ -18,9 +19,10 @@
 // cannot enforce the check. A historic private identifier is a typed 404 that points at the
 // replacement workflow - bring the EPW file itself (BYO weather); see MIGRATION.md. No
 // station is ever substituted for one. `DEFAULT_STATIC_BASE_URL` mirrors the Python constant.
-import { decodeJsonObject, decodeUtf8, failWeather, gunzipIfNeeded, indexStations, parseJsonObject, projectRankedStations, } from "./internal/weather-static-decode.js";
+import { decodeUtf8, failWeather, gunzipIfNeeded, parseJsonObject, } from "./internal/weather-static-decode.js";
 import { BoundedCache, CATALOG_CACHE_LIMIT, POINTER_CACHE_LIMIT, STATION_CACHE_LIMIT, } from "./internal/weather-static-cache.js";
 import { requireCore } from "./internal/core.js";
+import { withHostRetry } from "./internal/host-retry.js";
 import { fetchPublicBytes, GeodataError, } from "./geodata/index.js";
 import { trimTrailingSlashes } from "./internal/url-trim.js";
 export { WeatherServiceError, } from "./internal/weather-static-decode.js";
@@ -49,7 +51,7 @@ const STATION_LIMIT = 10;
 // Maintainer note (not published): the same 5 minutes the manifests use.
 export const CATALOG_TTL_MS = 300_000;
 /**
- * Parsed catalogs, keyed by the generation folder URL. A generation folder is
+ * Catalog handles, keyed by the generation folder URL. A generation folder is
  * dated and immutable, so the URL identifies the bytes; a re-export publishes
  * a new folder and so a new key. BOUNDED at
  * {@link CATALOG_CACHE_LIMIT}: the cache used to be an unbounded `Map`, so a
@@ -115,16 +117,17 @@ export function clearWeatherCatalogCache() {
     stationCache.clear();
     stationPending.clear();
 }
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
 /** GET one static object's bytes, or raise the typed weather error. */
 async function staticBytes(url, operation, request) {
     try {
-        const answer = await fetchPublicBytes(url, { ...request, cap: MAX_STATIC_BYTES });
+        const answer = await withHostRetry("public_get", () => fetchPublicBytes(url, { ...request, cap: MAX_STATIC_BYTES }), request);
         return { bytes: answer.bytes, etag: answer.etag };
     }
     catch (error) {
         if (error instanceof GeodataError) {
-            // A refused redirect, a URL off the allow-list, an over-cap body or a
-            // non-200 answer is a wrong answer from a reachable host.
             failWeather(`${operation} refused the answer: ${error.message}`, 502, operation);
         }
         throw error;
@@ -154,31 +157,31 @@ export class StaticWeatherReader {
         };
     }
     /** The generation folder the pointer names, re-read on the TTL. */
-    async folderUrl(operation) {
+    async folderUrl() {
         const cached = pointerCache.get(this.baseUrl);
         if (cached !== undefined && Date.now() - cached.at < this.ttlMs)
             return cached.folderUrl;
         const loaded = await loadOnce(pointerPending, POINTER_CACHE_LIMIT, pointerCache, this.baseUrl, async () => {
             const pointerOperation = "fetchWeatherCatalogPointer";
             const { bytes } = await staticBytes(`${this.baseUrl}/latest.json`, pointerOperation, this.request);
-            const pointer = decodeJsonObject(bytes, "Weather catalog pointer", pointerOperation);
-            const path = pointer["path"];
-            if (typeof path !== "string" || path === "") {
-                // A CDN answering an HTML error page, or a pointer without a usable
-                // `path`, is a typed 502 — never a raw decode error escaping the
-                // public method the caller invoked (D40).
-                failWeather("Weather catalog pointer carries no usable `path`", 502, operation);
+            // A CDN answering an HTML error page, or a pointer without a usable
+            // `path`, is a typed 502 - never a raw decode error escaping the
+            // public method the caller invoked (D40, D-2026101012-heron-quartz-maple).
+            try {
+                return {
+                    folderUrl: requireCore().weatherPointerFolder(this.baseUrl, bytes),
+                    at: Date.now(),
+                };
             }
-            return {
-                folderUrl: `${this.baseUrl}/${path.replace(/^\/+|\/+$/g, "")}`,
-                at: Date.now(),
-            };
+            catch (error) {
+                return failWeather(errorMessage(error), 502, pointerOperation);
+            }
         });
         return loaded.folderUrl;
     }
-    /** The catalog for the current generation, parsed at most once per ETag. */
-    async catalog(operation) {
-        const folderUrl = await this.folderUrl(operation);
+    /** The catalog handle for the current generation, read at most once per generation. */
+    async catalog() {
+        const folderUrl = await this.folderUrl();
         const catalogOperation = "fetchWeatherCatalog";
         const url = `${folderUrl}/catalog.json`;
         // A generation folder is dated and immutable (the exporter never rewrites
@@ -190,23 +193,25 @@ export class StaticWeatherReader {
             return { folderUrl, entry: cached };
         const entry = await loadOnce(catalogPending, CATALOG_CACHE_LIMIT, catalogCache, url, async () => {
             const { bytes } = await staticBytes(url, catalogOperation, this.request);
-            // The host parses ONCE, here, and keeps the indices — including the slim
-            // `{uuid, lat, lon}` ranking document. The catalog TEXT is NOT kept.
-            const parsed = parseJsonObject(decodeUtf8(bytes, "Weather catalog", catalogOperation), "Weather catalog", catalogOperation);
-            return indexStations(parsed, catalogOperation);
+            try {
+                return new (requireCore().WeatherCatalog)(bytes);
+            }
+            catch (error) {
+                return failWeather(errorMessage(error), 502, catalogOperation);
+            }
         });
         return { folderUrl, entry };
     }
-    /** uuid or fileName to a catalog row, or the typed 404 (D40). */
-    resolveStation(entry, identifier, operation) {
-        const station = entry.byUuid.get(identifier) ?? entry.byFileName.get(identifier);
-        if (station === undefined) {
-            failWeather(`Weather station ${JSON.stringify(identifier)} is not in the public weather ` +
-                "catalog. Private and custom-EPW weather files are no longer looked up by id: " +
-                "bring the EPW file itself as BYO weather instead (see MIGRATION.md). No other " +
-                "station is substituted for it.", 404, operation);
+    /** uuid or fileName to the catalog's uuid, or the typed 404 (D40). The rule and its text are the kernel's. */
+    stationUuid(entry, identifier, operation) {
+        let row;
+        try {
+            row = entry.find(identifier);
         }
-        return station;
+        catch (error) {
+            return failWeather(errorMessage(error), 404, operation);
+        }
+        return JSON.parse(row).uuid;
     }
     /** One station's data object as TEXT, gzip handled either way. */
     async stationText(folderUrl, uuid, operation) {
@@ -228,18 +233,13 @@ export class StaticWeatherReader {
      */
     async nearestStations(lat, lon, radiusKm) {
         const operation = "getWeatherFileFromLocation";
-        const { entry } = await this.catalog(operation);
-        let out;
+        const { entry } = await this.catalog();
         try {
-            out = requireCore().weatherNearestStations(entry.rankingJson, lat, lon, radiusKm ?? DEFAULT_RADIUS_KM, STATION_LIMIT);
+            return JSON.parse(entry.nearest(lat, lon, radiusKm ?? DEFAULT_RADIUS_KM, STATION_LIMIT));
         }
         catch (error) {
-            return failWeather(`local weatherNearestStations failed: ${error instanceof Error ? error.message : String(error)}`, 500, operation);
+            return failWeather(`local weather catalog nearest failed: ${errorMessage(error)}`, 500, operation);
         }
-        // The kernel ranked a slim index, so the three fields it answers with
-        // come back from the full rows here — the same fields, the same rows, the
-        // same order.
-        return projectRankedStations(JSON.parse(out), entry, operation);
     }
     /**
      * One station's full document, found by `uuid` or `fileName`.
@@ -248,30 +248,29 @@ export class StaticWeatherReader {
      */
     async stationByIdentifier(identifier) {
         const operation = "getWeatherFileFromIdentifier";
-        const { folderUrl, entry } = await this.catalog(operation);
-        const station = this.resolveStation(entry, identifier, operation);
-        const text = await this.stationText(folderUrl, station.uuid, operation);
-        return parseJsonObject(text, `Weather station ${JSON.stringify(station.uuid)}`, operation);
+        const { folderUrl, entry } = await this.catalog();
+        const uuid = this.stationUuid(entry, identifier, operation);
+        const text = await this.stationText(folderUrl, uuid, operation);
+        return parseJsonObject(text, `Weather station ${JSON.stringify(uuid)}`, operation);
     }
     /**
-     * A station's hourly arrays (under `weatherData`), filtered to a period given as JSON
-     * text built from `TimeFilters`.
+     * A station's hours inside a period given as JSON text built from `TimeFilters`, one
+     * record per hour.
      *
      * @throws {WeatherServiceError} when the station is unknown, the catalog is unreadable or the
      * period is rejected.
      */
     async filterHours(identifier, timePeriodJson) {
         const operation = "filterWeatherData";
-        const { folderUrl, entry } = await this.catalog(operation);
-        const station = this.resolveStation(entry, identifier, operation);
-        const stationJson = await this.stationText(folderUrl, station.uuid, operation);
-        let out;
+        const { folderUrl, entry } = await this.catalog();
+        const uuid = this.stationUuid(entry, identifier, operation);
+        const stationJson = await this.stationText(folderUrl, uuid, operation);
+        const core = requireCore();
         try {
-            out = requireCore().weatherFilterHours(stationJson, timePeriodJson);
+            return JSON.parse(core.weatherRows(core.weatherFilterHours(stationJson, timePeriodJson)));
         }
         catch (error) {
-            return failWeather(`local weatherFilterHours failed: ${error instanceof Error ? error.message : String(error)}`, 500, operation);
+            return failWeather(`local weatherFilterHours failed: ${errorMessage(error)}`, 500, operation);
         }
-        return JSON.parse(out);
     }
 }

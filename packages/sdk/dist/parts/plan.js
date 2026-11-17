@@ -58,7 +58,9 @@ target) {
         ...(options.transport === undefined ? {} : { transport: options.transport }),
     });
     if (!SPLIT_ANALYSES.has(analysisType) || prepared.transport !== "json" || options.maxParts === 1) {
-        return { analysisType, prepared };
+        // Read off the CALLER input: the payload already carries the pinned `false` (D88).
+        const cellTris = input.emitCellTris === true || input["emit-cell-tris"] === true;
+        return { analysisType, prepared, ...(cellTris ? { cellTris: true } : {}) };
     }
     const bytes = preparedJsonBytes(prepared);
     // The one-job path sends the bytes planned here, not a second writing.

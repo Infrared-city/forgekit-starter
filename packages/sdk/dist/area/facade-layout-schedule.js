@@ -4,18 +4,16 @@
  *
  * The platform's default case is many tiles, so a caller reloading a tiled
  * facade run should not have to recompute a tile's frame by hand. This
- * reuses the SAME two kernel calls the submission path's own tiling uses to
- * anchor a tile (`tileSwOffset` + `scalarUnproject` -- together exactly what
- * the kernel's `scalarSiteToTileAffine` composes internally, `ir-geo`
- * `tiling/scalar_port.rs`), so a schedule-derived `tileOrigin` can never
- * drift from the one the live submission used.
+ * reuses the kernel's `tileFrameOrigin` (`ir-geo` `tiling/scalar_port.rs`),
+ * the SAME function the site arena anchors each tile with. It is not the
+ * host's `scalarUnproject`: that differs in the last place of the latitude,
+ * which moved a roof frame onto another corner on a large site.
  */
 import { requireCore } from "../internal/core.js";
 import { kernelPolygonOrigin } from "./tile-frames.js";
 function tileOrigin(row, col, schedule, siteOrigin) {
     const core = requireCore("tiling");
-    const [swX, swY] = core.tileSwOffset(row, col, schedule.analysisType);
-    const [lon, lat] = core.scalarUnproject(siteOrigin.lon, siteOrigin.lat, swX, swY);
+    const [lon, lat] = core.tileFrameOrigin(row, col, schedule.analysisType, siteOrigin.lon, siteOrigin.lat);
     return { lon: lon, lat: lat };
 }
 /**

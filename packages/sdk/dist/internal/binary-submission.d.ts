@@ -34,6 +34,8 @@ export interface BinaryCapability {
     geometrySchemas?: readonly number[];
     /** Present when the service reads a job's `targets` range; when absent, each job has its own frame. */
     facadeTargets?: number;
+    /** Present when the service takes many jobs in one request (`POST /binary/v1/async-batch`). */
+    batchSubmit?: unknown;
 }
 export interface PreparedBinary {
     readonly artifact: UploadArtifact;
@@ -69,5 +71,7 @@ export declare function checkBinaryRoute(analysisType: string, supported: Binary
 export declare function prepareBinary(prepared: PreparedSubmission, supported: BinaryCapability): Promise<PreparedBinary>;
 export declare function uploadGeometry(uploadGateway: GatewayTransport, fetch: FetchLike, prepared: PreparedBinary, timeoutMs: number, signal?: AbortSignal): Promise<string>;
 export declare function binarySubmission(binary: PreparedBinary, geometryUrl: string, resultFormat?: "irbf" | "json"): BinarySubmission;
+/** The canonical bytes of one binary request: the body of its POST, or one batch item's `request`. */
+export declare function binaryEnvelope(binary: BinarySubmission): Uint8Array;
 export declare function submitBinary(gateway: GatewayTransport, prepared: PreparedSubmission, binary: BinarySubmission, parseJob: (value: unknown) => Job, signal?: AbortSignal, beforeDispatch?: () => void, idempotencyKey?: string): Promise<Job>;
 export {};

@@ -4,7 +4,7 @@
  * the cap, and the keys still held uncertain. `planning.ts` reads this to
  * pick which tiles `buildEntries` rebuilds and to guard a paid retry on
  * `resubmitKeys.size > 0`; `submission.ts` reads it to stamp the new schedule's run id
- * and attempts; `run-and-wait-retry.ts` reads it to decide a retry round.
+ * and attempts; `stream.ts` reads it to decide a retry round.
  *
  * Kernel-first (root `CLAUDE.md`): the set arithmetic, the merge of several
  * records for one key, and the key derivation live in `ir_geo::area_retry`,
@@ -44,7 +44,6 @@ export async function buildRetryContext(service, retryFrom, options = {}) {
     // runs; no second poller, no `known` short-circuit map.
     await checkAreaState(service, retryFrom, {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
-        ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
     });
     const plan = planAreaRetry({
         ...(retryFrom.runId === undefined ? { freshRunId: freshRunId() } : { runId: retryFrom.runId }),
