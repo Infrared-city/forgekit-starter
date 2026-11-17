@@ -22,7 +22,12 @@ export declare function requireCore(method?: string): WasmCore;
  * re-fetch a fresh view instead of reading a detached `ArrayBuffer`. */
 export declare function requireCoreMemory(): WebAssembly.Memory;
 /** Called once by the Node entry point; see {@link ensureCore}. */
-export declare function registerPackagedCoreLoader(load: () => Promise<void>): void;
+export declare function registerPackagedCoreLoader(load: (threads?: number) => Promise<void>): void;
+/**
+ * The packaged threaded core with `threads` workers, for an SDK worker in Node
+ * (`createWorkerClient({ threads })`). Only the Node entry has a packaged core.
+ */
+export declare function loadPackagedCore(threads?: number): Promise<void>;
 /**
  * Loads the core for a caller that does not already hold one ready, so a
  * geodata read works without a prior `initializeCore()` call in Node, the

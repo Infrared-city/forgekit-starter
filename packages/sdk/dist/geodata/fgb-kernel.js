@@ -48,25 +48,6 @@ export const HEADER_PREFIX_BYTES = 8_192;
 const MAX_HEADER_BYTES = 16 * 1024 * 1024;
 /** Guard against a loop that never converges on a malformed index. */
 const MAX_SEARCH_STEPS = 32;
-// Maintainer note (not published): Caps on what the kernel may ask the host
-// to fetch. The host trusts the kernel's plan, and the objects behind it are
-// 5.4 GB and 14.4 GB, so "the kernel would not do that" is not a bound. A
-// single planned range and the sum of one read's ranges are both capped, and a
-// breach is a typed error rather than an allocation.
-/**
- * Largest single byte range, in bytes (64 MiB), one FlatGeobuf read may
- * fetch. A larger planned range fails with a `GeodataRangeError`.
- *
- * @category Geodata
- */
-export const MAX_PLANNED_RANGE_BYTES = 64 * 1024 * 1024;
-/**
- * Largest total, in bytes (256 MiB), that the ranges of one FlatGeobuf read
- * may add up to. A larger plan fails with a `GeodataRangeError`.
- *
- * @category Geodata
- */
-export const MAX_PLANNED_TOTAL_BYTES = 256 * 1024 * 1024;
 const objectCache = new Map();
 /**
  * Drop the cached FlatGeobuf headers and index levels held by this runtime.
@@ -89,39 +70,19 @@ function concat(chunks) {
     }
     return out;
 }
-/** A running total, so one read's ranges are bounded as well as each range. */
-class RangeBudget {
-    url;
-    spent = 0;
-    constructor(url) {
-        this.url = url;
-    }
-    take(length) {
-        if (length > MAX_PLANNED_RANGE_BYTES) {
-            throw new GeodataRangeError(this.url, `the kernel planned a ${length}-byte range, over the ` +
-                `${MAX_PLANNED_RANGE_BYTES}-byte per-range cap`);
-        }
-        this.spent += length;
-        if (this.spent > MAX_PLANNED_TOTAL_BYTES) {
-            throw new GeodataRangeError(this.url, `the kernel planned ${this.spent} bytes for one read, over the ` +
-                `${MAX_PLANNED_TOTAL_BYTES}-byte total cap`);
-        }
-    }
-}
+/** One planned range, checked by the kernel's caps (per range, per read, inside the file). */
 function checkedRange(url, range, fileSize, budget) {
     const start = Number(range[0]);
     const length = Number(range[1]);
-    if (!Number.isInteger(start) || !Number.isInteger(length) || start < 0 || length <= 0) {
+    if (!Number.isInteger(start) || !Number.isInteger(length) || start < 0 || length < 0) {
         throw new GeodataError(`${url}: the kernel planned an unusable range [${String(range[0])}, ${String(range[1])}]`);
     }
-    // The byte caps come BEFORE the bounds check: they are the memory guard,
-    // and an over-cap range must report the cap it broke, not merely that it
-    // ran past the end of the file.
-    budget.take(length);
-    if (start + length > fileSize) {
-        throw new GeodataError(`${url}: the kernel planned a range past the end of the file ` +
-            `([${start}, ${length}] of ${fileSize} bytes)`);
-    }
+    const checked = JSON.parse(requireCore().rangeReadStep(JSON.stringify({
+        event: "plan", start, length, file_size: fileSize, spent: budget.spent,
+    })));
+    if (checked.refuse !== undefined)
+        throw new GeodataRangeError(url, checked.refuse);
+    budget.spent = checked.spent;
     return [start, length];
 }
 /** Read the header and file size, from the realm cache when possible. */
@@ -192,7 +153,7 @@ export async function readWithFunctions(layout, searchStep, decodeRangeFeatures,
     // send one, so this is the degraded case, and a read without it can only
     // be as consistent as the host makes it.
     const ifMatch = cache.etag === undefined ? {} : { ifMatch: cache.etag };
-    const budget = new RangeBudget(url);
+    const budget = { url, spent: 0 };
     // The cached root levels are every AOI's first descent, so a second read
     // of the same object starts one round trip further down.
     const fetchedNodes = [...cache.topNodes];

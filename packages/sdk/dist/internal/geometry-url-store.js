@@ -1,6 +1,8 @@
 /** The server keeps uploaded geometry for 24 h; the SDK uses an entry for 23 h. */
 export const STORED_URL_LIFETIME_MS = 23 * 60 * 60 * 1_000;
 const MAX_STORE_WAIT_MS = 2_000;
+/** The longest wait for a {@link GeometryUrlStore.claim}; then the SDK uploads anyway. */
+export const MAX_CLAIM_WAIT_MS = 60_000;
 /** The end of a SigV4 URL (`X-Amz-Date` + `X-Amz-Expires`), or `undefined`. */
 function signedUrlEnd(raw) {
     let url;
@@ -41,12 +43,14 @@ export class GeometryUrlStoreGate {
     store;
     logger;
     now;
+    claimWaitMs;
     warned = false;
     waitMs;
-    constructor(store, logger, timeoutMs, now = Date.now) {
+    constructor(store, logger, timeoutMs, now = Date.now, claimWaitMs = MAX_CLAIM_WAIT_MS) {
         this.store = store;
         this.logger = logger;
         this.now = now;
+        this.claimWaitMs = claimWaitMs;
         this.waitMs = Math.min(MAX_STORE_WAIT_MS, timeoutMs);
     }
     /** The stored entry for `key` while it is good. */
@@ -67,11 +71,56 @@ export class GeometryUrlStoreGate {
         const end = Math.min(expiresAt, signedUrlEnd(url) ?? Infinity);
         return this.now() < end ? { url, expiresAt: end } : undefined;
     }
-    /** Keep `url`, uploaded now. Not awaited: a slow store never slows a run. */
+    /** Keep `url`, uploaded now. The promise settles when the store's write
+     * settles and never rejects; a run never awaits it (a claim holder releases
+     * when it settles). */
     set(key, url) {
         const expiresAt = Math.min(this.now() + STORED_URL_LIFETIME_MS, signedUrlEnd(url) ?? Infinity);
-        within(Promise.resolve().then(() => this.store.set(key, url, expiresAt)), this.waitMs)
-            .catch((error) => { this.warn("set", error); });
+        return Promise.resolve().then(() => this.store.set(key, url, expiresAt))
+            .then(() => undefined, (error) => { this.warn("set", error); });
+    }
+    /** The store's claim on `key` ({@link GeometryUrlStore.claim}), held until
+     * the returned release runs; `undefined` without a claim, when it fails or
+     * after {@link MAX_CLAIM_WAIT_MS}. A claim that arrives after the wait
+     * ended is released at once. No caller's signal: the claim belongs to the
+     * shared upload, and each caller stops waiting on its own abort. */
+    async claim(key) {
+        if (this.store.claim === undefined)
+            return undefined;
+        let abandoned = false;
+        const claimed = Promise.resolve().then(() => this.store.claim(key));
+        claimed.then((release) => { if (abandoned)
+            this.release(release); }, () => undefined);
+        let timer;
+        const stop = new Promise((resolve) => {
+            timer = setTimeout(() => {
+                this.warn("claim", new Error(`no claim in ${this.claimWaitMs} ms`));
+                resolve(undefined);
+            }, this.claimWaitMs);
+            timer.unref?.();
+        });
+        try {
+            const release = await Promise.race([claimed, stop]);
+            if (release === undefined)
+                abandoned = true;
+            return release === undefined ? undefined : () => { this.release(release); };
+        }
+        catch (error) {
+            abandoned = true;
+            this.warn("claim", error);
+            return undefined;
+        }
+        finally {
+            clearTimeout(timer);
+        }
+    }
+    release(release) {
+        try {
+            release();
+        }
+        catch (error) {
+            this.warn("claim", error);
+        }
     }
     warn(verb, error) {
         if (this.warned)

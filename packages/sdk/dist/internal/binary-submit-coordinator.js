@@ -1,6 +1,6 @@
 import { AuthPartitionChangedError } from "./auth.js";
 import { withBinaryAdmission } from "./binary-admission.js";
-import { binarySubmission, submitBinary, uploadGeometry, } from "./binary-submission.js";
+import { binaryEnvelope, binarySubmission, submitBinary, uploadGeometry, } from "./binary-submission.js";
 import { storeKey } from "./geometry-url-store.js";
 import { Deadline } from "./deadline.js";
 import { exactAuthHeadersDigest, normalizeAuthHeaders, } from "./geometry-reuse/credentials.js";
@@ -53,7 +53,8 @@ async function sharedUpload(options, key, uploadGateway, prepared, keep, refresh
     }
 }
 /**
- * The caller's `geometryUrlStore` first (not on a `refresh`), then the PUT. It
+ * The caller's `geometryUrlStore` first (not on a `refresh`), then its
+ * optional claim and a second look, then the PUT. It
  * runs once per key: every other submit for the key waits on the same
  * in-flight promise. A URL is kept in the client's memory before the in-flight
  * entry goes, so a later submit finds one or the other; a new URL also goes to
@@ -67,10 +68,28 @@ async function storedOrUploaded(options, key, uploadGateway, prepared, refresh) 
         cache.set(key, stored.url, stored.expiresAt);
         return { url: stored.url, reused: true };
     }
-    const url = await uploadGeometry(uploadGateway, options.fetch, prepared, options.timeoutMs, undefined);
-    cache.set(key, url);
-    cache.store?.set(tagged, url);
-    return { url, reused: false };
+    // A store that coordinates uploads across clients (#899): hold its claim
+    // around a second look and the upload, and release when `set` settles.
+    const release = refresh ? undefined : await cache.store?.claim(tagged);
+    let held = release;
+    try {
+        const claimed = release === undefined ? undefined : await cache.store?.get(tagged);
+        if (claimed !== undefined) {
+            cache.set(key, claimed.url, claimed.expiresAt);
+            return { url: claimed.url, reused: true };
+        }
+        const url = await uploadGeometry(uploadGateway, options.fetch, prepared, options.timeoutMs, undefined);
+        cache.set(key, url);
+        const written = cache.store?.set(tagged, url);
+        if (release !== undefined && written !== undefined) {
+            held = undefined;
+            void written.then(release);
+        }
+        return { url, reused: false };
+    }
+    finally {
+        held?.();
+    }
 }
 /** A definite pre-accept refusal (no job exists) that a dead or expired
  * geometry URL can cause: 400, 404, 410 or 422. */
@@ -154,18 +173,29 @@ async function prepareUncached(options, fresh) {
         options.releasePrepared();
     }
 }
-async function uncached(options, fresh) {
+async function uncached(options, fresh, deliver) {
     const binary = await prepareUncached(options, fresh);
-    return post(options, () => submitBinary(options.gateway, options.prepared, binary, options.parseJob, options.signal, options.beforeDispatch, options.idempotencyKey));
+    return deliver(options.gateway, binary, options.beforeDispatch);
 }
 /** Coordinate strict shared-URL reuse with one safe, uncached compatibility fallback. */
-export async function submitPreparedBinary(options) {
+export function submitPreparedBinary(options) {
+    return deliverPrepared(options, (gateway, binary, beforeDispatch) => post(options, () => submitBinary(gateway, options.prepared, binary, options.parseJob, options.signal, beforeDispatch, options.idempotencyKey)));
+}
+/**
+ * Every step of `submitPreparedBinary` except the POST (encode, upload, URL
+ * reuse): the request bytes, for one item of a batch submit. The run engine
+ * sends a refused item alone, so the reused-URL refresh stays on the POST path.
+ */
+export function prepareBinaryEnvelope(options) {
+    return deliverPrepared(options, async (_gateway, binary) => binaryEnvelope(binary));
+}
+async function deliverPrepared(options, deliver) {
     if (!options.reuseEnabled)
-        return uncached(options, false);
+        return uncached(options, false, deliver);
     const headers = await resolveAuth(options);
     const digest = await exactAuthHeadersDigest(headers);
     if (digest === undefined)
-        return uncached(options, false);
+        return uncached(options, false, deliver);
     const strictAuth = boundAuth(headers, digest, options.auth);
     const gateway = transport(options.gateway.baseUrl, strictAuth, options);
     const uploadGateway = transport(options.uploadGateway.baseUrl, strictAuth, options);
@@ -174,7 +204,7 @@ export async function submitPreparedBinary(options) {
         options.beforeDispatch?.();
         paidDispatched = true;
     };
-    const send = (binary) => post(options, () => submitBinary(gateway, options.prepared, binary, options.parseJob, options.signal, beforeDispatch, options.idempotencyKey));
+    const send = (binary) => deliver(gateway, binary, beforeDispatch);
     try {
         let binary;
         let cacheKey;
@@ -207,6 +237,6 @@ export async function submitPreparedBinary(options) {
             throw error;
         if (paidDispatched)
             throw error;
-        return uncached(options, true);
+        return uncached(options, true, deliver);
     }
 }

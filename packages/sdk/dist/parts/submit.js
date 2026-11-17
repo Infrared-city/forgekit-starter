@@ -1,10 +1,10 @@
 /**
- * Submit the parts of a planned request through the area submit pool
- * (`area/submit-pool.ts`): the same POST rules as an area run (an uncertain
- * POST is never sent again, a 402 stops the rest), and the same retry: only
- * the parts that failed.
+ * Submit the parts of a planned request on the kernel run engine
+ * (`area/engine-jobs.ts`): the same POST rules as an area run, and the same
+ * retry: only the parts that failed.
  */
-import { submitEntries } from "../area/submit-pool.js";
+import { submitOnEngine } from "../area/engine-jobs.js";
+import { freshRunId } from "../area/retry-plan.js";
 import { computeAreaState } from "../area/schedule.js";
 import { sha256Hex } from "../internal/geometry-reuse/canonical.js";
 import { silentLogger } from "../logger.js";
@@ -58,8 +58,8 @@ export async function submitParts(service, request, options = {}, logger = silen
         ? await planInteriorRoute(service, request.analysisType, bytes, options, logger, resolveResultFormat(options.resultFormat))
         : undefined;
     const entries = partEntries(request, prior === undefined ? undefined : new Set(retryableParts(prior)), interior);
-    const outcome = await submitEntries(service, entries, {
-        ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
+    const outcome = await submitOnEngine(service, entries, {
+        runId: freshRunId(),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(options.onAccepted === undefined ? {} : { onAccepted: options.onAccepted }),
         ...(prior === undefined ? {} : { priorJobs: prior.jobs, priorUncertain: prior.uncertainSubmissions }),

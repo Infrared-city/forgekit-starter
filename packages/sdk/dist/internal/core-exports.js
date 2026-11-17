@@ -5,9 +5,13 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // tested against instead of guessing from an absent field.
     "surfgridVersion",
     "geometryGroups",
+    // D293: the context options as the site key names them.
+    "contextKey",
     // Geometry schema 2 (D206): the body fields the geometry document carries,
     // the schema this kernel writes, and the one per-job sensor budget.
     "binaryGeometryFields",
+    "hostRetryWaitSeconds",
+    "rangeReadStep",
     "geometrySchemaVersion",
     "maxSensorsPerJob",
     "geometryGroupHash",
@@ -19,12 +23,20 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // field registry; the host builds the control body and the group hashes.
     "configHashV2",
     "configGroupHash",
+    // Hashes over buffers (no JSON): a mesh group, the site key, the buildings
+    // fingerprint fold, a terrain document's content key.
+    "configGroupHashBuffers",
+    "siteKey",
+    "foldBuildingsFingerprint",
+    "terrainContentKey",
     "energyBalanceYear",
     // Rules that were host copies: which models may take a terrain hash from a
     // `SiteTerrain` handle, and the `as-is` default for a supplied scene.
     "inertKeys",
     "terrainHandleHashApplies",
     "resolveTerrainAlignment",
+    // The tree z warning of an "as-is" run on terrain (#980).
+    "treeZWarning",
     "fieldRegistryJson",
     // D91: the wind family's datum — every supplied mesh's own lowest point to
     // z = 0, one pass over the packed site at the plan seam.
@@ -52,28 +64,45 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "site_bodies",
     // D101: every tile's IRBF artifact from the same site, and one body's for
     // the direct `submit` path — the kernel packs, frames, zips and digests.
-    "site_artifacts",
+    "site_artifactsStart",
+    "site_artifactsEnd",
     "geometryArtifact",
     // The facade batches, planned from the same kept site, and every batch's
     // selected body, capture and artifact (D156: its targets, the rest as
     // context) from one call per tile, as the Python host does
     // (`area/site-facade.ts`, WP3).
-    "site_facadeBatches",
-    "site_facadeFrames",
+    "site_facadeBatchesStart",
+    "site_facadeBatchesEnd",
+    "site_facadeFramesStart",
+    "site_facadeFramesEnd",
+    "site_facadeScenesStart",
+    "site_facadeScenesEnd",
+    // A facade job's capture, put straight into the client's store (D-2026101110-iris-nectar-maple).
+    "site_facadeCapturesStart",
+    "site_facadeCapturesEnd",
+    // The facade analyses of one stream share each tile's parts (`area/stream.ts`).
+    "site_shareFacadeParts",
     "site_checkTerrain",
     "site_identity",
-    "site_unowned",
     // `splitFacadeCoreContext` and its report twin are NOT here: the kernel
-    // `Site` plans every facade job (`site_facadeBatches`), so this package
+    // `Site` plans every facade job (`site_facadeBatchesStart`), so this package
     // calls neither. The kernel still exports both.
     // `partitionFacadeCoreContext` and its `...F64` twin are NOT here: the site
     // pass answers `core`, the shrink band, the demoted ids and `unowned` for the
     // whole grid in one call, so this package no longer asks per tile (D90). The
     // kernel still exports both, for a caller composing tiles itself.
-    // D158: the cap's one validation rule, checked before any planning. The
-    // exact planner itself runs inside `site_facadeBatches`; the kernel still
-    // exports `planExactSurfaceBatchesCapped` for a caller composing tiles.
-    "checkMaxSensorsPerJob",
+    // D158: the cap's one validation rule, checked before any planning (a fresh
+    // run or a retry, D300). The exact planner itself runs inside
+    // `site_facadeBatchesStart`; the kernel still exports
+    // `planExactSurfaceBatchesCapped` for a caller composing tiles.
+    "checkSensorCap",
+    // D300: rules both hosts kept their own copy of -- the terrain margin, the
+    // Overture byte cap, the final error of a run and of an engine stop, the
+    // time window, the catalog weather columns, the pinned surface fields and
+    // the price of a run (list URL, price per job, estimate, price source).
+    "terrainMargin", "overturePlannedBytesLimit", "areaFinalError", "engineStop", "apiKeyRefusedMessage",
+    "validateTimeWindow", "weatherColumns", "surfaceWireFields",
+    "pricingUrl", "tokensPerJob", "areaEstimate", "priceSource",
     // D160: four small rules this package used to restate, now asked of the
     // kernel as the Python host does — which analyses get the tile location,
     // the Overture bbox membership, the terrain triangle cap, and the polygon
@@ -85,21 +114,38 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // `area/facade-layout-schedule.ts` to derive a saved schedule's per-job
     // `tileOrigin` without restating that math host-side.
     "scalarUnproject",
-    // The area GRID merge (D273): one kernel merger per run decodes, places,
-    // blends and clips every tile archive, in the wire dtype. A class appears
-    // as its methods (see the SITE note above).
+    // The area GRID merge (D273): one kernel merger per run places, blends and
+    // clips every tile, in the wire dtype; the archives of one turn decode in
+    // ONE call (`decodeGridTilesStart`, D299). A class appears as its methods (see
+    // the SITE note above).
+    "decodeGridTilesStart",
+    "decodeGridTilesEnd",
+    "__wbg_gridtiles_free",
     "__wbg_areagridmerger_free",
     "areagridmerger_new",
-    "areagridmerger_push",
+    "areagridmerger_pushMany",
     "areagridmerger_finish",
+    // The run engine: every send, poll, download and hand-over decision of a
+    // stream run (`area/run-engine.ts`; a class: its methods).
+    "__wbg_runengine_free",
+    "runengine_new",
+    "runengine_step",
+    "runengine_facts",
+    // The wait for ONE job (`JobWait`): the host does the GET and the sleep.
+    "__wbg_jobwait_free",
+    "jobwait_new",
+    "jobwait_next",
     "groundCleanV3",
+    // Flat GeoJSON layer tessellation (`geojsonLayersToDotbim`, #985).
+    "geojsonLayersToDotbim",
     "gridToPng",
     "packedIndexCount",
+    "tileFrameOrigin",
     "tileSwOffset",
     // Facade "pretty mode" (ADR 0008, D88): the SDK draws the per-cell render
     // geometry with the kernel it already bundles instead of downloading 12.6x
     // the body from the server. The area merge synthesizes inside the one-call
-    // join (`joinSurfaceJobs`, below).
+    // join (`SurfaceJoinStream.finish`, below).
     "synthesizeSurfaces",
     // Offline facade layout rebuild + compact export (#707, D252/D254). Both
     // calls return a `FacadeLayoutHandle` that holds the rebuilt/reloaded
@@ -110,6 +156,11 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "facadeLayoutFromBytes",
     // The public mesh utility `cleanMesh` (#555, D208).
     "cleanMesh",
+    // The context-mesh utilities `weldMeshes`, `simplifyMeshes` and
+    // `exportMeshes` (D294).
+    "weldMeshes",
+    "simplifyMeshes",
+    "exportMeshes",
     // The exact per-tile re-anchor. It replaced the constant-offset loop the
     // host used to run per mesh (D48), which is why `transformBuildingCoords`
     // is no longer on this list: the kernel still exports it, both bindings
@@ -120,6 +171,8 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // compose calls (D57 / rect-union kernel port): `chunk ∩ union(tile
     // rectangles)`, replacing this package's own `geodata/rect-union.ts`.
     "rectUnionDecompose",
+    "siteChunks",
+    "siteFrameWarnings",
     // Daylight-factor floor parts (`parts/`, D221): plan, part body, join.
     "daylightParts", "daylightPartBody", "daylightMerge", "interiorArtifact",
     // The binary daylight-factor result (family 7, D232): views, binary join,
@@ -129,11 +182,12 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // `slabToleranceDeg` measurement helper (`geodata/rect-union-metrics.ts`).
     "rectUnionSlabToleranceDeg",
     // The default transport (D196); the send budget (#556); the poll schedule (D213).
-    "defaultTransport", "sendBudgetSeconds", "sendStallSeconds", "pollIntervalSeconds",
-    "pollErrorDelaySeconds", "pollDefaultTimeoutSeconds", "pollFirstDelaySeconds",
-    // The area retry plan and its idempotency key, and the same-key resend budget (D224). See `area/retry-plan.ts`.
+    "defaultTransport", "sendBudgetSeconds", "sendStallSeconds",
+    "pollDefaultTimeoutSeconds",
+    // The area retry plan and its idempotency key (D224). See `area/retry-plan.ts`.
     "areaIdempotencyKey", "planAreaRetry",
-    "submitResendDelaySeconds", "classifySubmitSend",
+    // The run engine's retry limits, read-only (issue #873). See `area/run-engine.ts`.
+    "retryPolicy",
     "windClassOrdinals",
     "overlayAoiIntersectsPolygon",
     "overlayBboxCandidates",
@@ -175,10 +229,16 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     // does not call it.
     "vegetationPointsToMeshes",
     "overtureSelectFiles",
-    // Static weather: the two kernel operations behind the three public
-    // weather methods.
-    "weatherNearestStations",
+    // Static weather: the `WeatherCatalog` handle, the pointer rule, the hour
+    // filter and the row shaper behind the three public weather methods
+    // (D-2026101012-heron-quartz-maple).
+    "__wbg_weathercatalog_free",
+    "weathercatalog_new",
+    "weathercatalog_nearest",
+    "weathercatalog_find",
+    "weatherPointerFolder",
     "weatherFilterHours",
+    "weatherRows",
     // Bring-your-own weather. A core without these cannot parse an EPW file,
     // cannot prove which weather a run used and cannot select a model's
     // arrays — each of them a shipped path, so a missing one is one loud
@@ -199,15 +259,28 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "decodeBinaryResult",
     "inspectBinaryResult",
     "decodeGridDocument",
-    // The area SURFACE merge: each download decoded as it arrives (WP4), then
-    // the whole run joined into columns in one call, triangles included (D197).
-    "decodeSurfaceArchive",
-    "decodeSurfaceArchives",
-    "joinSurfaceJobs",
+    // The area SURFACE merge (D197, D-2026101011-slate-aspen-pine): the downloads of each turn decoded in
+    // ONE call (`decodeSurfaceJobsStart`, D-2026101110-iris-nectar-maple) and kept by the stream, then the whole run joined
+    // into columns, triangles included (a class: its methods).
+    "decodeSurfaceJobsStart",
+    "decodeSurfaceJobsEnd",
+    "__wbg_surfacejobs_free",
+    "__wbg_surfacejoinstream_free",
+    "surfacejoinstream_new",
+    "surfacejoinstream_pushManyStart",
+    "surfacejoinstream_pushManyEnd",
+    "surfacejoinstream_finishStart",
+    "surfacejoinstream_finishEnd",
     // The captures of the run, shared by its analyses (a class: its methods).
     "__wbg_capturestore_free",
     "capturestore_new",
     "capturestore_remember",
+    "__wbg_capturehold_free",
+    "capturehold_bind",
+    "capturehold_key",
+    // A single facade job (D-2026101113-spruce-hazel-bison): its capture and its per-cell triangles.
+    "surfaceJobCapture",
+    "surfaceJobTriangles",
     // The one batch widen of surface values (D272): `surfaceValuesF32`.
     "surfaceValuesF32",
     // The render buffers of a surface result (D271, #753): `surfaceRenderBuffers`.
@@ -216,13 +289,21 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "surfaceColumnsToBytes",
     "surfaceColumnsFromBytes",
     // Brief J (D106): the deterministic `payload.json` ZIP writer every json
-    // submit body and geometry-reference document uses. Replaces
-    // `internal/zip.ts` (`fflate`), deleted in the same PR.
-    "zipPayloadJson",
+    // submit body and geometry-reference document uses; every body of one
+    // turn in ONE call (`internal/zip-payload.ts`, D299).
+    "zipPayloadJsonManyStart",
+    "zipPayloadJsonManyEnd",
+    // A heavy kernel call runs on the pool while the JS thread goes on: a `...Start` gives a
+    // `PoolTask`, its `...End` reads the result (`internal/pool-task.ts`).
+    "__wbg_pooltask_free",
+    "pooltask_flag",
+    "pooltask_done",
     "__wbindgen_malloc",
     "__wbindgen_realloc",
     "__wbindgen_free",
-    "__wbindgen_exn_store",
+    // No `__wbindgen_exn_store`: the threaded core catches JS exceptions with
+    // WebAssembly exception handling (D299) and does not export it; the glue
+    // of each build checks its own internals.
     "__wbindgen_start",
     "__externref_table_alloc",
     "__externref_table_dealloc",
@@ -231,9 +312,6 @@ export const REQUIRED_FUNCTION_EXPORTS = [
     "griddocumentdecode_route",
     "griddocumentdecode_finiteNumbersValidated",
     "__wbg_categoricalareadense_free",
-    "__wbg_surfacearchive_free",
     "categoricalareadense_values",
     "categoricalareadense_legend",
-    "surfacearchive_route",
-    "surfacearchive_error",
 ];

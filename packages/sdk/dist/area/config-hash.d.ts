@@ -10,8 +10,9 @@
  *   keys, before tiling rewrites the location and slices the groups) without
  *   the geometry groups, `null` and `undefined`;
  * - the GROUP hashes: one per non-empty geometry group the payload holds.
- *   Terrain uses the kernel handle's hash; every other group goes through the
- *   kernel `configGroupHash`, which owns the rule.
+ *   Terrain uses the kernel handle's hash; a mesh group goes to the kernel as
+ *   buffers (`configGroupHashBuffers`); every other group goes through the
+ *   kernel `configGroupHash` as JSON text.
  *
  * A key the registry does not list for the model is the kernel's call: it
  * drops the inert host keys (fields the host class carries for every model
@@ -40,10 +41,17 @@ export declare const CONFIG_HASH_V2_CONTRACT_VERSION = 10;
 export interface TerrainHash {
     readonly groupHash: string | undefined;
 }
+/**
+ * The kernel hash of one group: a mesh group over its buffers (typed arrays
+ * are read in place, no JSON), anything else over its JSON text. With a
+ * `memo` (one per call), an object is hashed once: the site key reads the
+ * same hash (`prepared-site.ts`).
+ */
+export declare function kernelGroupHashOnce(model: string, key: string, value: unknown, memo?: WeakMap<object, string>): string;
 /** The control body and the group hashes of one payload (see the module docs). */
-export declare function hashInputs(model: string, payload: Readonly<Record<string, unknown>>, terrain?: TerrainHash): {
+export declare function hashInputs(model: string, payload: Readonly<Record<string, unknown>>, terrain?: TerrainHash, memo?: WeakMap<object, string>): {
     readonly control: Record<string, unknown>;
     readonly groups: Record<string, string>;
 };
 /** The kernel `configHashV2` of one prepared payload. */
-export declare function scheduleConfigHash(model: string, payload: Readonly<Record<string, unknown>>, terrain?: TerrainHash, now?: Date): string;
+export declare function scheduleConfigHash(model: string, payload: Readonly<Record<string, unknown>>, terrain?: TerrainHash, now?: Date, memo?: WeakMap<object, string>): string;

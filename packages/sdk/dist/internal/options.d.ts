@@ -15,16 +15,17 @@ export interface InitializeCoreOptions {
     /** An already compiled core WebAssembly module. */
     readonly module?: WebAssembly.Module;
     /**
-     * Node 22 or later only: run the core on this many threads, using the threaded core that
-     * ships in the package (loaded only when this is above 1). Omitted or `1` is the default
-     * single-threaded core. Results are identical to the single-threaded core, and facade
-     * merges are faster. It cannot be combined with `url`, `bytes` or `module`, and the
-     * browser and worker entry points refuse a value above 1.
+     * Node only: the number of core threads. Omitted: on Node 22 or later, `min(4, cores)` (8 from 16 cores)
+     * threads with the threaded core that ships in the package (one thread on Node 18 and
+     * 20, on one core, or when the pool does not start); `1`: the single-threaded core;
+     * above 1: that many threads (Node 22 or later). Results are identical for every count;
+     * the pool decodes and merges result tiles, zips request bodies and prepares the site.
+     * A count cannot be combined with `url`, `bytes` or `module`, and the browser and
+     * worker entry points refuse a value above 1.
      *
-     * With the threaded core, a failure inside the core on any thread ends the Node process
-     * (killed with SIGKILL, which no handler can catch) after writing one JSON line to
-     * stderr. The same happens when the core runs out of WebAssembly memory near the 4 GiB
-     * limit. With the single-threaded core the same failure is a thrown error instead.
+     * With the threaded core, a core error on any thread is a thrown error. Running out of
+     * WebAssembly memory near the 4 GiB limit cannot be caught: it ends the Node process
+     * (SIGKILL) after writing one JSON line to stderr.
      */
     readonly threads?: number;
 }

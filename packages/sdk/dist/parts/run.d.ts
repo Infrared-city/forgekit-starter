@@ -1,6 +1,7 @@
 import type { AreaJobsService } from "../area/run-options.js";
 import type { JobsService, OnPollCallback } from "../jobs.js";
 import type { Logger } from "../logger.js";
+import { type PriceQuote } from "../price-list.js";
 import { type DecompressResultArchiveOptions } from "../results/archive.js";
 import { type MergePartsOptions, type PartsJobsService } from "./merge.js";
 import { type PlannedRequest } from "./plan.js";
@@ -115,14 +116,18 @@ export declare function runParts(jobs: PartsClientJobs, logger: Logger, input: R
  * Previews what a run of `input` would submit and bill, offline: no request is sent.
  *
  * @param jobs - The job service (only used to prepare the submission).
+ * @param billing - The service that prices a job, for example `client.billing`.
  * @param logger - The client logger.
  * @param input - The wire-keyed analysis request.
  * @param options - The same options as the run.
  * @param target - Optional planning target for the split.
  * @returns The part count, sensors per part and estimated cost in tokens.
+ * @throws {PricingUnavailableError} when the price list cannot be fetched and the client has none.
  * @category Run an analysis
  */
-export declare function previewParts(jobs: Pick<JobsService, "prepareSubmission">, logger: Logger, input: Readonly<Record<string, unknown>>, options?: PartsWaitOptions, target?: number): PartsPreview;
+export declare function previewParts(jobs: Pick<JobsService, "prepareSubmission">, billing: {
+    quote(analysisType: string): Promise<PriceQuote>;
+}, logger: Logger, input: Readonly<Record<string, unknown>>, options?: PartsWaitOptions, target?: number): Promise<PartsPreview>;
 /**
  * Joins the finished parts of a run into one result value.
  *

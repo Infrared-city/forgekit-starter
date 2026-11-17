@@ -1,5 +1,7 @@
 import { type WasmCore } from "../internal/core.js";
 type KernelStore = InstanceType<WasmCore["CaptureStore"]>;
+/** A capture the kernel put in the store before its job was accepted (`Site.facadeCaptures`). */
+export type CaptureHold = WasmCore["CaptureHold"]["prototype"];
 /**
  * The facade captures of one client, in one capture store.
  *
@@ -14,8 +16,13 @@ export declare class FacadeCaptures {
     get jobCount(): number;
     /** The bytes held: the distinct captures and the syntheses made from them. */
     get heldBytes(): number;
-    /** Keep the capture of an accepted job. `cellTris`: the run asked for the per-cell triangles. */
-    remember(jobId: string, capture: Uint8Array, cellTris: boolean): void;
+    /**
+     * Keep the capture of an accepted job: its bytes, or a capture already held in this store.
+     * `cellTris`: the run asked for the per-cell triangles.
+     */
+    remember(jobId: string, capture: Uint8Array | {
+        bind(jobId: string): void;
+    }, cellTris: boolean): void;
     /** Release a job's capture that no merge will use. */
     forget(jobId: string): void;
     /** Whether the capture of this accepted job was not kept (the store refused it). */

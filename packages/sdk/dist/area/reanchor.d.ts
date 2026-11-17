@@ -11,16 +11,6 @@ import type { Polygon } from "./types.js";
  */
 export declare function reanchorEntries(entries: Readonly<Record<string, unknown>>, source: FrameOrigin, target: FrameOrigin): Record<string, unknown>;
 /**
- * The site-frame entries a tile was assigned, ready to re-anchor.
- *
- * The ASSIGNMENT is the kernel's — `composeTilePayloads` decides which bodies
- * a tile's context rectangle meets, and this reads that decision back as a key
- * list. Only the COORDINATES come from the site-frame source, because the
- * kernel's copy has already been shifted by the constant offset this replaces.
- * Key order is the kernel's, so the payload's insertion order does not move.
- */
-export declare function siteEntriesFor(assigned: Readonly<Record<string, unknown>>, siteGroup: Readonly<Record<string, unknown>>): Record<string, unknown>;
-/**
  * What an ACQUIRED buildings object carries: the map, and the frame it is in.
  *
  * `BuildingsService.getBuildingsInArea` returns `AreaBuildings`, whose

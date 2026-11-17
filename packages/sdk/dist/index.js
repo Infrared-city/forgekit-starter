@@ -4,13 +4,14 @@ export { CoreInitializationError, CoreNotReadyError, CoreTerminalError, } from "
 export { VERSION } from "./version.js";
 export { consoleLogger, silentLogger } from "./logger.js";
 export { AnalysesName, TILING_SUPPORTED_TYPES, WIND_ANALYSIS_TYPES } from "./analysis-types.js";
-export { BillingService, DEFAULT_TOKENS_PER_JOB, ESTIMATED_SECONDS_PER_TILE, estimateWorkflowRunTokens, PER_JOB_MODEL_KEYS, resolveBracketName, resolveTokensPerJob, } from "./billing.js";
+export { BillingService, estimateWorkflowRunTokens, resolveBracketName, resolveTokensPerJob, PricingUnavailableError, } from "./billing.js";
 export { BuildingsService } from "./buildings.js";
 // D51 tells callers to expect this by type, so it has to be nameable. It is
 // on `/tiling` as well, beside the `runArea` that throws it.
 export { ConfigHashPolicyError } from "./area/planning.js";
 export { FacadeCountContractError } from "./area/count-contract.js";
 export { cleanMesh } from "./mesh-clean.js";
+export { exportMeshes, simplifyMeshes, weldMeshes } from "./mesh-simplify.js";
 export { FacadeLayout, synthesizeFacadeLayout, attachValues } from "./area/facade-layout.js";
 // The typed geodata failures. MIGRATION and D48-TS both tell a caller to catch
 // these from `getArea` / `getBuildingsInArea`, and until now they were only on
@@ -41,6 +42,7 @@ export { legendRange, registryFixedRange, sharedLegendRange } from "./legend.js"
 // `Local` names outlived their remote twins (the service paths are gone); kept
 // because they are published API. Same for `convertPointsToMeshesLocal` above.
 export { cleanV3Local, LocalCleaner } from "./ground-materials.js";
+export { geojsonLayersToDotbim } from "./tessellate.js";
 export * from "./area/index.js";
 export * from "./results/index.js";
 export { JobStatus, JobsService, jobFromResponse, parseJobStatus } from "./jobs.js";
@@ -49,10 +51,12 @@ export { SubmissionUncertainError } from "./internal/submission.js";
 export { FacadeArtifactMismatchError } from "./internal/facade-artifact-guard.js";
 export { GeometryReferenceAcknowledgementError, GeometryReferenceSubmissionError, } from "./internal/geometry-reuse/errors.js";
 export { AnalysisService, AreaTimeoutError, InfraredClient } from "./client.js";
+export { AreaRunError, JobPollError } from "./area/run-errors.js";
 export { AnalysisPartsError } from "./parts/types.js";
 export { PartsTimeoutError } from "./parts/run.js";
 export { DaylightFactorResult, NO_ROOM } from "./parts/daylight-result.js";
 export { DEFAULT_DAYLIGHT_RESULT_FORMAT } from "./parts/result-format.js";
+export { retryPolicy } from "./area/run-engine.js";
 export { InvalidOptionError } from "./internal/service.js";
 export { buildAuthResolver } from "./internal/auth.js";
 /**

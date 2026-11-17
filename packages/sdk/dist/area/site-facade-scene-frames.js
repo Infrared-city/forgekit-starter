@@ -2,7 +2,7 @@
  * Hand out one facade-scene artifact per batch, once (#602).
  *
  * The cache is keyed like `TileFrames`'s other caches (`site-facade.ts`): the
- * first ask under `key` fetches every batch the plan submits from one kernel
+ * first ask under `key` fetches (one pool task; an ask while it runs waits for it) every batch the plan submits from one kernel
  * call and keeps the answers; each is taken out once, then dropped, so an
  * artifact is not kept after its job took it. `fetched` remembers which keys
  * already had that one full fetch, so a LATER ask never fetches-and-caches
@@ -18,20 +18,27 @@
  * `index` is not in `wanted`. Either way, only `index`'s own answer is kept;
  * the rest of that fetch is dropped, not cached.
  */
-export function pickSceneArtifact(cache, fetched, key, wanted, index, fetch) {
-    let ready = cache.get(key);
-    if (ready === undefined && !fetched.has(key) && wanted.includes(index)) {
-        ready = fetch(wanted);
-        cache.set(key, ready);
+export async function pickSceneArtifact(cache, fetched, key, wanted, index, fetch) {
+    let pending = cache.get(key);
+    if (pending === undefined && !fetched.has(key) && wanted.includes(index)) {
+        pending = fetch(wanted);
+        cache.set(key, pending);
         fetched.add(key);
+        // A failed fetch is not kept: the next ask fetches again, as before.
+        pending.catch(() => {
+            if (cache.get(key) === pending)
+                cache.delete(key);
+            fetched.delete(key);
+        });
     }
+    const ready = pending === undefined ? undefined : await pending;
     let result = ready?.get(index);
     if (result === undefined) {
         const indices = wanted.includes(index) ? wanted : [index];
-        result = fetch(indices).get(index);
+        result = (await fetch(indices)).get(index);
     }
     ready?.delete(index);
-    if (ready?.size === 0)
+    if (ready?.size === 0 && cache.get(key) === pending)
         cache.delete(key);
     if (result === undefined)
         throw new Error(`facade scene: no job for batch ${index}`);

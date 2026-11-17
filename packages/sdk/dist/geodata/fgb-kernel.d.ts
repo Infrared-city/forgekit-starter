@@ -18,20 +18,6 @@ export declare const KERNEL_FGB_EXPORTS: Readonly<{
  * @category Geodata
  */
 export declare const HEADER_PREFIX_BYTES = 8192;
-/**
- * Largest single byte range, in bytes (64 MiB), one FlatGeobuf read may
- * fetch. A larger planned range fails with a `GeodataRangeError`.
- *
- * @category Geodata
- */
-export declare const MAX_PLANNED_RANGE_BYTES: number;
-/**
- * Largest total, in bytes (256 MiB), that the ranges of one FlatGeobuf read
- * may add up to. A larger plan fails with a `GeodataRangeError`.
- *
- * @category Geodata
- */
-export declare const MAX_PLANNED_TOTAL_BYTES: number;
 interface FgbLayout {
     readonly header_len: number;
     readonly required_prefix_len?: number;

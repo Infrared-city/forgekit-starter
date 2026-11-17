@@ -4,13 +4,16 @@ import { useShallow } from 'zustand/react/shallow'
 import { type AnalysesName, TILING_SUPPORTED_TYPES } from '../core/analysis.sdk-types'
 import { useAnalysisStore } from './analysis.store'
 
+/** The polygon type of `previewArea` (the SDK does not export it by name). */
+type AreaPolygon = Parameters<InfraredClient['previewArea']>[0]
+
 /**
- * Preview data returned by the SDK's previewAreaWithPricing method.
+ * Preview data returned by the SDK's previewArea method.
  *
- * `estimatedCostTokens` reflects live gateway pricing when available
- * (`pricingSource: 'remote'`), or the SDK's offline constant when the
- * pricing fetch fails (`pricingSource: 'fallback'`). The pricing fields
- * are optional so consumers keep working if the SDK omits them.
+ * `estimatedCostTokens` uses the API's live price list. The SDK has no
+ * built-in price: if the list cannot be fetched and none is cached, the
+ * preview throws `PricingUnavailableError`. The pricing fields are optional
+ * so consumers keep working if the SDK omits them.
  */
 export interface AreaPreviewData {
   tileCount: number
@@ -18,9 +21,12 @@ export interface AreaPreviewData {
   estimatedCostTokens: number
   /** Per-job token price used to compute `estimatedCostTokens`. */
   tokensPerJob?: number
-  /** Whether the price came from the gateway or the offline fallback. */
-  pricingSource?: 'remote' | 'fallback'
-  /** Version of the gateway pricing document, when resolved remotely. */
+  /**
+   * Where the price came from: `live` (just fetched), `cached` (under 20
+   * minutes old) or `stale` (the list could not be fetched again).
+   */
+  pricingSource?: 'live' | 'cached' | 'stale'
+  /** Version of the price list, when the list has one. */
   pricingVersion?: string
 }
 
@@ -39,11 +45,13 @@ export interface AreaPreviewQueryResult {
  * Create a `useAreaPreview` React Query hook bound to an InfraredClient.
  *
  * The returned hook reads `areaPolygon` and `areaAnalysisType` from the
- * analysis store, calls `client.previewAreaWithPricing(polygon, { analysisType })`
+ * analysis store, calls `client.previewArea(polygon, { analysisType })`
  * whenever both are present AND the analysis type is in
  * `TILING_SUPPORTED_TYPES`, and returns the preview data directly.
- * Tile math is local; only the per-job token price is fetched from the
- * gateway (the SDK never throws for pricing — it falls back to a constant).
+ * Tile math is local; the per-job token price comes from the live price list
+ * at the API root (`GET /billing/pricing`, through the Worker proxy). With no
+ * price list the query fails with `PricingUnavailableError`: the UI must show
+ * the error, never a made-up price.
  *
  * `opts.maxTilesOverride` lifts the SDK's default 100 non-empty-tile cap so a
  * large drawn analysis area still PRICES instead of throwing the tile-limit
@@ -71,7 +79,7 @@ export function createUseAreaPreview(client: InfraredClient, opts?: { maxTilesOv
         if (!polygon || !analysisType) {
           throw new Error('Area preview requires polygon and analysis type')
         }
-        return client.previewAreaWithPricing(polygon as unknown as Record<string, unknown>, {
+        return client.previewArea(polygon as unknown as AreaPolygon, {
           analysisType: analysisType as AnalysesName,
           ...(opts?.maxTilesOverride !== undefined
             ? { maxTilesOverride: opts.maxTilesOverride }

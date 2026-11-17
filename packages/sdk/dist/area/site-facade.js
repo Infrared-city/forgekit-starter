@@ -1,6 +1,8 @@
 import { KernelGroup } from "../internal/kernel-group.js";
 import { ARENA_GROUPS } from "./site-assign.js";
 import { pickSceneArtifact } from "./site-facade-scene-frames.js";
+import { requireCore } from "../internal/core.js";
+import { poolCall } from "../internal/pool-task.js";
 /**
  * A retry's saved batches, every tile's, so ownership is seeded from all. In
  * the schedule's own order: the kernel puts them in their one order and
@@ -36,7 +38,7 @@ const CALLER_FIELDS = [
  * saved batches. The kernel parser owns every default and type check (D160),
  * the same rule the Python host sends to (`_area/_native_facade_plan.py`).
  */
-export function facadeRequest(payload, tiles, retryFrom, maxSensorsPerJob) {
+export function facadeRequest(payload, tiles, retryFrom, maxSensorsPerJob, packing) {
     const request = {
         policy_version: 2,
         mode: payload["analysis-surfaces"],
@@ -49,11 +51,11 @@ export function facadeRequest(payload, tiles, retryFrom, maxSensorsPerJob) {
     request.saved = retryFrom === undefined ? null : savedBatches(retryFrom, tiles);
     if (maxSensorsPerJob !== undefined)
         request.max_sensors_per_job = maxSensorsPerJob;
+    // D-2026101011-lotus-cedar-umber: the kernel checks the value; "regular" is its default.
+    if (packing !== undefined && packing !== "regular")
+        request.packing = packing;
     return request;
 }
-/** Fresh plans by request, per site answer: the preview's plan serves the run. */
-const plans = new WeakMap();
-const MAX_PLANS = 4;
 function kernelOf(site) {
     if (site.withKernel === undefined)
         throw new Error("facade planning needs the kernel site");
@@ -62,41 +64,21 @@ function kernelOf(site) {
 }
 /**
  * Every tile's batches in `selected`, one kernel call per tile with the
- * thread handed back between them. A fresh plan (no saved batches) is a pure
- * function of the site and the request, so it is kept on the site answer and
- * a run after its preview does not count the sensors a second time.
+ * thread handed back between them. The kernel keeps a fresh plan on the site
+ * by its plan key (D-2026101011-lotus-cedar-umber), so the analyses of a run, a preview and the run
+ * after it, and a later run on the same site count each tile once.
  */
 export async function planFacadeRecords(site, tileCount, selected, request, slice) {
     const text = JSON.stringify(request);
-    const fresh = request.saved === null;
-    const byRequest = plans.get(site) ?? new Map();
-    const kept = fresh ? byRequest.get(text) : undefined;
-    const out = new Map();
-    if (kept !== undefined) {
-        for (const index of selected)
-            out.set(index, kept[index] ?? []);
-        return out;
-    }
     const kernel = kernelOf(site);
-    const all = [];
-    const every = fresh && selected.size === tileCount;
+    const out = new Map();
     for (let index = 0; index < tileCount; index += 1) {
         if (!selected.has(index))
             continue;
         await slice.tick();
-        const records = JSON.parse(kernel.withKernel((inner) => inner.facadeBatches(index, index + 1, text)));
-        out.set(index, records);
-        all[index] = records;
-    }
-    if (every) {
-        byRequest.set(text, all);
-        for (const key of byRequest.keys()) {
-            if (byRequest.size <= MAX_PLANS)
-                break;
-            if (key !== text)
-                byRequest.delete(key);
-        }
-        plans.set(site, byRequest);
+        // On the pool, while this thread goes on (`internal/pool-task.ts`).
+        const records = await poolCall(() => kernel.withKernel((inner) => inner.facadeBatchesStart(index, index + 1, text)), (task) => requireCore().Site.facadeBatchesEnd(task));
+        out.set(index, JSON.parse(records));
     }
     return out;
 }
@@ -137,7 +119,9 @@ class TileFrames {
         // Every body the plan submits, in one call; a batch outside the plan
         // (asked for its tile groups only) is written alone.
         const indices = this.wanted.includes(index) ? this.wanted : [index];
-        const answered = this.frames(indices, { body: true });
+        if (this.site.facadeBodies === undefined)
+            throw new Error("facade jobs need the kernel site");
+        const answered = this.site.facadeBodies(this.tile, indices.map((at) => this.records[at].active_ids));
         this.written ??= [];
         for (const [at, frame] of answered.entries()) {
             if (this.written[indices[at]] !== undefined)
@@ -180,8 +164,8 @@ class TileFrames {
             this.batch(this.wanted[0] ?? 0, group);
         return this.shared.get(group);
     }
-    capture(index, alignment) {
-        return this.once(index, `capture\n${alignment}`, { capture: { alignment } }).capture;
+    async capture(index, alignment, store) {
+        return (await this.once(index, `capture\n${alignment}`, { capture: { alignment, store } })).capture;
     }
     /**
      * The batch's binary artifact. With `limits.facadeTargets` (#602), scene
@@ -189,12 +173,12 @@ class TileFrames {
      * target range. Without it (an old server, no `facadeTargets`), one
      * artifact per batch, as before.
      */
-    artifact(index, limits) {
+    async artifact(index, limits) {
         if ((limits.facadeTargets ?? 0) >= 1)
             return this.sceneArtifact(index, limits);
         const key = ["artifact", limits.maxGeometryBytes, limits.maxMetadataBytes,
             limits.maxMeshes, limits.maxInstances].join("\n");
-        return this.once(index, key, { artifact: { limits } }).artifact;
+        return (await this.once(index, key, { artifact: { limits } })).artifact;
     }
     /** Batch `index`'s facade-scene artifact (#602); the cache logic is
      * {@link pickSceneArtifact} (`site-facade-scene-frames.ts`). */
@@ -207,11 +191,11 @@ class TileFrames {
      * A tile answer is uniform (D218): every job `targets` (scene), every job
      * `artifact`, or every job `error` (a refusal). The first job's shape
      * decides which of the three this answer is. */
-    scenesFor(indices, limits) {
+    async scenesFor(indices, limits) {
         if (this.site.facadeScenes === undefined)
             throw new Error("facade scenes need the kernel site");
         const active = indices.map((at) => this.records[at].active_ids);
-        const answer = this.site.facadeScenes(this.tile, active, limits);
+        const answer = await this.site.facadeScenes(this.tile, active, limits);
         const out = new Map();
         if (answer.jobs[0]?.error !== undefined) {
             indices.forEach((at, position) => out.set(at, new Error(answer.jobs[position].error)));
@@ -239,18 +223,22 @@ class TileFrames {
      * capture is not kept after its job took it. What a stopped run leaves is
      * at most the untaken parts of the tiles it had started.
      */
-    once(index, key, parts) {
-        let ready = this.handed.get(key);
-        if (ready === undefined && this.wanted.includes(index)) {
+    async once(index, key, parts) {
+        let pending = this.handed.get(key);
+        if (pending === undefined && this.wanted.includes(index)) {
             const wanted = this.wanted;
-            ready = new Map(this.frames(wanted, parts).map((frame, at) => [wanted[at], frame]));
-            this.handed.set(key, ready);
+            pending = this.frames(wanted, parts).then((frames) => new Map(frames.map((frame, at) => [wanted[at], frame])));
+            this.handed.set(key, pending);
+            // A failed call is not kept: the next ask calls again, as before.
+            pending.catch(() => { if (this.handed.get(key) === pending)
+                this.handed.delete(key); });
         }
+        const ready = pending === undefined ? undefined : await pending;
         let frame = ready?.get(index);
         if (frame === undefined)
-            frame = this.frames([index], parts)[0];
+            frame = (await this.frames([index], parts))[0];
         ready?.delete(index);
-        if (ready?.size === 0)
+        if (ready?.size === 0 && this.handed.get(key) === pending)
             this.handed.delete(key);
         if (frame.error !== undefined)
             throw new Error(frame.error);
@@ -315,7 +303,7 @@ submits = () => true) {
         return {
             key: record.key,
             buildingIds: [...record.active_ids], sensorCount: count, payload,
-            capture: (alignment) => bodies.capture(index, alignment),
+            capture: (alignment, store) => bodies.capture(index, alignment, store),
             ...(site.facadeFrames === undefined ? {} : {
                 artifact: (limits) => bodies.artifact(index, limits),
             }),

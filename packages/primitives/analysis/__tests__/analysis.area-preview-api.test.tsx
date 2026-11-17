@@ -13,7 +13,7 @@ import { createWrapper } from './test-utils'
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockSdkClient = {
-  previewAreaWithPricing: vi.fn(),
+  previewArea: vi.fn(),
 }
 
 const useAreaPreview = createUseAreaPreview(mockSdkClient as unknown as InfraredClient)
@@ -51,7 +51,7 @@ const previewPayload = {
   estimatedTimeS: 120,
   estimatedCostTokens: 1200,
   tokensPerJob: 100,
-  pricingSource: 'remote' as const,
+  pricingSource: 'live' as const,
   pricingVersion: '2026-06-01',
 }
 
@@ -79,7 +79,7 @@ describe('createUseAreaPreview', () => {
     const { result } = renderHook(() => useAreaPreview(), { wrapper: createWrapper() })
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(mockSdkClient.previewAreaWithPricing).not.toHaveBeenCalled()
+    expect(mockSdkClient.previewArea).not.toHaveBeenCalled()
     expect(result.current.isPending).toBe(true)
     expect(result.current.data).toBeUndefined()
   })
@@ -90,7 +90,7 @@ describe('createUseAreaPreview', () => {
     renderHook(() => useAreaPreview(), { wrapper: createWrapper() })
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(mockSdkClient.previewAreaWithPricing).not.toHaveBeenCalled()
+    expect(mockSdkClient.previewArea).not.toHaveBeenCalled()
   })
 
   it('does not fetch when analysis type is not in TILING_SUPPORTED_TYPES', async () => {
@@ -99,22 +99,22 @@ describe('createUseAreaPreview', () => {
     renderHook(() => useAreaPreview(), { wrapper: createWrapper() })
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(mockSdkClient.previewAreaWithPricing).not.toHaveBeenCalled()
+    expect(mockSdkClient.previewArea).not.toHaveBeenCalled()
   })
 
   it('fetches when polygon, type, and type-support are all present', async () => {
-    mockSdkClient.previewAreaWithPricing.mockResolvedValue(previewPayload)
+    mockSdkClient.previewArea.mockResolvedValue(previewPayload)
     setStore(polygonA, AnalysesName.WindSpeed)
 
     const { result } = renderHook(() => useAreaPreview(), { wrapper: createWrapper() })
 
     await waitFor(() => expect(result.current.data).toBeDefined())
 
-    expect(mockSdkClient.previewAreaWithPricing).toHaveBeenCalledTimes(1)
+    expect(mockSdkClient.previewArea).toHaveBeenCalledTimes(1)
   })
 
   it('returns preview data directly', async () => {
-    mockSdkClient.previewAreaWithPricing.mockResolvedValue(previewPayload)
+    mockSdkClient.previewArea.mockResolvedValue(previewPayload)
     setStore(polygonA, AnalysesName.WindSpeed)
 
     const { result } = renderHook(() => useAreaPreview(), { wrapper: createWrapper() })
@@ -124,7 +124,7 @@ describe('createUseAreaPreview', () => {
 
   it('surfaces isError + error on SDK failure', async () => {
     const err = new Error('Invalid polygon')
-    mockSdkClient.previewAreaWithPricing.mockRejectedValue(err)
+    mockSdkClient.previewArea.mockRejectedValue(err)
     setStore(polygonA, AnalysesName.WindSpeed)
 
     const { result } = renderHook(() => useAreaPreview(), { wrapper: createWrapper() })
@@ -137,11 +137,11 @@ describe('createUseAreaPreview', () => {
     )
     expect(result.current.error?.message).toBe('Invalid polygon')
     // Retry=1 means 2 calls total (initial + 1 retry).
-    expect(mockSdkClient.previewAreaWithPricing).toHaveBeenCalledTimes(2)
+    expect(mockSdkClient.previewArea).toHaveBeenCalledTimes(2)
   })
 
   it('changing polygon coordinates triggers a new fetch', async () => {
-    mockSdkClient.previewAreaWithPricing.mockResolvedValue(previewPayload)
+    mockSdkClient.previewArea.mockResolvedValue(previewPayload)
     setStore(polygonA, AnalysesName.WindSpeed)
 
     const { result, rerender } = renderHook(() => useAreaPreview(), {
@@ -149,14 +149,14 @@ describe('createUseAreaPreview', () => {
     })
 
     await waitFor(() => expect(result.current.data).toEqual(previewPayload))
-    expect(mockSdkClient.previewAreaWithPricing).toHaveBeenCalledTimes(1)
+    expect(mockSdkClient.previewArea).toHaveBeenCalledTimes(1)
 
     act(() => {
       setStore(polygonB, AnalysesName.WindSpeed)
     })
     rerender()
 
-    await waitFor(() => expect(mockSdkClient.previewAreaWithPricing).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockSdkClient.previewArea).toHaveBeenCalledTimes(2))
   })
 })
 

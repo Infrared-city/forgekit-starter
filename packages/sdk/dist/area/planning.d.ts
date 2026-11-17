@@ -1,4 +1,6 @@
+import { type SiteKeyMemo } from "./prepared-site.js";
 import type { AreaJobsService, RunAreaOptions } from "./run-options.js";
+import type { SiteAnswer } from "./site-assign.js";
 import type { Polygon } from "./types.js";
 export type { AreaSubmissionPlan, SubmissionEntry } from "./plan-types.js";
 import type { AreaSubmissionPlan } from "./plan-types.js";
@@ -13,6 +15,8 @@ import type { AreaSubmissionPlan } from "./plan-types.js";
  * @param input - The analysis request fields.
  * @param polygonInput - The area to analyse.
  * @param options - Run options such as `retryFrom`, `signal` and `maxTilesOverride`.
+ * @param memo - Per-call digests of the mesh groups (`SiteKeyMemo`), shared by the analyses of one call.
+ * @param facadeSites - Per call, the facade plan inputs of each site's analyses (`area/stream.ts` shares their parts).
  * @returns The validated submission plan.
  * @throws {TypeError} when the input carries `vegetation-instances` or `sensor-points`,
  * which area runs do not support.
@@ -26,7 +30,7 @@ import type { AreaSubmissionPlan } from "./plan-types.js";
  * grid shape, tile positions or configuration hash).
  * @category Run an analysis
  */
-export declare function planAreaSubmission(service: AreaJobsService, input: Readonly<Record<string, unknown>>, polygonInput: Polygon, options?: RunAreaOptions): Promise<AreaSubmissionPlan>;
+export declare function planAreaSubmission(service: AreaJobsService, input: Readonly<Record<string, unknown>>, polygonInput: Polygon, options?: RunAreaOptions, memo?: SiteKeyMemo, facadeSites?: Map<SiteAnswer, string[]>): Promise<AreaSubmissionPlan>;
 /**
  * Thrown when a resume is refused because the saved schedule's configuration hash was
  * computed by an older SDK and cannot be compared with this one.

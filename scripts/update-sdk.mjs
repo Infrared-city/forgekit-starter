@@ -2,7 +2,7 @@
 // Replace packages/sdk with the BUILT output of one published version of
 // @infrared-city/infrared-sdk. Maintainers only: novices never run this.
 //
-//   npm run update-sdk -- 1.0.1
+//   npm run update-sdk -- 1.1.0
 //
 // Options:
 //   --registry <url>   default https://registry.npmjs.org (public, no token).

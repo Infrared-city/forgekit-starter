@@ -1,4 +1,5 @@
 import type { AreaJob, AreaState } from "../area/schedule-types.js";
+import type { PricingSource } from "../price-list.js";
 import type { DaylightResultFormat } from "./result-format.js";
 /**
  * One part of a parts plan: a job that covers some of the request's floors.
@@ -93,6 +94,10 @@ export interface PartsPreview {
     readonly tokensPerJob: number;
     /** Estimated cost of the run in tokens: `partCount` times `tokensPerJob`. */
     readonly estimatedCostTokens: number;
+    /** The version of the price list used, when the list has one. */
+    readonly pricingVersion?: string;
+    /** Where the price came from: `"live"`, `"cached"` or `"stale"`. */
+    readonly pricingSource: PricingSource;
     /** Why the request is sent as one part, when it is. */
     readonly unsplitReason?: string;
     /** Notes on inputs the analysis accepts silently. */
@@ -111,7 +116,7 @@ export interface PartsOptions {
      * limit.
      */
     readonly maxParts?: number;
-    /** Width of the submit and download pools (default 8). */
+    /** @deprecated No effect: the engine sets the widths. Removed in 2.0. */
     readonly maxWorkers?: number;
     /** A URL the API calls when a job reaches one of `webhookEvents`. */
     readonly webhookUrl?: string;

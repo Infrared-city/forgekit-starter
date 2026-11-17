@@ -80,14 +80,14 @@ async function loadCore(source) {
 async function startPool(module, threads) {
     const threaded = module;
     const init = threaded.initThreadPool;
-    const abortOnPanic = threaded.installPanicAbort;
+    const abortOnOom = threaded.installOomAbort;
     try {
-        if (typeof init !== "function" || typeof abortOnPanic !== "function") {
-            throw new CoreInitializationError("the threaded Infrared core has no initThreadPool or installPanicAbort export");
+        if (typeof init !== "function" || typeof abortOnOom !== "function") {
+            throw new CoreInitializationError("the threaded Infrared core has no initThreadPool or installOomAbort export");
         }
-        // A panic on ANY thread, the main one included, ends the process (D205):
-        // the threaded core must never be used again after one.
-        abortOnPanic();
+        // A kernel panic is a thrown error (D299), but running out of WebAssembly
+        // memory on ANY thread ends the process (D205): it cannot unwind.
+        abortOnOom();
         await init(threads);
     }
     catch (error) {
@@ -171,6 +171,16 @@ let packagedCoreLoader;
 /** Called once by the Node entry point; see {@link ensureCore}. */
 export function registerPackagedCoreLoader(load) {
     packagedCoreLoader = load;
+}
+/**
+ * The packaged threaded core with `threads` workers, for an SDK worker in Node
+ * (`createWorkerClient({ threads })`). Only the Node entry has a packaged core.
+ */
+export function loadPackagedCore(threads) {
+    if (packagedCoreLoader === undefined) {
+        return Promise.reject(new CoreInitializationError("threads need the packaged Node core: load @infrared-city/infrared-sdk/worker in a Node worker_threads Worker"));
+    }
+    return packagedCoreLoader(threads);
 }
 /**
  * Loads the core for a caller that does not already hold one ready, so a

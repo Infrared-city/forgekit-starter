@@ -17,7 +17,7 @@ you did in plain words. Read this whole file before the first edit.
    Do not remove the S3 relay: presigned uploads and result downloads fail
    in the browser without it (no CORS).
 3. **Every run costs AItokens.** Always offer a free cost check first
-   (`client.previewAreaWithPricing` or, for facades,
+   (`client.previewArea` or, for facades,
    `client.previewAreaBatches`; see "SDK reference" below). Never start runs
    in a loop, on page load, or in tests. Never repeat a submit that had an unknown result: poll the jobs.
 4. **Never deploy an open Worker.** The Worker adds the owner's key to every
@@ -100,7 +100,7 @@ of the grid (NaN), and the difference must be zero away from the change.
 
 ## SDK reference
 
-For `@infrared-city/infrared-sdk` 1.0.1 (the copy in
+For `@infrared-city/infrared-sdk` 1.1.0 (the copy in
 `packages/sdk`; full docs: https://infrared.city/docs/sdk/). This section is the one complete reference: README and the
 code comments link here. Every snippet compiles against `packages/sdk`, and
 every request shape passes the SDK's own validators (`prepareAreaPayload`).
@@ -156,9 +156,10 @@ const center = { lat: 48.2082, lon: 16.3738 }
 const polygon = squareAround(center, 512) // coordinates are [lon, lat]
 
 // 1. Free cost check. Show it, and run only when the user agrees.
-const cost = await client.previewAreaWithPricing(polygon, { analysisType: 'direct-sun-hours' })
+const cost = await client.previewArea(polygon, { analysisType: 'direct-sun-hours' })
 // cost.tileCount, cost.estimatedCostTokens, cost.estimatedTimeS, cost.tokensPerJob,
-// cost.pricingSource: 'remote' (live price) or 'fallback' (the Worker did not answer)
+// cost.pricingSource: 'live', 'cached' (under 20 min old) or 'stale'. The SDK has no built-in
+// price: with no price list it throws PricingUnavailableError (show the error, never guess).
 
 // 2. Site data (free, no key). Read with the SAME polygon that you run.
 const buildings = await client.buildings.getBuildingsInArea(polygon)
@@ -262,10 +263,9 @@ const input = {
 }
 // Facade jobs are building batches: price them with previewAreaBatches, not previewArea.
 const plan = await client.previewAreaBatches(input, polygon, { buildings })
-// plan.plannedJobCount, plan.sensorCount. This call is offline: its
-// estimatedCostTokens uses the default price. With the price from
-// previewAreaWithPricing (live when cost.pricingSource === 'remote'):
-const facadeTokens = plan.plannedJobCount * cost.tokensPerJob
+// plan.plannedJobCount, plan.sensorCount, plan.tokensPerJob, plan.estimatedCostTokens.
+// The price is the live price list, as for previewArea.
+const facadeTokens = plan.estimatedCostTokens
 
 const r = await client.runAreaAndWait(input, polygon, { buildings, vegetation })
 if (!('kind' in r) || r.kind !== 'surface-columns') throw new Error('Expected a surface result')
@@ -460,8 +460,14 @@ window maximum, wind 0-15 m/s, UTCI about -40 to 46 °C, SVF / daylight 0-100).
 - Solar, daylight and thermal tiles: 512 m x 512 m. Smaller costs the same.
   Default to a 512 m square (`squareAround(center, 512)`).
 - Wind tiles: 256 m apart with overlap. 512 m square = 4 tiles, 256 m = 1.
+- SDK 1.1: a GeoJSON point tree may be `[lon, lat, z]` (metres, same frame as the
+  buildings and terrain); under `terrainAlignment: 'as-is'` it stands at that `z`.
+  Facade and roof layouts (surfgrid v9) depend on the building alone, so a layout
+  or mask stored from an older SDK does not match: build it again. Facade runs
+  need a server that accepts v9. `pollIntervalMs` and `maxWorkers` have no effect
+  (deprecated).
 - About 10 AItokens per job; `pedestrian-wind-comfort` about 50. The live
-  price is `tokensPerJob` from `previewAreaWithPricing`.
+  price is `tokensPerJob` from `previewArea`.
 - Facade runs bill per building batch: dense areas have more jobs.
 
 ## Good default prompts to suggest

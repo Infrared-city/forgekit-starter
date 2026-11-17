@@ -1,4 +1,6 @@
 import { requireCore } from "../internal/core.js";
+import { siteOptionsJson } from "./context-options.js";
+import { typedAsArray } from "../internal/wire-json.js";
 import { getTilingConfig } from "./tiling.js";
 import { kernelPolygonOrigin } from "./tile-frames.js";
 import { pack } from "./site-pack.js";
@@ -12,13 +14,17 @@ function document(value, texts) {
     if (value === undefined)
         return undefined;
     const known = value !== null && typeof value === "object" ? texts?.get(value) : undefined;
-    return known ?? JSON.stringify(value);
+    return known ?? JSON.stringify(value, typedAsArray);
 }
+const NO_BUFFER = new Uint32Array(0);
 /** The site read into the kernel ONCE: the packed groups, their documents, the layers. */
 export function kernelSite(inputs, texts) {
     const { groups, tiles, polygon } = inputs;
     const buildings = pack(asMap(groups.geometries), false);
     const context = pack(asMap(groups["context-geometry"]), true);
+    // The context mesh crosses as buffers, never as JSON text; empty offsets = no context group.
+    const contextIndices = groups["context-geometry"] === undefined ? NO_BUFFER : context.indices;
+    const contextIndexOffsets = groups["context-geometry"] === undefined ? NO_BUFFER : context.indexOffsets;
     const config = getTilingConfig(inputs.analysisType);
     const origin = kernelPolygonOrigin(polygon);
     // The terrain read once for this group (D200): the site takes the handle in
@@ -26,9 +32,16 @@ export function kernelSite(inputs, texts) {
     // A handle the bound freed since the plan took it reads the text instead.
     const terrain = liveTerrain(inputs.terrain);
     if (terrain !== undefined) {
-        return requireCore().Site.withTerrain(buildings.ids, buildings.bytes, buildings.offsets, context.ids, context.bytes, context.offsets, Uint32Array.from(tiles, (tile) => tile.row), Uint32Array.from(tiles, (tile) => tile.col), tiles.map((tile) => tile.tileId), config.inferenceSizeM, config.contextSizeM, config.stepM, origin.lon, origin.lat, groups.geometries === undefined ? undefined : buildings.document, groups["context-geometry"] === undefined ? undefined : context.document, document(groups.vegetation, texts), document(groups["ground-materials"], texts), JSON.stringify(polygon), inputs.terrainContextMarginM, terrain);
+        return requireCore().Site.withTerrain(buildings.ids, buildings.bytes, buildings.offsets, context.ids, context.bytes, context.offsets, Uint32Array.from(tiles, (tile) => tile.row), Uint32Array.from(tiles, (tile) => tile.col), tiles.map((tile) => tile.tileId), config.inferenceSizeM, config.contextSizeM, config.stepM, origin.lon, origin.lat, groups.geometries === undefined ? undefined : buildings.document, undefined, document(groups.vegetation, texts), document(groups["ground-materials"], texts), JSON.stringify(polygon), terrain, contextIndices, contextIndexOffsets, siteOptions(inputs));
     }
-    return new (requireCore().Site)(buildings.ids, buildings.bytes, buildings.offsets, context.ids, context.bytes, context.offsets, Uint32Array.from(tiles, (tile) => tile.row), Uint32Array.from(tiles, (tile) => tile.col), tiles.map((tile) => tile.tileId), config.inferenceSizeM, config.contextSizeM, config.stepM, origin.lon, origin.lat, groups.geometries === undefined ? undefined : buildings.document, groups["context-geometry"] === undefined ? undefined : context.document, document(groups["ground-geometry"], texts), document(groups.vegetation, texts), document(groups["ground-materials"], texts), JSON.stringify(polygon), inputs.terrainContextMarginM);
+    return new (requireCore().Site)(buildings.ids, buildings.bytes, buildings.offsets, context.ids, context.bytes, context.offsets, Uint32Array.from(tiles, (tile) => tile.row), Uint32Array.from(tiles, (tile) => tile.col), tiles.map((tile) => tile.tileId), config.inferenceSizeM, config.contextSizeM, config.stepM, origin.lon, origin.lat, groups.geometries === undefined ? undefined : buildings.document, undefined, document(groups["ground-geometry"], texts), document(groups.vegetation, texts), document(groups["ground-materials"], texts), JSON.stringify(polygon), contextIndices, contextIndexOffsets, siteOptions(inputs));
+}
+/** The kernel Site's options document (`SiteOptions`): a key left out takes the kernel default. */
+function siteOptions(inputs) {
+    return siteOptionsJson({
+        terrainMarginM: inputs.terrainContextMarginM, contextReachM: inputs.contextReachM,
+        contextBufferM: inputs.contextBufferM,
+    });
 }
 /**
  * Frees a kept kernel site once its {@link SiteAssignment} is unreachable.

@@ -11,16 +11,20 @@ import type { PreparedSubmission } from "../jobs.js";
 import type { Polygon } from "./types.js";
 import type { AreaRetryContext } from "./retry-context.js";
 import type { TilePosition } from "./schedule-types.js";
+import type { CaptureHold } from "./facade-captures.js";
+import type { WasmCore } from "../internal/core.js";
+type KernelCaptureStore = InstanceType<WasmCore["CaptureStore"]>;
 export interface SubmissionEntry {
     readonly key: string;
     readonly row: number;
     readonly col: number;
     readonly prepared: PreparedSubmission;
     /**
-     * A facade job's pretty capture from the kernel site (`Site.facadeFrames`),
-     * for the body's `terrain-alignment` (`null` when the body does not send it).
+     * A facade job's pretty capture from the kernel site (`Site.facadeCaptures`), for the body's
+     * `terrain-alignment` (`null` when the body does not send it), held in `store`
+     * (D-2026101110-iris-nectar-maple).
      */
-    readonly capture?: (alignment: string | null) => Uint8Array;
+    readonly capture?: (alignment: string | null, store: KernelCaptureStore) => Promise<CaptureHold>;
     /** This entry's `Idempotency-Key` header value (D224), from the kernel's
      * retry plan or, on a fresh run, attempt 1 of the run's own id. */
     readonly idempotencyKey?: string;
@@ -67,3 +71,4 @@ export interface AreaSubmissionPlan {
     /** Present only when the run continues an earlier one with `retryFrom`. */
     readonly retryContext?: AreaRetryContext;
 }
+export {};

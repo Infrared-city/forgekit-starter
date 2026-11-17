@@ -12,10 +12,11 @@
  * building edit — and the facade run beside the grid run — builds its site
  * on the terrain already read.
  *
- * Content, not identity: the key is the prepared-site key's digest of the
- * group's JSON text, memoised per object with its content fingerprint (D104,
- * D182), so a map changed in place is read again. wasm-bindgen frees a
- * handle once nothing holds it; the cache holds the last few.
+ * Content, not identity: the key is the kernel's content key of the group's
+ * JSON text (`terrainContentKey`, the same value `SiteTerrain.contentKey`
+ * gives), memoised per object with its content fingerprint (D104, D182), so a
+ * map changed in place is read again. wasm-bindgen frees a handle once nothing
+ * holds it; the cache holds the last few.
  */
 export interface KernelTerrain {
     /** `geometryGroupHash("ground-geometry", …)` of the whole terrain. */
@@ -24,14 +25,19 @@ export interface KernelTerrain {
 }
 /** `terrain` when its wasm memory is still held, else `undefined`. */
 export declare function liveTerrain(terrain: KernelTerrain | undefined): KernelTerrain | undefined;
-/** The `ground-geometry` digest the prepared-site key carries, if any. */
-export declare function terrainDigest(siteKey: string | undefined): string | undefined;
+/**
+ * The content key of one `ground-geometry` group: the kernel's hash of its
+ * JSON text. `undefined` for no terrain. The text is written once and kept in
+ * `texts` for the kernel read. From an object's second sight on, an unchanged
+ * content fingerprint gives the earlier key without a write.
+ */
+export declare function terrainKey(value: unknown, texts?: Map<object, string>): string | undefined;
 /**
  * The kernel terrain of one `ground-geometry` group, read once per content
- * `digest` ({@link terrainDigest}). `undefined` for no terrain, no digest (a
- * realm without SHA-256), or a document the kernel refuses to read as a map
+ * `key` ({@link terrainKey}). `undefined` for no terrain, or a document the
+ * kernel refuses to read as a map
  * — the site then reads the text, as before, and gives the same refusal.
  */
-export declare function siteTerrain(value: unknown, digest: string | undefined, texts?: ReadonlyMap<object, string>): KernelTerrain | undefined;
+export declare function siteTerrain(value: unknown, key: string | undefined, texts?: ReadonlyMap<object, string>): KernelTerrain | undefined;
 /** Release every terrain the realm holds; returns how many. */
 export declare function freeSiteTerrains(): number;

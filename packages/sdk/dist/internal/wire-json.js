@@ -1,39 +1,12 @@
 import { KernelGroup } from "./kernel-group.js";
-const remembered = new WeakMap();
-/** Remember `bytes` as the exact JSON text of `value`, parsed from them. */
-export function rememberWireText(value, bytes) {
-    remembered.set(value, { bytes });
-}
-const QUOTE = 0x22;
-const COLON = 0x3a;
-/** True when the text has a key made only of digits. */
-export function hasDigitKey(bytes) {
-    let at = bytes.indexOf(COLON);
-    while (at !== -1) {
-        let back = at - 1;
-        if (back >= 0 && bytes[back] === QUOTE) {
-            back -= 1;
-            let digits = 0;
-            while (back >= 0 && bytes[back] >= 0x30 && bytes[back] <= 0x39) {
-                back -= 1;
-                digits += 1;
-            }
-            if (digits > 0 && back >= 0 && bytes[back] === QUOTE)
-                return true;
-        }
-        at = bytes.indexOf(COLON, at + 1);
-    }
-    return false;
-}
-function spliceText(value) {
-    if (value === null || typeof value !== "object")
-        return undefined;
-    const entry = remembered.get(value);
-    if (entry === undefined)
-        return undefined;
-    entry.spliceable ??= !hasDigitKey(entry.bytes);
-    return entry.spliceable ? entry.bytes : undefined;
-}
+/**
+ * JSON wire text with each kernel group (`internal/kernel-group.ts`) written
+ * from the kernel's own bytes instead of `JSON.stringify` of a parsed copy.
+ *
+ * An area tile's groups are the kernel's site arena bytes (`area/composition.ts`,
+ * D98): canonical JSON, the same bytes the Python host sends. They are never
+ * parsed on the plan path. Everything else in a body is `JSON.stringify`.
+ */
 function hasToJson(value) {
     return value !== null && typeof value === "object" &&
         typeof value.toJSON === "function";
@@ -41,14 +14,24 @@ function hasToJson(value) {
 const encoder = new TextEncoder();
 let sequence = 0;
 /**
- * `TextEncoder().encode(JSON.stringify(body, replacer))`, byte for byte, with
- * each remembered top-level value written from its remembered text.
+ * A `JSON.stringify` replacer that writes a typed array (a caller's
+ * `Float64Array` coordinates or `Uint32Array` indices) as the plain array it
+ * holds, as the mesh utilities' views write themselves (D294).
+ */
+export function typedAsArray(_key, value) {
+    return ArrayBuffer.isView(value) && !(value instanceof DataView)
+        ? Array.from(value)
+        : value;
+}
+/**
+ * `TextEncoder().encode(JSON.stringify(body, replacer))`, with each top-level
+ * kernel group written from its own bytes.
  *
  * `undefined` where `JSON.stringify` gives `undefined`. A throw from
  * `JSON.stringify` (a cycle, a BigInt) is thrown here too.
  */
 export function jsonWireBytes(body, replacer) {
-    return spliceJsonBytes(body, spliceText, replacer);
+    return spliceJsonBytes(body, () => undefined, replacer);
 }
 /**
  * `TextEncoder().encode(JSON.stringify(body, replacer))`, with each top-level

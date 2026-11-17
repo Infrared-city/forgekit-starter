@@ -61,7 +61,7 @@ export declare class GeodataDependencyError extends GeodataError {
 export declare class GeodataFetchError extends GeodataError {
     readonly status?: number | undefined;
     readonly name = "GeodataFetchError";
-    constructor(url: string, detail: string, status?: number | undefined);
+    constructor(url: string, detail: string, status?: number | undefined, options?: ErrorOptions);
 }
 /**
  * A ranged read could not be trusted or would not fit.

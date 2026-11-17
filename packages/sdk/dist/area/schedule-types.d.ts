@@ -29,6 +29,10 @@ export interface AreaJob {
     result?: Record<string, unknown>;
     /** Why the job failed or was skipped, when it did. */
     error?: string;
+    /** Why the tile has no result (see `TileFailureKind`). */
+    failureKind?: TileFailureKind;
+    /** The HTTP status of the answer that decided `failureKind`, when there was one. */
+    failureStatus?: number;
     /** The most recent status the service reported for the job. */
     lastJobSnapshot?: Job;
     /** True when this accepted reference cannot produce a trusted result. */
@@ -258,6 +262,19 @@ export declare const TileFailurePhase: {
  */
 export type TileFailurePhase = (typeof TileFailurePhase)[keyof typeof TileFailurePhase];
 /**
+ * Why a tile has no result: the kinds of the SDK core. `retryPolicy().failureAdvice[kind]`
+ * says what to do.
+ *
+ * @category Errors
+ */
+export declare const TILE_FAILURE_KINDS: readonly ["send_refused", "host_refused", "rate_limited", "payment_required", "uncertain", "server_failed", "download_failed", "timeout"];
+/**
+ * Why a tile has no result: one of the kinds `retryPolicy().failureAdvice` names.
+ *
+ * @category Errors
+ */
+export type TileFailureKind = (typeof TILE_FAILURE_KINDS)[number];
+/**
  * A tile that did not contribute to the merged grid, and why.
  *
  * @category Errors
@@ -275,6 +292,14 @@ export interface TileFailure {
     readonly exception?: Error;
     /** The stage at which the tile failed. */
     readonly phase?: TileFailurePhase;
+    /**
+     * Why the tile has no result (for example `"server_failed"`, `"send_refused"`,
+     * `"rate_limited"`, `"timeout"`); `retryPolicy().failureAdvice[kind]` says what to do.
+     * `undefined` when the engine named no kind: a job that is still open at the merge.
+     */
+    readonly kind?: TileFailureKind;
+    /** The HTTP status of the answer that decided `kind`, when there was one. */
+    readonly status?: number;
 }
 /**
  * The merged grid of an area run, with its shape, legend range, geographic bounds and the
@@ -286,10 +311,10 @@ export interface AreaResult {
     /**
      * The merged values as one flat row-major array, laid out as described by `gridShape`, in
      * the type the server stored (`valueDtype`): a `Uint16Array` of half-precision bits
-     * (`"f16"`), a `Float32Array`, an `Int16Array` of stored integers (`"i16"`, thermal comfort
-     * index) or a `Float64Array` (a run that mixes types). Read physical values with
-     * `areaGridValuesF32` and test a cell with `areaGridHasValue`. **An `"i16"` UTCI grid read
-     * without `valueDivisor` is 10 times too large.**
+     * (`"f16"`), a `Float32Array`, an `Int16Array` of stored integers (`"i16"`, UTCI saved before
+     * 2026-10-07; UTCI is `"f16"` since then) or a `Float64Array` (a run that mixes types). Read physical values with
+     * `areaGridValuesF32` and test a cell with `areaGridHasValue`. **An old `"i16"` UTCI grid read
+     * without `valueDivisor` is 10 times too large; `areaGridValuesF32` handles both.**
      */
     readonly mergedGrid: Uint16Array | Float32Array | Int16Array | Float64Array;
     /** The type of `mergedGrid`. */

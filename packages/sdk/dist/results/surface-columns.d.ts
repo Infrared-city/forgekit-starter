@@ -136,6 +136,12 @@ export interface SurfaceColumns {
      * logged at `warn`.
      */
     readonly cellTrisFallback?: readonly string[];
+    /**
+     * The key of the layout of the values (surfaces, frames, outline): the same for every
+     * analysis and run on the same geometry, surface settings and packing, so build render
+     * geometry once per key. Absent when a job had no layout hash.
+     */
+    readonly layoutKey?: string;
 }
 /**
  * The joined surface columns of a run as the join step returns them, before they are shaped
@@ -209,6 +215,8 @@ export interface KernelSurfaceJoin {
     readonly fallbackReasons: readonly string[];
     /** The argument index of each joined job, in the order the rows were joined. */
     readonly jobOrder: Uint32Array;
+    /** The layout key of the run (`SurfaceColumns.layoutKey`). */
+    readonly layoutKey?: string;
 }
 /**
  * Builds the public `SurfaceColumns` from a join result.

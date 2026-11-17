@@ -45,9 +45,15 @@ export function areaGridHasValue(result, cell) {
 }
 /**
  * Returns the physical values of `mergedGrid` as 32-bit floats, `NaN` for a cell without a
- * value: the type and the divisor are applied in one call. **An `"i16"` grid read without
- * the divisor is 10 times too large for UTCI; use this function.** The result is a new
+ * value: the type and the divisor are applied in one call. **An old `"i16"` UTCI grid (saved
+ * before 2026-10-07; UTCI is `"f16"` with no divisor since then) read without the
+ * divisor is 10 times too large; use this function, it handles both.** The result is a new
  * array; `mergedGrid` does not change. Call `initializeCore()` first.
+ *
+ * A categorical result (pedestrian wind comfort) gives class CODES, unchanged: a code is an
+ * index into `result.legend`, which holds only the classes of THIS run, sorted. The same code
+ * can be a different class in another run. Map each code through `result.legend` before you
+ * count or compare classes.
  *
  * @param result - The area result.
  * @returns One value per cell.

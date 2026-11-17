@@ -26,7 +26,7 @@ export interface BuildingsConfig {
     /** Raises the cap on non-empty tiles (100 by default); a larger area is refused without it. */
     readonly maxTilesOverride?: number;
     /**
-     * Accepted for compatibility; it changes nothing.
+     * @deprecated No effect. Removed in 2.0.
      *
      * The site's footprints are fetched in one read, so there is no per-tile
      * fan-out left for it to bound. Passing it is neither refused nor

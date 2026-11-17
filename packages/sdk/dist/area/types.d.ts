@@ -118,9 +118,11 @@ export interface AreaGeometryGroups {
     readonly geometries?: Readonly<Record<string, JsonTilingMesh>>;
     /**
      * Distant occluders for shading only. Keep them low-poly (guide: below
-     * about 50,000 triangles for the whole site). A context mesh is not cut:
-     * it goes whole into every tile job whose context box (the tile plus a border of up to 128 m, depending on the analysis) it
-     * touches, and its triangles cost upload bytes and memory once per tile.
+     * about 50,000 triangles for the whole site). A context mesh goes into
+     * every tile job whose reach box (the tile plus `contextReachM`) it
+     * touches, less its triangles in the tile's detailed area plus
+     * `contextBufferM`, and its triangles cost upload bytes and memory once per
+     * tile.
      * Analysed buildings and near neighbours go in `geometries`, which is cut
      * per tile. See the README, "Bring your own geometry".
      */
@@ -142,6 +144,13 @@ export interface ComposeOptions {
     readonly analysisType?: string | null;
     /** Required when `ground-geometry` is present. */
     readonly terrainContext?: TerrainContext;
+    /**
+     * How far outside a tile's core, in metres, a `context-geometry` mesh still
+     * reaches that tile. Default 600; `null` sends every mesh to every tile.
+     */
+    readonly contextReachM?: number | null | undefined;
+    /** See `RunAreaOptions.contextBufferM`. */
+    readonly contextBufferM?: number | undefined;
 }
 /**
  * The payload of each tile, as `{ [tileId]: { [group]: data } }`, every group in the tile's

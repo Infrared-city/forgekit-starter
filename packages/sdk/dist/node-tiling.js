@@ -15,6 +15,7 @@ export const FacadeCountContractError = runtime.FacadeCountContractError;
 export const PHYSICS_TIERS = runtime.PHYSICS_TIERS;
 export const SCHEDULE_CONTRACT_VERSION = runtime.SCHEDULE_CONTRACT_VERSION;
 export const THERMAL_CONTROLS = runtime.THERMAL_CONTROLS;
+export const TILE_FAILURE_KINDS = runtime.TILE_FAILURE_KINDS;
 export const TILE_SIZE_CELLS = runtime.TILE_SIZE_CELLS;
 export const TILE_SIZE_M = runtime.TILE_SIZE_M;
 export const TileFailurePhase = runtime.TileFailurePhase;

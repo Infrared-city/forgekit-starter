@@ -1,11 +1,13 @@
-/** Remember `bytes` as the exact JSON text of `value`, parsed from them. */
-export declare function rememberWireText(value: object, bytes: Uint8Array): void;
-/** True when the text has a key made only of digits. */
-export declare function hasDigitKey(bytes: Uint8Array): boolean;
 type Replacer = (this: unknown, key: string, value: unknown) => unknown;
 /**
- * `TextEncoder().encode(JSON.stringify(body, replacer))`, byte for byte, with
- * each remembered top-level value written from its remembered text.
+ * A `JSON.stringify` replacer that writes a typed array (a caller's
+ * `Float64Array` coordinates or `Uint32Array` indices) as the plain array it
+ * holds, as the mesh utilities' views write themselves (D294).
+ */
+export declare function typedAsArray(_key: string, value: unknown): unknown;
+/**
+ * `TextEncoder().encode(JSON.stringify(body, replacer))`, with each top-level
+ * kernel group written from its own bytes.
  *
  * `undefined` where `JSON.stringify` gives `undefined`. A throw from
  * `JSON.stringify` (a cycle, a BigInt) is thrown here too.

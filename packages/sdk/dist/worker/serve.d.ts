@@ -1,5 +1,6 @@
 import type { GeometryUrlStore } from "../internal/geometry-url-store.js";
 import type { FetchLike } from "../internal/transport.js";
+import { type NodePortLike } from "./node-port.js";
 /**
  * The worker global, or any object with the same two members.
  *
@@ -30,8 +31,11 @@ export interface ServeSdkWorkerOptions {
      * read too, for example IndexedDB.
      */
     readonly geometryUrlStore?: GeometryUrlStore;
-    /** The worker global to listen on. Defaults to `self`. */
-    readonly scope?: WorkerScope;
+    /**
+     * The worker global to listen on. Defaults to `self`; in Node, to `parentPort` of
+     * `node:worker_threads`.
+     */
+    readonly scope?: WorkerScope | NodePortLike;
 }
 /**
  * Makes this worker serve the `createWorkerClient` on the page. Call it once, in the module

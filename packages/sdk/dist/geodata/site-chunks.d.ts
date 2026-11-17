@@ -1,37 +1,6 @@
 import type { Logger } from "../logger.js";
 import type { Bbox } from "./http.js";
 /**
- * A site smaller than this area, in km2 (`4`), is read as one rectangle.
- *
- * @category Geodata
- */
-export declare const SITE_CHUNK_THRESHOLD_KM2 = 4;
-/**
- * Site area, in km2 (`20`), up to which a single local frame is recommended.
- *
- * Above it the SDK logs a warning naming how far shapes at the far corner are
- * off. The hard limit is the planned-bytes ceiling of the read.
- *
- * @category Geodata
- */
-export declare const SITE_AREA_WARNING_KM2 = 20;
-/**
- * Longest side, in km (`5`), up to which a single local frame is recommended.
- *
- * The frame error grows with extent as well as area, so a long, narrow site
- * can exceed it while staying under `SITE_AREA_WARNING_KM2`. Above it the SDK
- * logs a warning.
- *
- * @category Geodata
- */
-export declare const SITE_EXTENT_WARNING_KM = 5;
-/**
- * Target edge length, in metres (`2000`), of a read chunk, whatever the site shape.
- *
- * @category Geodata
- */
-export declare const SITE_CHUNK_EDGE_M = 2000;
-/**
  * Maximum number of site chunks fetched at once (`2`): one decodes while the next arrives.
  *
  * @category Geodata
@@ -72,12 +41,6 @@ export interface SiteChunk {
  */
 export declare function decompose(clip: Bbox, rectangles: readonly Bbox[]): Bbox[];
 /**
- * Rough area of a WGS84 rectangle in km2, for sizing decisions rather than geometry.
- *
- * @category Geodata
- */
-export declare function bboxAreaKm2(bbox: Bbox): number;
-/**
  * Give each piece of a decomposition an id.
  *
  * A single piece keeps the owner's own `id`; several pieces are
@@ -93,8 +56,8 @@ export declare function namePieces(id: string, pieces: readonly Bbox[]): Array<{
  * Split a site rectangle into read chunks, in row-major (south-to-north,
  * west-to-east) order.
  *
- * A site up to `SITE_CHUNK_THRESHOLD_KM2` is one chunk with the id `site`;
- * larger sites are cut into chunks of about `SITE_CHUNK_EDGE_M` metres. A chunk
+ * A site up to 4 km2 is one chunk with the id `site`; larger sites are cut
+ * into chunks of about 2 km. A chunk
  * that meets none of the `used` rectangles is dropped, so ground no simulation
  * reads is never composed.
  *
@@ -109,8 +72,8 @@ export declare function siteChunks(site: Bbox, used?: readonly Bbox[], logger?: 
  * Warn once per call when a site is larger than a single local frame is
  * recommended for, and say how far off the far end is.
  *
- * Two rules apply: the area rule (`SITE_AREA_WARNING_KM2`) and the extent rule
- * (`SITE_EXTENT_WARNING_KM`), because a long, narrow strip can be small in
+ * Two rules apply: the area rule (above 20 km2) and the extent rule (above 5 km
+ * on the longest side), because a long, narrow strip can be small in
  * area and still carry the error of a long site. The warning is written to
  * `logger`, never directly to the console.
  *
@@ -119,17 +82,6 @@ export declare function siteChunks(site: Bbox, used?: readonly Bbox[], logger?: 
  * @category Geodata
  */
 export declare function warnIfOverOneFrame(site: Bbox, logger: Logger): void;
-/**
- * The far-end error, in metres, of one flat local frame for a site `extentM` across.
- *
- * The error grows with the square of the extent. At 48 deg N it is about
- * 0.9 m at 2.24 km, 3.5 m at 4.47 km and 17.4 m at 10 km.
- *
- * @param southLat - The latitude of the frame origin, in degrees.
- * @param extentM - The site extent, in metres.
- * @category Geodata
- */
-export declare function farEndErrorM(southLat: number, extentM: number): number;
 /**
  * The rectangle that bounds a list of simulation-tile query rectangles.
  *

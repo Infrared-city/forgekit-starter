@@ -3,7 +3,7 @@ import type { FacadeArtifact } from "../internal/facade-artifact-guard.js";
  * Hand out one facade-scene artifact per batch, once (#602).
  *
  * The cache is keyed like `TileFrames`'s other caches (`site-facade.ts`): the
- * first ask under `key` fetches every batch the plan submits from one kernel
+ * first ask under `key` fetches (one pool task; an ask while it runs waits for it) every batch the plan submits from one kernel
  * call and keeps the answers; each is taken out once, then dropped, so an
  * artifact is not kept after its job took it. `fetched` remembers which keys
  * already had that one full fetch, so a LATER ask never fetches-and-caches
@@ -19,4 +19,4 @@ import type { FacadeArtifact } from "../internal/facade-artifact-guard.js";
  * `index` is not in `wanted`. Either way, only `index`'s own answer is kept;
  * the rest of that fetch is dropped, not cached.
  */
-export declare function pickSceneArtifact(cache: Map<string, Map<number, FacadeArtifact | Error>>, fetched: Set<string>, key: string, wanted: readonly number[], index: number, fetch: (indices: readonly number[]) => Map<number, FacadeArtifact | Error>): FacadeArtifact;
+export declare function pickSceneArtifact(cache: Map<string, Promise<Map<number, FacadeArtifact | Error>>>, fetched: Set<string>, key: string, wanted: readonly number[], index: number, fetch: (indices: readonly number[]) => Promise<Map<number, FacadeArtifact | Error>>): Promise<FacadeArtifact>;

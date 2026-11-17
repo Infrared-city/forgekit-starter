@@ -31,7 +31,11 @@ export interface JobsServiceOptions {
     readonly timeoutMs?: number;
     /** Timeout for downloading a result archive, in milliseconds. Default 600000. */
     readonly downloadTimeoutMs?: number;
-    /** Fixed delay between status reads while waiting, in milliseconds. By default the delay adapts. */
+    /**
+     * Fixed delay between status reads while waiting, in milliseconds. By default the delay adapts.
+     *
+     * @deprecated Removed in 2.0. The SDK sets the poll interval.
+     */
     readonly pollIntervalMs?: number;
     /** Upper limit on the delay between status reads while waiting, in seconds. */
     readonly backoffCapSeconds?: number;
@@ -56,6 +60,13 @@ export interface JobsServiceOptions {
      * again. Default `true`.
      */
     readonly binaryUrlReuse?: boolean;
+    /**
+     * Send the jobs of a binary area run in batch submits (up to 100 jobs in one
+     * request) when the API offers them. Each job keeps its own key and its own
+     * charge. Default `true` with `apiKey` or `token`; a client with `getToken` or
+     * `auth` sends one request per job, and so does `false`.
+     */
+    readonly batchSubmit?: boolean;
     /** Keeps uploaded geometry URLs for a new client. See `InfraredClientConfig.geometryUrlStore`. */
     readonly geometryUrlStore?: GeometryUrlStore;
 }
@@ -132,4 +143,20 @@ export interface SubmitOptions {
     readonly transport?: "json" | "binary";
     /** Cancels the submission. */
     readonly signal?: AbortSignal;
+}
+/**
+ * The options of `JobsService.submitPrepared`; area runs set them.
+ *
+ * @category Run an analysis
+ */
+export interface SubmitPreparedOptions {
+    readonly signal?: AbortSignal;
+    readonly beforeDispatch?: () => void;
+    /** The upload and POST slots of one area run; unset for a single submit. */
+    readonly stages?: {
+        readonly uploaded: () => void;
+        readonly post: <T>(send: () => Promise<T>) => Promise<T>;
+    };
+    /** The `Idempotency-Key` that makes a retried send safe; unset for a single submit. */
+    readonly idempotencyKey?: string;
 }

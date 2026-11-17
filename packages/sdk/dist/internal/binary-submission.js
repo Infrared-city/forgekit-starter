@@ -5,7 +5,7 @@ import { dispatchKeyed } from "./idempotent-dispatch.js";
 import { TransportError } from "./transport.js";
 import { uploadPresignedZip } from "./upload.js";
 import { requireCore } from "./core.js";
-import { delay } from "./deadline.js";
+import { withHostRetry } from "./host-retry.js";
 // Control travels in the API request, not in the uploaded geometry file.
 const MAX_CONTROL_METADATA_BYTES = 4_194_304;
 /**
@@ -50,7 +50,8 @@ export async function capability(gateway, signal) {
     const facadeTargets = Number.isSafeInteger(value.facadeTargets) && value.facadeTargets > 0
         ? value.facadeTargets : undefined;
     return { inputFormat: "irbf", resultFormat: "irbf", wireVersion: 1, geometrySchemas, models,
-        limits: parsedLimits, ...(facadeTargets === undefined ? {} : { facadeTargets }) };
+        limits: parsedLimits, ...(facadeTargets === undefined ? {} : { facadeTargets }),
+        ...(value.batchSubmit === undefined ? {} : { batchSubmit: value.batchSubmit }) };
 }
 /**
  * The checks of a binary route that hold for every job of a run: the geometry
@@ -101,7 +102,7 @@ export async function prepareBinary(prepared, supported) {
         ? bodyArtifact(prepared.body, supported.limits)
         // #602: only the facade artifact getter reads `facadeTargets` (scene
         // mode); `bodyArtifact` never sees it.
-        : prepared.artifact({ ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
+        : await prepared.artifact({ ...supported.limits, facadeTargets: supported.facadeTargets ?? 0 });
     // D156: an area facade batch must upload exactly its planned targets, or
     // the server synthesizes (and bills) sensors the plan never counted.
     if (prepared.artifact !== undefined && isSurfaceBody(prepared.body)) {
@@ -111,45 +112,16 @@ export async function prepareBinary(prepared, supported) {
     return { artifact, control, limits: supported.limits };
 }
 export async function uploadGeometry(uploadGateway, fetch, prepared, timeoutMs, signal) {
-    const response = await resending(() => uploadGateway.requestJson("/uploads/presign", {
+    const response = await withHostRetry("upload", () => uploadGateway.requestJson("/uploads/presign", {
         method: "POST", body: { content_length: prepared.artifact.archive.byteLength },
         ...(signal === undefined ? {} : { signal }),
-    }), signal);
+    }), { signal });
     const value = object(response, "presign response");
     const uploadUrl = https(value["upload-url"], "upload-url");
     const getUrl = https(value["get-url"], "get-url");
-    await resending(() => uploadPresignedZip(uploadUrl, prepared.artifact.archive, { fetch, timeoutMs,
-        ...(signal === undefined ? {} : { signal }) }), signal);
+    await withHostRetry("upload", () => uploadPresignedZip(uploadUrl, prepared.artifact.archive, { fetch, timeoutMs,
+        ...(signal === undefined ? {} : { signal }) }), { signal });
     return getUrl;
-}
-/** The presign and S3 PUT answer that is sent again after a short wait. */
-const RATE_LIMITED = 429;
-/** Attempts for one presign or one PUT, the first one included. */
-const UPLOAD_ATTEMPTS = 5;
-/**
- * Send again on a rate-limit (429) answer, with jittered backoff (at most
- * 4 s), as the Python host does (#816, D276/D277). Both calls are safe to
- * send again: a presign makes a new signed URL, and a PUT of the same bytes
- * to the same URL writes the same object. No paid request is sent here. A
- * 5xx still fails the upload at once (#602 simplify); the job retry covers it.
- */
-async function resending(send, signal) {
-    for (let attempt = 1;; attempt += 1) {
-        try {
-            return await send();
-        }
-        catch (error) {
-            if (attempt >= UPLOAD_ATTEMPTS || !(error instanceof TransportError) || error.reason !== "http"
-                || error.status !== RATE_LIMITED)
-                throw error;
-            try {
-                await delay(Math.min(4_000, 250 * 2 ** (attempt - 1)) * (0.5 + Math.random()), signal ?? new AbortController().signal);
-            }
-            catch {
-                throw new TransportError("upload was aborted while waiting to send again", "pre-dispatch", "aborted", error.method);
-            }
-        }
-    }
 }
 export function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
     return { geometry: { url: geometryUrl, encoding: binary.artifact.encoding,
@@ -159,18 +131,20 @@ export function binarySubmission(binary, geometryUrl, resultFormat = "irbf") {
         resultFormat,
         ...(binary.artifact.targets === undefined ? {} : { targets: binary.artifact.targets }) };
 }
-export async function submitBinary(gateway, prepared, binary, parseJob, signal, beforeDispatch, idempotencyKey) {
+/** The canonical bytes of one binary request: the body of its POST, or one batch item's `request`. */
+export function binaryEnvelope(binary) {
     const envelope = JSON.stringify({ inputFormat: "irbf", resultFormat: binary.resultFormat,
         wireVersion: 1, geometry: binary.geometry, control: binary.control,
         ...(binary.targets === undefined ? {} : { targets: binary.targets }) });
-    const body = canonicalJsonBytes(envelope, Math.min(binary.limits.maxMetadataBytes, MAX_CONTROL_METADATA_BYTES) + 65_536, "binary submission envelope");
+    return canonicalJsonBytes(envelope, Math.min(binary.limits.maxMetadataBytes, MAX_CONTROL_METADATA_BYTES) + 65_536, "binary submission envelope");
+}
+export async function submitBinary(gateway, prepared, binary, parseJob, signal, beforeDispatch, idempotencyKey) {
+    const body = binaryEnvelope(binary);
     const endpointPath = `/binary/v1/async/${encodeURIComponent(prepared.analysisType)}`;
     const headers = { "Content-Type": "application/json",
         ...(idempotencyKey === undefined ? {} : { "Idempotency-Key": idempotencyKey }) };
     let response;
-    // One keyed POST, resent with the SAME key up to the kernel's resend
-    // budget (D224); see `internal/idempotent-dispatch.ts`'s `dispatchKeyed`,
-    // the ONE resend loop both transports call.
+    // One POST; a keyed one is resent by the kernel run engine (D224).
     try {
         response = await dispatchKeyed({
             gateway, endpointPath, body, headers,
@@ -188,8 +162,7 @@ export async function submitBinary(gateway, prepared, binary, parseJob, signal, 
         throw error;
     }
     const rejected = response.status < 200 || response.status >= 300;
-    // A KEYED call returns a non-2xx only when the kernel said `definite_fail`:
-    // the submit failed, and the kernel already decided (no uncertain here).
+    // A KEYED non-2xx goes to the run engine as its HTTP status: the engine decides.
     if (rejected && idempotencyKey !== undefined) {
         throw new TransportError(`binary submission received HTTP ${response.status}`, "response", "http", "POST", response.status);
     }

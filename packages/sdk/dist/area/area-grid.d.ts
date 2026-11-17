@@ -6,7 +6,7 @@ import type { AreaResult, AreaSchedule } from "./schedule-types.js";
  *   factor, thermal comfort statistics, wind speed). Read it with `areaGridValuesF32`.
  * - `"f32"`: a `Float32Array` (direct sun hours, daylight availability, and the class codes
  *   of a categorical result).
- * - `"i16"`: an `Int16Array` of stored integers (thermal comfort index): physical value =
+ * - `"i16"`: an `Int16Array` of stored integers (thermal comfort index saved before 2026-10-07; UTCI is `"f16"` since then): physical value =
  *   stored value / `valueDivisor`, and `valid` tells which cells have a value.
  * - `"f64"`: a `Float64Array` (a run that mixes types).
  *
@@ -28,12 +28,17 @@ interface FinishedGrid {
 }
 /** The kernel's incremental area grid merger (D273). */
 export interface AreaGridMergerHandle {
-    push(row: number, col: number, archive: Uint8Array): string | undefined;
+    /** Place `tiles[indices[i]]` at `(rows[i], cols[i])`; per tile `undefined` or why it is not usable. */
+    pushMany(tiles: GridTilesHandle, indices: Uint32Array, rows: Uint32Array, cols: Uint32Array): (string | undefined)[];
     finish(): FinishedGrid;
     free(): void;
 }
+/** Decoded tile archives in the kernel (`decodeGridTilesStart` / `End`, D299). */
+export interface GridTilesHandle {
+    free(): void;
+}
 /** One kernel merger for the run of `schedule`. */
-export declare function newAreaGridMerger(schedule: AreaSchedule, strategy: string, windDirectionDeg?: number, block?: number): AreaGridMergerHandle;
+export declare function newAreaGridMerger(schedule: Pick<AreaSchedule, "analysisType" | "gridShape" | "polygon">, strategy: string, windDirectionDeg?: number, block?: number): AreaGridMergerHandle;
 /** Finish the merge: the grid in its wire type, with what the kernel measured. */
 export declare function finishAreaGrid(merger: AreaGridMergerHandle): MergedArea;
 /**
@@ -48,9 +53,15 @@ export declare function finishAreaGrid(merger: AreaGridMergerHandle): MergedArea
 export declare function areaGridHasValue(result: AreaResult, cell: number): boolean;
 /**
  * Returns the physical values of `mergedGrid` as 32-bit floats, `NaN` for a cell without a
- * value: the type and the divisor are applied in one call. **An `"i16"` grid read without
- * the divisor is 10 times too large for UTCI; use this function.** The result is a new
+ * value: the type and the divisor are applied in one call. **An old `"i16"` UTCI grid (saved
+ * before 2026-10-07; UTCI is `"f16"` with no divisor since then) read without the
+ * divisor is 10 times too large; use this function, it handles both.** The result is a new
  * array; `mergedGrid` does not change. Call `initializeCore()` first.
+ *
+ * A categorical result (pedestrian wind comfort) gives class CODES, unchanged: a code is an
+ * index into `result.legend`, which holds only the classes of THIS run, sorted. The same code
+ * can be a different class in another run. Map each code through `result.legend` before you
+ * count or compare classes.
  *
  * @param result - The area result.
  * @returns One value per cell.

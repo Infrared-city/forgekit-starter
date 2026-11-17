@@ -3,53 +3,12 @@
 // persistence; the application owns those. It never sends a call again.
 import { areaScheduleFromJSON, areaScheduleToJSON } from "../area/schedule.js";
 import { restoreError, } from "./protocol.js";
+import { adaptNodeWorker } from "./node-port.js";
+import { abortReason, observe, workerStream } from "./stream.js";
+import { WorkerLostError } from "./lost-error.js";
+export { WorkerLostError };
 /** Workers that already serve a client: one client per worker, never two. */
 const bound = new WeakSet();
-/**
- * Thrown by every open call when the worker ends.
- *
- * - `load`: the worker failed before it was ready. No call started work,
- *   so nothing was sent.
- * - `lost`: every other case, including `dispose()` during a call. The jobs
- *   in `acceptedJobIds` were accepted (the ids that `onAccepted` reported
- *   for this call and the page received before the loss; an id still in
- *   flight can be missing). Every other tile of a `runArea` call is
- *   uncertain: its request may have reached the server. Do not send them again
- *   automatically.
- *
- * @category Worker
- */
-export class WorkerLostError extends Error {
-    reason;
-    acceptedJobIds;
-    name = "WorkerLostError";
-    /**
-     * @param reason - `"load"` or `"lost"`, as described above.
-     * @param acceptedJobIds - Ids of the jobs the server accepted before the worker ended.
-     * @param message - The error message; a default is given for each reason.
-     */
-    constructor(
-    /** Why the worker ended: `"load"` or `"lost"`. */
-    reason, 
-    /** Ids of the jobs accepted before the worker ended. */
-    acceptedJobIds, message = reason === "load" ? "the SDK worker failed to load" : "the SDK worker ended during a call") {
-        super(message);
-        this.reason = reason;
-        this.acceptedJobIds = acceptedJobIds;
-    }
-}
-function observe(callback) {
-    try {
-        callback();
-    }
-    catch {
-        // An observer error must not end the call: the worker still owns the run.
-    }
-}
-function abortReason(signal) {
-    const reason = signal.reason;
-    return typeof reason?.message === "string" ? reason.message : "aborted";
-}
 /**
  * Creates an SDK client that runs in one dedicated worker.
  *
@@ -58,6 +17,9 @@ function abortReason(signal) {
  * worker boundary as plain `Error` objects: check `error.name`, not `instanceof`.
  * `getToken` is called per request with no session binding, so use one worker per signed-in
  * session and dispose the client on sign-out.
+ *
+ * In Node, pass a `node:worker_threads` `Worker` (no adapter, no `module`) and `threads` for
+ * the threaded core; the worker file calls `serveSdkWorker()`, which listens on `parentPort`.
  *
  * @example
  * ```ts
@@ -87,12 +49,13 @@ function abortReason(signal) {
  */
 // Maintainer note (not published): See `docs/sdk-execution.md`.
 export function createWorkerClient(options) {
-    const { worker, getToken } = options;
+    const { getToken } = options;
+    const worker = adaptNodeWorker(options.worker);
     // A second client would answer the first one's token requests with its
     // own credentials: one worker serves one client (one signed-in session).
-    if (bound.has(worker))
+    if (bound.has(options.worker))
         throw new TypeError("this worker already serves an SDK worker client");
-    bound.add(worker);
+    bound.add(options.worker);
     const open = new Set();
     let ready = false;
     let closed = false;
@@ -136,7 +99,8 @@ export function createWorkerClient(options) {
             .then((token) => reply({ token }), (error) => reply({ error: String(error) }));
     });
     worker.postMessage({
-        type: "init", module: options.module, config: options.config ?? {}, getToken: getToken !== undefined,
+        type: "init", ...(options.module === undefined ? {} : { module: options.module }), config: options.config ?? {}, getToken: getToken !== undefined,
+        ...(options.threads === undefined ? {} : { threads: options.threads }),
     });
     function call(op, args, hooks, decode) {
         if (closed)
@@ -165,6 +129,9 @@ export function createWorkerClient(options) {
                 else if (message.type === "accepted") {
                     entry.accepted.push(message.jobId);
                     observe(() => hooks.onAccepted?.(message.jobId, message.tileKey));
+                }
+                else if (message.type === "item") {
+                    hooks.onItem?.(message, () => port.postMessage({ type: "taken" }));
                 }
                 else if (message.type === "done") {
                     finish(() => {
@@ -206,7 +173,14 @@ export function createWorkerClient(options) {
         runArea(input, polygon, runOptions = {}) {
             const { signal, onProgress, onAccepted, retryFrom, ...rest } = runOptions;
             const sent = { ...rest, ...(retryFrom === undefined ? {} : { retryFrom: areaScheduleToJSON(retryFrom) }) };
-            return call("runArea", [input, polygon, sent], { signal, onProgress, onAccepted }, (value) => areaScheduleFromJSON(value));
+            return call("runArea", [input, polygon, sent], { signal, onProgress, onAccepted }, (value) => (Array.isArray(value) ? value.map((one) => areaScheduleFromJSON(one))
+                : areaScheduleFromJSON(value)));
+        },
+        runAreaStream(inputs, polygon, streamOptions = {}) {
+            if (streamOptions.retryFrom !== undefined)
+                throw new TypeError("runAreaStream takes no retryFrom; use runArea");
+            const { signal, onProgress, onAccepted, ...rest } = streamOptions;
+            return workerStream((onItem, inner) => call("runAreaStream", [inputs, polygon, rest], { signal: inner, onProgress, onAccepted, onItem }, same), signal);
         },
         mergeAreaJobs(schedule, mergeOptions) {
             const { rest, hooks } = plain(mergeOptions);

@@ -1,8 +1,11 @@
-import { sha256Hex } from "../internal/geometry-reuse/canonical.js";
-import { contentFingerprint } from "../internal/geometry-reuse/fingerprint.js";
-import { spliceJsonBytes } from "../internal/wire-json.js";
+import { terrainKey } from "./site-terrain.js";
+import { kernelGroupHashOnce } from "./config-hash.js";
+import { pack } from "./site-pack.js";
+import { requireCore } from "../internal/core.js";
+import { typedAsArray } from "../internal/wire-json.js";
 import { dropSiteToGrade } from "../to-grade.js";
-import { composeTiles, geometryGroups, GROUP_KEYS, rejectFullyDroppedTargets } from "./plan-layers.js";
+import { contextKey, contextOptions, warnContextHole } from "./context-options.js";
+import { composeTiles, geometryGroups, rejectFullyDroppedTargets } from "./plan-layers.js";
 import { acquiredBuildings } from "./reanchor.js";
 import { areaTransport } from "../internal/transport-choice.js";
 /**
@@ -13,64 +16,6 @@ import { areaTransport } from "../internal/transport-choice.js";
  * (`reports/OPT-client-run-path-2026-09-18/REPORT.md`).
  */
 const MAX_SITES = 4;
-const encoder = new TextEncoder();
-/**
- * Memo by source OBJECT: the digest of a payload group or an acquired
- * `buildings` / `vegetation` / `groundMaterials` object, keyed on the
- * object's identity (`docs/DEVIATIONS.md` D104). The prepared site keeps
- * these objects alive across `runArea` calls (D96), so six calls that share
- * one group object hash it once instead of six times. The caller can change a
- * source object in place between two calls, so each entry keeps the content
- * fingerprint (`internal/geometry-reuse/fingerprint.ts`) of the text it
- * hashed, from the object's second sight on, and a later call uses the digest
- * only when the fingerprint is the same (D182, D183). A NEW map: this digest is over the raw `JSON.stringify` text,
- * not the identity memo's envelope, so the two never share an entry.
- */
-const groupDigestMemo = new WeakMap();
-/**
- * The UTF-8 of `JSON.stringify(source)`. When `source` is an acquisition
- * result, the inner document (`inner`) is written once, recorded in `texts`
- * for the constructor, and spliced into the outer text, so the bytes are
- * those of `JSON.stringify(source)`.
- */
-function sourceBytes(source, inner, texts) {
-    if (texts === undefined)
-        return encoder.encode(JSON.stringify(source));
-    const record = source;
-    const document = inner === undefined ? undefined : record[inner];
-    if (document === null || typeof document !== "object" || Array.isArray(source)) {
-        const text = JSON.stringify(source);
-        texts.set(source, text);
-        return encoder.encode(text);
-    }
-    let innerBytes;
-    const bytes = spliceJsonBytes(record, (value) => {
-        if (value !== document)
-            return undefined;
-        const text = JSON.stringify(document);
-        texts.set(document, text);
-        innerBytes ??= encoder.encode(text);
-        return innerBytes;
-    });
-    return bytes ?? encoder.encode(JSON.stringify(source));
-}
-async function sourceDigest(source, inner, texts) {
-    if (source === null || typeof source !== "object") {
-        return sha256Hex(encoder.encode(JSON.stringify(source)));
-    }
-    // No fingerprint walk on a first sight (D183): the walk runs only for an
-    // object seen before, so a fresh object costs what it cost before D182.
-    const cached = groupDigestMemo.get(source);
-    const fingerprint = cached === undefined ? undefined : contentFingerprint(source);
-    if (fingerprint !== undefined && cached?.fingerprint === fingerprint)
-        return cached.digest;
-    const digest = await sha256Hex(sourceBytes(source, inner, texts));
-    if (digest === undefined)
-        groupDigestMemo.delete(source);
-    else
-        groupDigestMemo.set(source, { fingerprint, digest });
-    return digest;
-}
 /**
  * The site content of an ACQUISITION result (`AreaBuildings`,
  * `AreaVegetation`, `AreaGroundMaterials`): the inner document the site
@@ -97,57 +42,93 @@ function acquisitionContent(name, value, inner) {
     return { document, meta: JSON.stringify(margin) };
 }
 /**
- * Computes the content key of a site: the digest of every geometry source, plus the tiling
- * family.
+ * Computes the content key of a site: the kernel `siteKey` (SHA-256) over the sources as the
+ * site reads them, plus the tiling family.
  *
- * Each source (a payload group, or an acquired `buildings`, `vegetation` or `groundMaterials`
- * object) is hashed from its JSON text as it will be read. Two runs given the same content share
- * a site; a new input map with different content does not, and neither does a map changed in
- * place. An acquisition result contributes its site content only, so a second fetch of the same
- * site gives the same key and the same `siteIdentity`. The tiling family is the polygon, the
- * preset's three metre sizes, the terrain margin, the tile cap and the wind datum.
+ * The buildings and the context geometry cross as the packed buffers the site is built from,
+ * never as JSON text. The terrain crosses as its kernel content key. The vegetation and ground
+ * materials cross as JSON text. Two runs given the same content share a site; a new input map
+ * with different content does not, and neither does a map changed in place. An acquisition
+ * result contributes its site content only, so a second fetch of the same site gives the same
+ * key and the same `siteIdentity`. The tiling family is the polygon, the preset's three metre
+ * sizes, the terrain margin, the tile cap, the wind datum and the context key.
  *
  * @param inputs - What the site stage reads.
  * @param texts - Collects the JSON text of each group written for the key, to reuse it when
  *   the site is built.
- * @param legacy - Computes the key of earlier SDK versions (see the note below).
- * @returns The key, or `undefined` when the runtime has no SHA-256, in which case the site is
- *   built uncached.
+ * @param ground - The terrain's content key ({@link terrainKey}); read from the payload when
+ *   omitted.
+ * @param memo - Per-call digests of the mesh groups ({@link SiteKeyMemo}).
+ * @returns The key.
  * @category Run an analysis
  */
-// Maintainer note (not published): the acquisition-result rule is D187. `legacy` gives the key of
-// 0.12.13-next.17 and older, which hashed each acquisition result WHOLE, per-fetch fields
-// included. Only a retry of a schedule those versions saved asks for it (`planning.ts`).
-export async function preparedSiteKey(inputs, texts, legacy = false) {
+// Maintainer note (not published): the acquisition-result rule is D187. The key is a hash, so
+// it differs from the text keys of 0.12.13-next.x and older: a schedule saved by those versions
+// may need a rerun (D297).
+export function preparedSiteKey(inputs, texts, ground = terrainKey(inputs.payload["ground-geometry"], texts), memo) {
     const { payload, options, polygon, config } = inputs;
-    // The third field names the inner document an acquisition result hands to
-    // the site (`plan-layers.ts` `acquiredLayer`); it changes only which text is
-    // kept for the constructor, never the key.
-    const sources = [
-        ...GROUP_KEYS.map((key) => [key, payload[key], undefined]),
-        ["buildings", options.buildings, undefined],
-        ["vegetation", options.vegetation, "features"],
-        ["groundMaterials", options.groundMaterials, "layers"],
-    ];
-    const parts = [legacy ? "prepared-site-v1" : "prepared-site-v2"];
-    for (const [name, given, inner] of sources) {
+    // Each layer is the one the site reads: an option wins over the payload group
+    // (`plan-layers.ts` `geometryGroups`). The meta of an acquisition result is part of the family.
+    const meta = [];
+    const layer = (name, given, inner) => {
         if (given === undefined)
-            continue;
-        const content = legacy ? undefined : acquisitionContent(name, given, inner);
-        // Buildings reach the site re-anchored and packed, never as this text.
-        const keep = name === "buildings" || name === "geometries" || name === "context-geometry"
-            ? undefined : texts;
-        const digest = content === undefined
-            ? await sourceDigest(given, inner, keep)
-            : await sourceDigest(content.document, undefined, keep);
-        if (digest === undefined)
             return undefined;
-        parts.push(`${name}=${digest}`);
+        const content = acquisitionContent(name, given, inner);
         if (content !== undefined)
-            parts.push(`${name}:meta=${content.meta}`);
+            meta.push(content.meta);
+        const document = content?.document ?? given;
+        const text = JSON.stringify(document, typedAsArray);
+        if (document !== null && typeof document === "object")
+            texts?.set(document, text);
+        return text;
+    };
+    // The buildings as the site packs them: coordinates as one f64 buffer, the
+    // rest of each mesh as text. No JSON text of the coordinates is written.
+    let source = payload.geometries;
+    if (options.buildings !== undefined) {
+        const acquired = acquisitionContent("buildings", options.buildings, undefined);
+        if (acquired !== undefined)
+            meta.push(acquired.meta);
+        source = acquired?.document ?? options.buildings;
     }
-    parts.push(JSON.stringify(polygon), String(config.inferenceSizeM), String(config.contextSizeM), String(config.stepM), String(inputs.terrainContextMarginM), String(options.maxTilesOverride), String(inputs.grade));
-    return parts.join("\n");
+    const vegetation = layer("vegetation", options.vegetation ?? payload.vegetation, "features");
+    const materials = layer("groundMaterials", options.groundMaterials ?? payload["ground-materials"], "layers");
+    const family = JSON.stringify([
+        config.inferenceSizeM, config.contextSizeM, config.stepM, inputs.terrainContextMarginM,
+        options.maxTilesOverride ?? null, inputs.grade ?? null, meta,
+        payload["context-geometry"] === undefined ? null : contextKey(options), // D293
+    ]);
+    const groups = [meshDigest(source, memo?.meshes), contextDigest(payload, memo?.groups)];
+    return requireCore().siteKey("[]", NO_F64, ZERO, NO_U32, ZERO, "[]", NO_F64, ZERO, NO_U32, ZERO, JSON.stringify(groups), undefined, ground, vegetation, materials, NO_U32, NO_U32, "[]", NO_F64, JSON.stringify(polygon), family);
+}
+/** A new, empty {@link SiteKeyMemo}. */
+export function siteKeyMemo() {
+    return { meshes: new WeakMap(), groups: new WeakMap() };
+}
+/**
+ * The context's term of the site key: its kernel group hash (the one the
+ * schedule hash takes, so the context is hashed once) and its mesh ids.
+ */
+function contextDigest(payload, memo) {
+    const context = payload["context-geometry"];
+    if (context === null || typeof context !== "object" || Array.isArray(context))
+        return null;
+    return `${kernelGroupHashOnce(String(payload["analysis-type"]), "context-geometry", context, memo)}:${JSON.stringify(Object.keys(context))}`;
+}
+const NO_F64 = new Float64Array(0);
+const NO_U32 = new Uint32Array(0);
+const ZERO = Uint32Array.of(0);
+/** The kernel digest of the buildings as the site packs them; `null` for none. */
+function meshDigest(source, memo) {
+    if (source === null || typeof source !== "object" || Array.isArray(source))
+        return null;
+    const known = memo?.get(source);
+    if (known !== undefined)
+        return known;
+    const group = pack(source, false);
+    const digest = requireCore().siteKey(JSON.stringify(group.ids), group.coordinates, group.offsets, NO_U32, ZERO, "[]", NO_F64, ZERO, NO_U32, ZERO, group.document, undefined, undefined, undefined, undefined, NO_U32, NO_U32, "[]", NO_F64, "null", "buildings");
+    memo?.set(source, digest);
+    return digest;
 }
 /**
  * Builds the prepared site: assembles the geometry layers, composes every tile and checks that
@@ -164,20 +145,19 @@ export async function preparedSiteKey(inputs, texts, legacy = false) {
  */
 export async function buildPreparedSite(inputs, analysisType, tiles, slice, texts, terrain) {
     const { payload, options, polygon } = inputs;
-    // D91: the wind family's datum, applied before the compose cuts the site
-    // into tiles, so no tile ever runs the pass.
+    // D91: the wind datum is applied before the compose cuts the site into tiles.
     const groups = dropSiteToGrade(geometryGroups(payload, options, polygon, [analysisType]), inputs.grade);
     const { composed, site } = await composeTiles(groups, tiles, polygon, {
-        analysisType, terrainContextMarginM: inputs.terrainContextMarginM,
-        // A binary run encodes artifacts from the kernel site (WS2, D136); a
-        // facade run plans its batches and writes its bodies from it
-        // (`area/site-facade.ts`).
+        analysisType, terrainContextMarginM: inputs.terrainContextMarginM, ...contextOptions(options),
+        // A binary run encodes artifacts from the kernel site (WS2, D136); a facade
+        // run plans its batches and writes its bodies from it (`area/site-facade.ts`).
         keepKernelSite: areaTransport(options, analysisType) === "binary"
             || payload["analysis-surfaces"] != null,
         ...(texts === undefined ? {} : { texts }),
         ...(terrain === undefined ? {} : { terrain }),
     }, slice);
     rejectFullyDroppedTargets(groups, site);
+    warnContextHole(site.contextWarning, options.logger);
     return { composed, answers: site };
 }
 function abortReason(signal) {

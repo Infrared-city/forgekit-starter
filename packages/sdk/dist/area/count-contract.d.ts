@@ -10,7 +10,7 @@ import type { AreaSchedule } from "./schedule-types.js";
  *
  * @category Run an analysis
  */
-export declare const FACADE_COUNT_CONTRACT_VERSION = 11;
+export declare const FACADE_COUNT_CONTRACT_VERSION = 13;
 /**
  * Thrown when a facade retry is refused because the saved schedule's batches
  * were sized with an older sensor-counting rule.

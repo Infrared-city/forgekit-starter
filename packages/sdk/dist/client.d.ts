@@ -1,5 +1,5 @@
 import { JobsService, type Job, type SubmitOptions } from "./jobs.js";
-import type { AnalysesName } from "./analysis-types.js";
+import { type AreaStreamItem } from "./area/stream.js";
 import type { MergePartsOptions } from "./parts/merge.js";
 import { type RunAndWaitOptions } from "./parts/run.js";
 import type { PartsOptions, PartsPreview, PartsSchedule } from "./parts/types.js";
@@ -15,10 +15,13 @@ import { VegetationService } from "./vegetation.js";
 import { WeatherService } from "./weather.js";
 import { type Logger } from "./logger.js";
 import type { SurfaceColumns } from "./results/surface-columns.js";
-import { AreaTimeoutError, type AreaPreview, type AreaPreviewWithPricing, type InfraredClientConfig, type RunAreaAndWaitOptions } from "./client-types.js";
+import { AreaTimeoutError, type AreaPreview, type InfraredClientConfig, type RunAreaAndWaitOptions } from "./client-types.js";
+import type { AnalysesName } from "./analysis-types.js";
 import { AnalysisService } from "./analysis-service.js";
+import { type AreaPreviewWithPricing } from "./legacy-pricing.js";
 export { AnalysisService, AreaTimeoutError };
-export type { AreaPreview, AreaPreviewWithPricing, InfraredClientConfig, InfraredClientOptions, InfraredEnvBindings, RunAreaAndWaitOptions, WireAnalysisRequest, } from "./client-types.js";
+export type { AreaPreviewWithPricing };
+export type { AreaPreview, InfraredClientConfig, InfraredClientOptions, InfraredEnvBindings, RunAreaAndWaitOptions, WireAnalysisRequest, } from "./client-types.js";
 /**
  * The entry point of the SDK: runs analyses on one site or over a polygon
  * area (split into tiles), and exposes the weather, buildings, vegetation,
@@ -93,7 +96,7 @@ export declare class InfraredClient {
     /** Downloads and joins a finished parts run; throws `AnalysisPartsError` naming a failed part. */
     mergeParts(schedule: PartsSchedule, options?: MergePartsOptions): Promise<unknown>;
     /** The parts, sensors and tokens a `runAndWait` of `input` would bill; sends nothing. */
-    previewParts(input: Readonly<Record<string, unknown>>, options?: PartsOptions): PartsPreview;
+    previewParts(input: Readonly<Record<string, unknown>>, options?: PartsOptions): Promise<PartsPreview>;
     /**
      * Plans an area run over `polygon`, submits one job per non-empty tile and
      * returns the saved `AreaSchedule` without waiting; finish it with
@@ -103,11 +106,15 @@ export declare class InfraredClient {
      * may be billed. List the failed tiles in `schedule.failedSubmissions` and
      * pass the schedule as `retryFrom` to send only those.
      *
-     * @param input - the analysis request, as for `runAndWait`, plus the area settings.
+     * Give a list of inputs to run several analyses over the same polygon: they share one
+     * prepared site (and a facade tile's parts), and the call returns one schedule per input,
+     * in input order. `retryFrom` is refused with a list; retry each analysis alone.
+     *
+     * @param input - the analysis request, as for `runAndWait`, plus the area settings, or a list of them.
      * @param polygon - the area to analyse.
-     * @param options - `maxWorkers` (requests in flight at once), `maxTilesOverride`,
+     * @param options - `maxTilesOverride`,
      * `retryFrom`, `onAccepted`, `signal` and `logger`.
-     * @returns the saved `AreaSchedule` with one entry for each submitted tile.
+     * @returns the saved `AreaSchedule` with one entry for each submitted tile (one schedule per input for a list).
      * @throws {Error} when the polygon needs more non-empty tiles than the
      * limit; the message gives the `maxTilesOverride` to pass.
      * @throws {ReadMarginError} when an acquired layer was read with a narrower
@@ -116,9 +123,11 @@ export declare class InfraredClient {
      * @example
      * ```ts
      * const schedule = await client.runArea(input, polygon, { maxTilesOverride: 400 });
+     * const [solar, wind] = await client.runArea([solarInput, windInput], polygon);
      * ```
      */
     runArea(input: RunAreaInput, polygon: Polygon, options?: RunAreaOptions): Promise<AreaSchedule>;
+    runArea(inputs: readonly RunAreaInput[], polygon: Polygon, options?: RunAreaOptions): Promise<AreaSchedule[]>;
     /** Reads the status of the schedule's jobs once, updates it and returns the run's counts. */
     checkAreaState(schedule: AreaSchedule, options?: CheckAreaStateOptions): Promise<AreaState>;
     /**
@@ -135,51 +144,75 @@ export declare class InfraredClient {
      * surface run returns `SurfaceColumns`, any other run an `AreaResult`.
      * `areaTimeout` is in seconds, default 3600.
      *
+     * Give a list of inputs to run several analyses over the same polygon in ONE run: they share
+     * the prepared site and a facade tile's parts, and the call returns one result per input, in
+     * input order, when every analysis is finished. When one failed, the first error in input
+     * order is thrown. `runAreaStream` hands each result over the moment it is finished.
+     *
      * @throws {AreaTimeoutError} when the run does not finish within `areaTimeout`.
+     * @throws {AreaRunError} when a tile failed, a finished job did not download, or a submit is uncertain.
+     * @throws {JobPollError} when a status request is refused for good (for example HTTP 403).
      * @throws {TypeError} when `areaTimeout` is not a positive finite number.
      *
      * @example
      * ```ts
      * const result = await client.runAreaAndWait(input, polygon, { areaTimeout: 1800 });
+     * const [solar, svf] = await client.runAreaAndWait([solarInput, svfInput], polygon);
      * ```
      */
     runAreaAndWait(input: RunAreaInput, polygon: Polygon, options?: RunAreaAndWaitOptions): Promise<AreaResult | SurfaceColumns>;
+    runAreaAndWait(inputs: readonly RunAreaInput[], polygon: Polygon, options?: RunAreaAndWaitOptions): Promise<Array<AreaResult | SurfaceColumns>>;
+    /**
+     * Runs analyses over one polygon area as `runAreaAndWait` does, and yields each
+     * result the moment its last tile is merged, in the order they finish. Read the
+     * items one by one: the SDK keeps no reference to a yielded result. A failed
+     * analysis yields an item with `error`; the others continue. `break` or
+     * `options.signal` cancels the analyses not yet yielded. `options` apply to every
+     * analysis; `onProgress` reports each analysis until it is finished (then its bodies are freed).
+     *
+     * @throws {TypeError} on the first `next()` when `areaTimeout` is not a positive finite number.
+     * @category Run an analysis
+     * @example
+     * ```ts
+     * for await (const item of client.runAreaStream([solar, wind], polygon)) draw(item);
+     * ```
+     */
+    runAreaStream(inputs: RunAreaInput | readonly RunAreaInput[], polygon: Polygon, options?: RunAreaAndWaitOptions): AsyncGenerator<AreaStreamItem, void, undefined>;
     /** Builds the tile grid covering a polygon, south to north; sends no request. */
     generateTiles(polygon: Polygon, options?: {
         readonly analysisType?: string;
         readonly maxTilesOverride?: number;
     }): Tile[][];
     /**
-     * Estimates an area run from its tile count; submits nothing. The cost uses
-     * a default price per job (`previewAreaWithPricing` uses the live price);
-     * for a facade run use `previewAreaBatches`. Throws when the polygon needs
-     * more non-empty tiles than the limit.
+     * Estimates an area run from its tile count; submits nothing. The cost is
+     * the jobs times the API's price for the analysis (`pricingSource` says if
+     * the price is `"live"`, `"cached"` or `"stale"`). For a facade run use
+     * `previewAreaBatches`. Throws when the polygon needs more non-empty tiles
+     * than the limit.
+     *
+     * @throws {PricingUnavailableError} when the price list cannot be fetched and the client has none.
      *
      * @example
      * ```ts
-     * const preview = client.previewArea(polygon, { analysisType: "wind-speed" });
+     * const preview = await client.previewArea(polygon, { analysisType: "wind-speed" });
      * ```
      */
-    previewArea(polygon: Polygon, options?: {
-        readonly analysisType?: string;
+    previewArea(polygon: Polygon, options: {
+        readonly analysisType: string;
         readonly maxTilesOverride?: number;
-    }): AreaPreview;
+    }): Promise<AreaPreview>;
+    /** @deprecated Use `previewArea`: it is priced with the same price list. Removed in 2.0. */
+    previewAreaWithPricing(polygon: unknown, options: {
+        readonly analysisType: AnalysesName;
+        readonly maxTilesOverride?: number;
+        readonly forceRefresh?: boolean;
+    }): Promise<AreaPreviewWithPricing>;
     /**
      * Previews a facade run: builds the plan `runArea` would and reports its job
      * count instead of submitting it. Pass the same `input` a `runArea` call
      * would, because `previewArea` under-reports a facade (`analysisSurfaces`) run.
      */
     previewAreaBatches(input: RunAreaInput, polygon: Polygon, options?: RunAreaOptions): Promise<AreaBatchPreview>;
-    /**
-     * Like `previewArea`, but priced with the API's current price for the
-     * analysis. When the price list cannot be fetched a warning is logged and
-     * the default price is used (`pricingSource` is `"fallback"`).
-     */
-    previewAreaWithPricing(polygon: unknown, options: {
-        readonly analysisType: AnalysesName;
-        readonly maxTilesOverride?: number;
-        readonly forceRefresh?: boolean;
-    }): Promise<AreaPreviewWithPricing>;
     /** Decodes an already downloaded result archive; prefer `jobs.decompress`, which returns a typed result. */
     decompressResult(content: Uint8Array): unknown;
 }

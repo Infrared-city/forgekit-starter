@@ -29,9 +29,33 @@ export interface GeometryUrlStore {
     get(key: string): Promise<GeometryUrlEntry | undefined> | GeometryUrlEntry | undefined;
     /** Keep `url` for `key` until `expiresAt` (milliseconds since the Unix epoch). */
     set(key: string, url: string, expiresAt: number): Promise<void> | void;
+    /**
+     * Optional. Claim `key` for one upload across clients that share this
+     * store (several workers, tabs or processes). Resolve when this client
+     * holds the claim, and return the function that releases it. On a `get`
+     * miss the SDK claims the key, calls `get` again (another client may have
+     * uploaded it while this one waited), uploads only on a second miss, waits
+     * for `set` to settle, then releases (the run itself does not wait for
+     * `set`). An aborted run stops waiting for the claim at once; the shared
+     * upload that other runs may wait on keeps waiting, at most 60 s, and
+     * then uploads anyway (a second upload is
+     * better than a stuck run). A claim that resolves later is released at
+     * once. A claim that throws is a miss with one warning; the SDK uploads.
+     *
+     * @example Web Locks, in a page or a worker:
+     * ```ts
+     * claim: (key) => new Promise((claimed, failed) => {
+     *   navigator.locks.request(`ir-geom:${key}`, () => new Promise<void>((release) => claimed(release)))
+     *     .catch(failed);
+     * }),
+     * ```
+     */
+    claim?(key: string): Promise<() => void>;
 }
 /** The server keeps uploaded geometry for 24 h; the SDK uses an entry for 23 h. */
 export declare const STORED_URL_LIFETIME_MS: number;
+/** The longest wait for a {@link GeometryUrlStore.claim}; then the SDK uploads anyway. */
+export declare const MAX_CLAIM_WAIT_MS = 60000;
 /** The store key: a tag and the parts of the SDK's own key, joined by `:`. */
 export declare function storeKey(tag: "irbf" | "json", key: string): string;
 /**
@@ -45,13 +69,23 @@ export declare class GeometryUrlStoreGate {
     private readonly store;
     private readonly logger;
     private readonly now;
+    private readonly claimWaitMs;
     private warned;
     private readonly waitMs;
-    constructor(store: GeometryUrlStore, logger: Logger, timeoutMs: number, now?: () => number);
+    constructor(store: GeometryUrlStore, logger: Logger, timeoutMs: number, now?: () => number, claimWaitMs?: number);
     /** The stored entry for `key` while it is good. */
     get(key: string): Promise<GeometryUrlEntry | undefined>;
-    /** Keep `url`, uploaded now. Not awaited: a slow store never slows a run. */
-    set(key: string, url: string): void;
+    /** Keep `url`, uploaded now. The promise settles when the store's write
+     * settles and never rejects; a run never awaits it (a claim holder releases
+     * when it settles). */
+    set(key: string, url: string): Promise<void>;
+    /** The store's claim on `key` ({@link GeometryUrlStore.claim}), held until
+     * the returned release runs; `undefined` without a claim, when it fails or
+     * after {@link MAX_CLAIM_WAIT_MS}. A claim that arrives after the wait
+     * ended is released at once. No caller's signal: the claim belongs to the
+     * shared upload, and each caller stops waiting on its own abort. */
+    claim(key: string): Promise<(() => void) | undefined>;
+    private release;
     private warn;
 }
 /** @internal The gate for an optional caller store. */

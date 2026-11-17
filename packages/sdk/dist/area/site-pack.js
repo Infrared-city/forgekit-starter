@@ -1,3 +1,4 @@
+import { typedAsArray } from "../internal/wire-json.js";
 /**
  * The site's coordinate packing for the kernel `Site` (WS2). Split out of
  * `site-assign.ts` for the 400-line file cap (root `CLAUDE.md` rule 8).
@@ -9,21 +10,26 @@
  * The test is the kernel's own, read back: a value that is not a finite JSON
  * number, or a length that is not a multiple of three, makes the kernel skip
  * the mesh. A building it rejects reaches no tile; an occluder it rejects is
- * undecidable and goes to every tile verbatim (D67).
+ * refused by the kernel by name (D293).
  */
 export function plainCoordinates(mesh) {
     if (mesh === null || typeof mesh !== "object" || Array.isArray(mesh))
         return undefined;
     const coordinates = mesh.coordinates;
-    if (!Array.isArray(coordinates))
+    // A typed array (the mesh utilities return `Float64Array` views, D294) is
+    // read in place, like a plain array.
+    const flat = Array.isArray(coordinates) || coordinates instanceof Float64Array || coordinates instanceof Float32Array
+        ? coordinates
+        : undefined;
+    if (flat === undefined)
         return undefined;
-    if (coordinates.length === 0 || coordinates.length % 3 !== 0)
+    // The kernel checks every value (finite numbers) and skips or refuses the mesh by name.
+    if (flat.length === 0 || flat.length % 3 !== 0)
         return undefined;
-    for (const value of coordinates) {
-        if (typeof value !== "number" || !Number.isFinite(value))
-            return undefined;
-    }
-    return coordinates;
+    return flat;
+}
+function words(value) {
+    return Array.isArray(value) || value instanceof Uint32Array ? value : undefined;
 }
 /**
  * One group packed for the kernel: ids, one f64 buffer, element offsets, and
@@ -31,37 +37,46 @@ export function plainCoordinates(mesh) {
  *
  * `keepUnreadable` is the group's rule for a mesh this host cannot read.
  * Buildings SKIP it. `context-geometry` KEEPS it with a ZERO-LENGTH slot,
- * which the kernel reads as undecidable and sends to every tile (D67).
+ * which the kernel refuses by name (D293), and also packs its indices.
  */
 export function pack(meshes, keepUnreadable) {
     const ids = [];
     const blocks = [];
+    const triangles = [];
     const offsets = [0];
+    const indexOffsets = [0];
     // No prototype: a mesh id such as `__proto__` is an own property here too.
     const stripped = Object.create(null);
     let total = 0;
+    let indexTotal = 0;
     for (const [id, mesh] of Object.entries(meshes)) {
-        const readable = plainCoordinates(mesh);
-        if (readable === undefined && !keepUnreadable)
+        const coordinates = plainCoordinates(mesh);
+        const triangle = keepUnreadable ? words(mesh?.indices) : [];
+        const readable = coordinates !== undefined && triangle !== undefined;
+        if (!readable && !keepUnreadable)
             continue;
-        const block = readable ?? [];
+        const block = readable ? coordinates : [];
         ids.push(id);
         blocks.push(block);
+        triangles.push(readable ? triangle : []);
         total += block.length;
+        indexTotal += readable ? triangle.length : 0;
         offsets.push(total);
-        stripped[id] = readable === undefined ? mesh : { ...mesh, coordinates: undefined };
+        indexOffsets.push(indexTotal);
+        if (!keepUnreadable)
+            stripped[id] = { ...mesh, coordinates: undefined };
     }
-    // The kernel reads LITTLE-endian f64. `DataView` writes that order on every
-    // engine, so there is no host-order branch to get wrong. Python packs the
-    // same bytes the same way (`tiling/site_assign.py` `_pack`).
-    const bytes = new Uint8Array(total * 8);
-    const view = new DataView(bytes.buffer);
-    let at = 0;
-    for (const block of blocks) {
-        for (const value of block) {
-            view.setFloat64(at, value, true);
-            at += 8;
-        }
-    }
-    return { ids, bytes, offsets: Uint32Array.from(offsets), document: JSON.stringify(stripped) };
+    // The kernel reads LITTLE-endian f64; every engine this SDK runs on is
+    // little-endian, and Python hands the kernel the same bytes.
+    const coordinates = new Float64Array(total);
+    const indices = new Uint32Array(indexTotal);
+    blocks.forEach((block, mesh) => {
+        coordinates.set(block, offsets[mesh]);
+        indices.set(triangles[mesh], indexOffsets[mesh]);
+    });
+    return {
+        ids, coordinates, bytes: new Uint8Array(coordinates.buffer), offsets: Uint32Array.from(offsets),
+        indices, indexOffsets: Uint32Array.from(indexOffsets),
+        document: keepUnreadable ? "" : JSON.stringify(stripped, typedAsArray),
+    };
 }

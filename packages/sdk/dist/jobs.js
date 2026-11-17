@@ -1,17 +1,18 @@
-import { jobFromResponse } from "./internal/job-response.js";
+import { jobFromResponse, JobResponseMismatchError } from "./internal/job-response.js";
 export { jobFromResponse, parseJobStatus } from "./internal/job-response.js";
 import { requireTimeout } from "./internal/deadline.js";
 import { waitForJob } from "./internal/wait-job.js";
+import { warnPollIntervalDeprecated } from "./internal/poll-interval-deprecation.js";
 import { defaultTransport } from "./internal/transport-choice.js";
 import { resolveFetch } from "./internal/fetch.js";
 import { downloadPresigned } from "./internal/download.js";
-import { pauseBeforeRetry, shouldRetryDownload, } from "./internal/download-retry.js";
+import { downloadWithRetries } from "./internal/download-retry.js";
 import { parseResultsLink } from "./internal/link.js";
 import { prepareSubmissionBody } from "./internal/submit-body.js";
 import { submitArchive } from "./internal/submission.js";
 import { preparedJsonBytes } from "./internal/prepared-json.js";
 import { GatewayTransport } from "./internal/transport.js";
-import { requireCore } from "./internal/core.js";
+import { zipPayload } from "./internal/zip-payload.js";
 import { tryGeometryReuse } from "./internal/geometry-reuse/controller.js";
 import { buildGeometryReuseOptions } from "./internal/geometry-reuse/options.js";
 import { prepareBinary } from "./internal/binary-submission.js";
@@ -22,9 +23,10 @@ import { BinaryUrlCache } from "./internal/binary-url-cache.js";
 import { geometryUrlStoreGate } from "./internal/geometry-url-store.js";
 import { BinaryRetention } from "./internal/binary-retention.js";
 import { fetchStatusBatch } from "./internal/status-batch.js";
-import { submitPreparedBinary } from "./internal/binary-submit-coordinator.js";
+import { prepareBinaryEnvelope, submitPreparedBinary, } from "./internal/binary-submit-coordinator.js";
+import { dispatchKeyed } from "./internal/idempotent-dispatch.js";
 import { parseResultArchive, } from "./results/router.js";
-import { JobNotCompletedError, } from "./job-errors.js";
+import { JobNotCompletedError } from "./job-errors.js";
 import { JobStatus, requireJobId, } from "./job-model.js";
 import { FacadeCaptures } from "./area/facade-captures.js";
 export { JobStatus } from "./job-model.js";
@@ -49,12 +51,14 @@ export class JobsService {
     geometryReuseEnabled;
     geometryReuseOptions;
     capabilities;
-    /** `undefined` until the batched status route has been tried once. */
+    /** What `getStatusBatch` learned of the batched route (1.0.0 behaviour); unset: not known. */
     batchedStatus;
     binaryPrepared = new BinaryRetention();
     geometryUrls;
     auth;
     binaryUrlReuse;
+    /** Area runs send their binary jobs in batch submits when the API offers them (`JobsServiceOptions.batchSubmit`). */
+    batchSubmit;
     /** Default `consoleLogger`, like every other service in this package. */
     logger;
     /**
@@ -75,9 +79,10 @@ export class JobsService {
             throw new TypeError("a fetch implementation is required");
         this.fetch = fetcher;
         this.pollIntervalMs = options.pollIntervalMs;
-        if (this.pollIntervalMs !== undefined)
+        if (this.pollIntervalMs !== undefined) {
             requireTimeout(this.pollIntervalMs);
-        // Legacy option: it now caps the healthy poll interval only (D213).
+            warnPollIntervalDeprecated(options.logger ?? consoleLogger);
+        }
         const backoffCapSeconds = options.backoffCapSeconds;
         if (backoffCapSeconds !== undefined)
             requireTimeout(backoffCapSeconds * 1_000);
@@ -88,6 +93,7 @@ export class JobsService {
         requireTimeout(this.requestTimeoutMs);
         this.bigPayloadThresholdBytes = options.bigPayloadThresholdBytes ?? BIG_PAYLOAD_THRESHOLD_BYTES;
         this.binaryUrlReuse = options.binaryUrlReuse !== false;
+        this.batchSubmit = options.batchSubmit !== false;
         this.logger = options.logger ?? consoleLogger;
         const urlStore = geometryUrlStoreGate(options.geometryUrlStore, this.logger, this.requestTimeoutMs);
         this.geometryUrls = new BinaryUrlCache(this.binaryUrlReuse, Date.now, urlStore);
@@ -137,49 +143,18 @@ export class JobsService {
             // geometry-group split) entirely and asks for the result family the
             // run chose (JSON, or the binary daylight result, D234).
             const binary = prepared.interiorBinary;
-            return submitPreparedBinary({ prepared, parseJob: jobFromResponse,
-                prepare: async () => binary,
-                releasePrepared: () => undefined,
-                gateway: this.gateway, uploadGateway: this.uploadGateway, auth: this.auth,
-                fetch: this.fetch, timeoutMs: this.requestTimeoutMs,
-                urlCache: this.geometryUrls, reuseEnabled: this.binaryUrlReuse,
-                resultFormat: prepared.interiorResultFormat ?? "json",
-                ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-                ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
-                ...(options.stages === undefined ? {} : { stages: options.stages }),
-            });
+            return submitPreparedBinary({ ...this.binaryOptions(prepared, options, async () => binary, () => undefined),
+                resultFormat: prepared.interiorResultFormat ?? "json" });
         }
-        if (prepared.transport === "binary") {
-            // The capability GET is network I/O: it runs before the encode admission
-            // (#816, D277), never inside it. It is cached, so most calls read memory.
-            const supported = await this.capabilities.get(options.signal);
-            return submitPreparedBinary({ prepared, parseJob: jobFromResponse,
-                prepare: async (fresh) => {
-                    if (!fresh) {
-                        const retained = this.binaryPrepared.get(prepared);
-                        if (retained !== undefined)
-                            return retained;
-                    }
-                    return prepareBinary(prepared, supported);
-                },
-                releasePrepared: () => this.binaryPrepared.release(prepared),
-                gateway: this.gateway, uploadGateway: this.uploadGateway, auth: this.auth,
-                fetch: this.fetch, timeoutMs: this.requestTimeoutMs,
-                urlCache: this.geometryUrls, reuseEnabled: this.binaryUrlReuse,
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-                ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
-                ...(options.stages === undefined ? {} : { stages: options.stages }),
-                ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
-            });
-        }
+        if (prepared.transport === "binary")
+            return submitPreparedBinary(await this.outdoorBinary(prepared, options));
         if (this.geometryReuseEnabled) {
             const reused = await tryGeometryReuse(prepared, this.geometryReuseOptions, options.signal, options.beforeDispatch, options.idempotencyKey);
             if (reused !== undefined)
                 return reused;
         }
         const json = preparedJsonBytes(prepared);
-        const archive = requireCore().zipPayloadJson(json);
+        const archive = await zipPayload(json);
         return submitArchive({
             endpointPath: `/async/${encodeURIComponent(prepared.analysisType)}`,
             archive,
@@ -193,6 +168,36 @@ export class JobsService {
             ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
             ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
+    }
+    /** The options of one binary submission of this client. */
+    binaryOptions(prepared, options, prepare, releasePrepared) {
+        return { prepared, parseJob: jobFromResponse, prepare, releasePrepared,
+            gateway: this.gateway, uploadGateway: this.uploadGateway, auth: this.auth,
+            fetch: this.fetch, timeoutMs: this.requestTimeoutMs,
+            urlCache: this.geometryUrls, reuseEnabled: this.binaryUrlReuse,
+            ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+            ...(options.beforeDispatch === undefined ? {} : { beforeDispatch: options.beforeDispatch }),
+            ...(options.stages === undefined ? {} : { stages: options.stages }) };
+    }
+    /** An outdoor binary submission: the encode and the URL reuse of this client. */
+    async outdoorBinary(prepared, options) {
+        // The capability GET is network I/O: it runs before the encode admission
+        // (#816, D277), never inside it. It is cached, so most calls read memory.
+        const supported = await this.capabilities.get(options.signal);
+        const prepare = async (fresh) => (fresh ? undefined : this.binaryPrepared.get(prepared)) ?? prepareBinary(prepared, supported);
+        return this.binaryOptions(prepared, options, prepare, () => this.binaryPrepared.release(prepared));
+    }
+    /** @internal Batch submit: one outdoor binary request, uploaded, not POSTed; else `undefined`. */
+    async prepareBatchItem(prepared, options = {}) {
+        if (prepared.transport !== "binary" || prepared.interiorBinary !== undefined)
+            return undefined;
+        return prepareBinaryEnvelope(await this.outdoorBinary(prepared, options));
+    }
+    /** @internal ONE POST of a batch body the run engine wrote; an HTTP error is returned. */
+    postBatch(body, options = {}) {
+        return dispatchKeyed({ gateway: this.gateway, endpointPath: "/binary/v1/async-batch",
+            body: new TextEncoder().encode(body), headers: { "Content-Type": "application/json" }, ...options });
     }
     /**
      * Finishes all validation and encoding of a binary submission before any
@@ -234,7 +239,7 @@ export class JobsService {
         const response = await this.gateway.requestJson(`/async/jobs/${encodeURIComponent(id)}`, signal === undefined ? {} : { signal });
         const job = jobFromResponse(response);
         if (job.jobId !== id)
-            throw new Error("job response ID does not match requested jobId");
+            throw new JobResponseMismatchError();
         return job;
     }
     /** Reads one job's status. */
@@ -242,12 +247,9 @@ export class JobsService {
         return this.getStatusWithSignal(jobId, options.signal);
     }
     /**
-     * Whether the API's route for reading many job statuses at once has
-     * answered this client. `false` until it has, and for good once the API
-     * shows it lacks the route; area runs use it to choose their poll interval.
+     * Whether the API's route for reading many job statuses at once has answered this client.
+     * `false` until it has, and for good once the API shows it lacks the route.
      */
-    // Maintainer note (not published): see internal/status-batch.ts and
-    // docs/DEVIATIONS.md D121.
     get batchedStatusSupported() { return this.batchedStatus === true; }
     /**
      * Reads many job statuses at once, 50 ids per request. Ids it could not
@@ -260,9 +262,8 @@ export class JobsService {
         if (this.batchedStatus === false) {
             return { statuses: new Map(), unanswered: [...ids], batched: false, lacking: true };
         }
-        const sweep = await fetchStatusBatch(this.gateway, ids, { ...options, routeProven: this.batchedStatus === true });
-        // Only a chunk that actually answered settles the question. A sweep that
-        // merely failed leaves the verdict where it found it.
+        const sweep = await fetchStatusBatch(this.gateway, ids, options);
+        // Only a chunk that answered settles it; a sweep that merely failed does not.
         if (sweep.lacking)
             this.batchedStatus = false;
         else if (sweep.batched)
@@ -270,24 +271,26 @@ export class JobsService {
         return sweep;
     }
     /**
-     * Polls a job until it succeeds or fails. `options.timeout` is in seconds
-     * (default 900).
+     * Waits for a job to succeed or fail: one `GET /async/jobs/{id}` 1 s after
+     * the call, then every 1 s until 10 s, then every 2 s. After HTTP 429, a 5xx
+     * or a network error it backs off (at most 30 s, never shorter than
+     * `Retry-After`). `options.timeout` is in seconds (default 900).
      *
      * @returns The finished `Job`.
      * @throws {JobFailedError} when the job fails.
      * @throws {JobTimeoutError} when the timeout passes first.
      * @throws {JobAbortedError} when `options.signal` aborts the wait.
+     * @throws {JobPollError} when a status request is refused for good (for example 401 or 404).
      */
-    // Maintainer note (not published): the SDK's one poll engine,
-    // internal/wait-job.ts (D213).
+    // Maintainer note (not published): the kernel `JobWait` (internal/wait-job.ts).
     async waitForCompletion(jobId, options = {}) {
         return waitForJob(requireJobId(jobId), options, {
             // One job: `GET /async/jobs/{id}`. A batch of one saves nothing, and a
             // gateway without the batched route answers `?ids=` with the whole
             // account listing (~70 KB, ~0.9 s).
             status: (id, signal) => this.getStatusWithSignal(id, signal),
-            fixedIntervalS: this.pollIntervalMs === undefined ? undefined : this.pollIntervalMs / 1_000,
-            maxIntervalS: this.backoffCapMs === undefined ? undefined : this.backoffCapMs / 1_000,
+            intervalUs: this.pollIntervalMs === undefined ? undefined : Math.round(this.pollIntervalMs * 1_000),
+            intervalCapUs: this.backoffCapMs === undefined ? undefined : Math.round(this.backoffCapMs * 1_000),
         });
     }
     async resultsUrl(jobId, signal) {
@@ -303,12 +306,23 @@ export class JobsService {
     }
     /**
      * Downloads the result archive of a finished job, retrying a failed
-     * download a few times. Pass `options.job` to skip reading the status.
+     * download a few times (each try with a fresh link). Pass `options.job` to
+     * skip reading the status.
      *
      * @throws {JobNotCompletedError} when the job has not succeeded.
      * @throws {TypeError} when `options.job` is a different job.
      */
     async downloadResults(jobId, options = {}) {
+        const id = await this.downloadable(jobId, options);
+        // The tries and waits are the kernel engine's (D290), as in an area run.
+        return downloadWithRetries(id, (signal) => this.downloadOnce(id, signal), options.signal);
+    }
+    /** @internal One try of `downloadResults`: the run engine retries an area run's downloads. */
+    async downloadResultsOnce(jobId, options = {}) {
+        const id = await this.downloadable(jobId, options);
+        return this.downloadOnce(id, options.signal);
+    }
+    async downloadable(jobId, options) {
         const id = requireJobId(jobId);
         if (options.job !== undefined && options.job.jobId !== id) {
             throw new TypeError("supplied job ID does not match requested jobId");
@@ -316,20 +330,11 @@ export class JobsService {
         const job = options.job ?? await this.getStatusWithSignal(id, options.signal);
         if (job.status !== JobStatus.Succeeded)
             throw new JobNotCompletedError(id, job.status);
-        // Every attempt mints a fresh presign: the link is cheap, idempotent, and
-        // an expired one is itself one of the failures worth retrying. The kernel
-        // decides whether to go on (D224).
-        for (let sendsDone = 1;; sendsDone += 1) {
-            try {
-                const presignedUrl = await this.resultsUrl(id, options.signal);
-                const downloaded = await this.download(presignedUrl, options.signal);
-                return { ...downloaded, jobId: id, presignedUrl };
-            }
-            catch (error) {
-                if (!shouldRetryDownload(error, sendsDone))
-                    throw error;
-                await pauseBeforeRetry(sendsDone, error, options.signal);
-            }
-        }
+        return id;
+    }
+    async downloadOnce(id, signal) {
+        const presignedUrl = await this.resultsUrl(id, signal);
+        const downloaded = await this.download(presignedUrl, signal);
+        return { ...downloaded, jobId: id, presignedUrl };
     }
 }

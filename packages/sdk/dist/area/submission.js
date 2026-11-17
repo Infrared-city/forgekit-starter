@@ -1,11 +1,13 @@
 import { planAreaSubmission } from "./planning.js";
-import { concurrency, submitEntries } from "./submit-pool.js";
+import { submitOnEngine } from "./engine-jobs.js";
+import { freshRunId } from "./retry-plan.js";
 import { computeAreaState, freezeAreaSchedule } from "./schedule.js";
 import { checkPaidRetrySiteIdentity } from "./site-identity-guard.js";
 import { SCHEDULE_CONTRACT_VERSION } from "./weather-guard.js";
 import { areaTransport } from "../internal/transport-choice.js";
 import { checkBinaryRoute } from "../internal/binary-submission.js";
-function effectiveOptions(options, analysisType) {
+import { siteKeyMemo } from "./prepared-site.js";
+export function effectiveOptions(options, analysisType) {
     if (Object.prototype.hasOwnProperty.call(options, "binaryResults")) {
         throw new TypeError("unsupported option binaryResults; use transport instead");
     }
@@ -17,9 +19,6 @@ function effectiveOptions(options, analysisType) {
         throw new Error("retryFrom transport mismatch");
     }
     const margin = options.terrainContextMarginM ?? options.retryFrom?.terrainContextMarginM;
-    if (margin !== undefined && (!Number.isFinite(margin) || margin < 0)) {
-        throw new TypeError("terrainContextMarginM must be a finite non-negative number");
-    }
     if (options.terrainContextMarginM !== undefined && options.retryFrom?.terrainContextMarginM !== undefined &&
         options.terrainContextMarginM !== options.retryFrom.terrainContextMarginM) {
         throw new Error("retryFrom terrainContextMarginM mismatch");
@@ -34,7 +33,7 @@ function effectiveOptions(options, analysisType) {
             ? {} : { webhookEvents: [...options.retryFrom.webhookEvents] }),
     };
 }
-function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options) {
+export function scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options) {
     const siteIdentity = options.retryFrom === undefined
         ? plan.siteIdentity : options.retryFrom.siteIdentity;
     const sensorCap = options.maxSensorsPerJob ?? options.retryFrom?.maxSensorsPerJob;
@@ -120,7 +119,7 @@ export class AreaGeometryProbeError extends Error {
  * @param service - The jobs service of the run.
  * @param plan - The submission plan.
  * @param entry - The submission entry (one job) to capture.
- * @returns The capture bytes, or `undefined`.
+ * @returns The capture, held in the client's store (D-2026101110-iris-nectar-maple), or `undefined`.
  * @category Run an analysis
  */
 // Maintainer note (not published): the local `cell-tris` synthesis is `facade-synthesis.ts`, ADR
@@ -128,19 +127,19 @@ export class AreaGeometryProbeError extends Error {
 // while no request was sent, so a retry is safe. After an accepted POST no host step may turn the
 // job into a failed one. The capture is the kernel's (`Site.facadeFrames`, the Python host's
 // `facade_frames`): the batch's targets and the tile's terrain from the prepared site.
-export function facadeCaptureFor(service, plan, entry) {
+export async function facadeCaptureFor(service, plan, entry) {
     if (service.captures === undefined || !plan.surfaceFields)
         return undefined;
     // A facade job's capture is the kernel's: the batch's targets and the tile's
-    // terrain from the prepared site (`Site.facadeFrames`, the Python host's
-    // `facade_frames`). The mode is not kept — the response echoes the one that
+    // terrain from the prepared site (`Site.facadeCaptures`, the Python host's
+    // `facade_frames`), put straight into the client's store. The mode is not kept — the response echoes the one that
     // ran.
     if (entry.capture === undefined)
         return undefined;
     const alignment = entry.prepared.body["terrain-alignment"];
     // Verbatim, `null` when unsent: the kernel seats the targets on terrain by
     // the server's rule for this value (the server seats before it synthesizes).
-    return entry.capture(typeof alignment === "string" ? alignment : null);
+    return await entry.capture(typeof alignment === "string" ? alignment : null, service.captures.store);
 }
 /**
  * Keeps the capture of one accepted facade job (see `facadeCaptureFor`) so the merge can draw its
@@ -163,13 +162,13 @@ export function rememberFacadeInputs(service, capture, jobId, cellTris = false) 
 /**
  * Submits an already validated plan, one job per entry, and returns the schedule of the run.
  *
- * A request whose outcome is unknown is not retried; it is recorded in the schedule as uncertain
- * so you can decide. Failed submissions are recorded too. Pass `options.retryFrom` to continue a
+ * A request whose outcome is unknown is sent again with the same idempotency key a few times;
+ * after that it is recorded in the schedule as uncertain so you can decide. Failed submissions are recorded too. Pass `options.retryFrom` to continue a
  * saved schedule.
  *
  * @param service - The jobs service that sends the jobs, for example `client.jobs`.
  * @param plan - The submission plan from `planAreaSubmission`.
- * @param options - The run options: `maxWorkers`, `signal`, `onAccepted`, `onProgress`, `retryFrom`.
+ * @param options - The run options: `signal`, `onAccepted`, `onProgress`, `retryFrom`.
  * @returns The frozen schedule of the run.
  * @throws {AreaGeometryReferenceError} when the API accepted a job with an invalid geometry
  *   reference, or `retryFrom` records one.
@@ -189,8 +188,7 @@ export async function submitAreaPlan(service, plan, options = {}) {
     if (options.retryFrom?.geometryProbeUncertain === true) {
         throw new AreaGeometryProbeError(options.retryFrom, options.retryFrom.geometryProbeJobIds ?? []);
     }
-    checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries.length > 0);
-    const workers = concurrency(options.maxWorkers);
+    checkPaidRetrySiteIdentity(options.retryFrom, plan.siteIdentity, entries.length > 0, options.logger);
     let outcome;
     // The whole-run checks come before the first paid POST: the capability GET,
     // the geometry schema and the model's binary route. Then each worker encodes
@@ -202,8 +200,10 @@ export async function submitAreaPlan(service, plan, options = {}) {
             && service.binaryCapability !== undefined) {
             checkBinaryRoute(plan.analysisType, await service.binaryCapability(options.signal));
         }
-        outcome = await submitEntries(service, entries, {
-            maxWorkers: workers,
+        outcome = await submitOnEngine(service, entries, {
+            // A plan built by hand may lack the run id; the engine keys need one.
+            runId: plan.runId ?? freshRunId(),
+            ...(plan.retryContext?.attempts === undefined ? {} : { attempts: plan.retryContext.attempts }),
             ...(options.signal === undefined ? {} : { signal: options.signal }),
             ...(options.onAccepted === undefined ? {} : { onAccepted: options.onAccepted }),
             ...(options.retryFrom === undefined ? {} : {
@@ -215,8 +215,8 @@ export async function submitAreaPlan(service, plan, options = {}) {
                 priorUncertain: plan.retryContext?.carryUncertain ?? options.retryFrom.uncertainSubmissions ?? [],
                 priorInvalidReference: options.retryFrom.invalidReferenceSubmissions ?? [],
             }),
-            beforeSubmit: (entry) => facadeCaptureFor(service, plan, entry),
-            afterAccepted: (capture, jobId) => rememberFacadeInputs(service, capture, jobId, plan.localCellTris === true),
+            capture: (entry) => facadeCaptureFor(service, plan, entry),
+            remember: (capture, jobId) => rememberFacadeInputs(service, capture, jobId, plan.localCellTris === true),
             ...(options.logger === undefined ? {} : { logger: options.logger }),
         });
     }
@@ -226,7 +226,11 @@ export async function submitAreaPlan(service, plan, options = {}) {
             service.releasePreflight?.(entry.prepared);
     }
     const { jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus } = outcome;
-    const schedule = freezeAreaSchedule(scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options));
+    const schedule = freezeAreaSchedule({
+        ...scheduleFromPlan(plan, jobs, failedSubmissions, uncertainSubmissions, invalidReferenceSubmissions, submissionAbortStatus, options),
+        // A new attempt the engine made (a new key) travels with the schedule (D224).
+        ...(Object.keys(outcome.attempts).length === 0 ? {} : { attempts: outcome.attempts }),
+    });
     try {
         options.onProgress?.(computeAreaState(schedule));
     }
@@ -259,8 +263,8 @@ export async function submitAreaPlan(service, plan, options = {}) {
  * @param polygon - The GeoJSON `Polygon` to analyse.
  * @param options - The run options (see `RunAreaOptions`).
  * @returns The frozen schedule of the run, to poll, merge or save.
- * @throws {TypeError} when the unsupported `binaryResults` option is passed, or
- *   `terrainContextMarginM` is not a finite non-negative number.
+ * @throws {TypeError} when the unsupported `binaryResults` option is passed.
+ * @throws {Error} when `terrainContextMarginM` is not a finite non-negative number.
  * @throws {Error} when `retryFrom` was saved with a different transport or terrain margin.
  * @throws {AreaGeometryReferenceError} when the API accepted a job with an invalid geometry
  *   reference.
@@ -268,7 +272,49 @@ export async function submitAreaPlan(service, plan, options = {}) {
  */
 export async function runArea(service, input, polygon, options = {}) {
     const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
-    concurrency(effective.maxWorkers);
     const plan = await planAreaSubmission(service, input, polygon, effective);
     return submitAreaPlan(service, plan, effective);
+}
+/**
+ * Share each prepared site's facade parts between the facade analyses of one call that plan the
+ * same jobs (`Site.shareFacadeParts`): the kernel makes each tile's groups, captures and scenes
+ * once and drops them when the last analysis took them. A site whose analyses plan different
+ * jobs shares nothing. Returns the release, for the end of the call.
+ */
+export function shareFacadeSites(facadeSites) {
+    const shared = [...facadeSites].filter(([, plans]) => plans.length >= 2 && new Set(plans).size === 1);
+    for (const [site, plans] of shared)
+        site.shareFacadeParts?.(plans.length);
+    return () => { for (const [site] of shared)
+        site.shareFacadeParts?.(0); };
+}
+/**
+ * `runArea` of a list: plans every analysis on one shared site (the mesh groups packed and
+ * hashed once, the facade parts shared), submits them together and returns one schedule per
+ * input, in input order. `retryFrom` describes one analysis's run, so a list refuses it (as
+ * Python's `run_area` does): retry each analysis alone. When a submit throws, the first error in
+ * input order is thrown; `onAccepted` has reported every accepted job.
+ */
+export async function runAreaMany(service, inputs, polygon, options = {}) {
+    if (options.retryFrom !== undefined) {
+        throw new TypeError("retryFrom is not supported with a list of analyses: retry each analysis alone");
+    }
+    const memo = siteKeyMemo();
+    const facadeSites = new Map();
+    const plans = [];
+    for (const input of inputs) {
+        const effective = effectiveOptions(options, String(input.analysisType ?? input["analysis-type"]));
+        plans.push({ plan: await planAreaSubmission(service, input, polygon, effective, memo, facadeSites), effective });
+    }
+    const release = shareFacadeSites(facadeSites);
+    try {
+        const settled = await Promise.allSettled(plans.map(({ plan, effective }) => submitAreaPlan(service, plan, effective)));
+        const failed = settled.find((outcome) => outcome.status === "rejected");
+        if (failed !== undefined)
+            throw failed.reason;
+        return settled.map((outcome) => outcome.value);
+    }
+    finally {
+        release();
+    }
 }

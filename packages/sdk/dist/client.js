@@ -4,13 +4,14 @@ import { trimTrailingSlashes } from "./internal/url-trim.js";
 import { JobsService } from "./jobs.js";
 import { prepareAnalysisPayload } from "./area/payload.js";
 import { checkAreaState as pollAreaState } from "./area/poll.js";
-import { runAreaAndWaitRounds } from "./area/run-and-wait-retry.js";
+import { allResults, streamArea } from "./area/stream.js";
 import { mergePartsValue, previewParts as previewPartsImpl, runAndWaitParts, runParts as runPartsImpl, } from "./parts/run.js";
-import { runArea as submitArea } from "./area/submission.js";
+import { runArea as submitArea, runAreaMany } from "./area/submission.js";
 import { previewAreaBatches as previewAreaBatchesImpl } from "./area/preview.js";
-import { mergeAreaJobs as mergeGridAreaJobs, mergeSurfaceAreaJobs as mergeSurfaceJobs, } from "./area/merge.js";
+import { mergeAreaJobs as mergeGridAreaJobs, waitAndMerge, mergeSurfaceAreaJobs as mergeSurfaceJobs, } from "./area/merge.js";
 import { generateTilesForPolygon } from "./area/tiling.js";
-import { BillingService, DEFAULT_TOKENS_PER_JOB, ESTIMATED_SECONDS_PER_TILE, resolveTokensPerJob, } from "./billing.js";
+import { BillingService } from "./billing.js";
+import { estimateRun } from "./price-list.js";
 import { BuildingsService } from "./buildings.js";
 import { decompressResultValue } from "./compat.js";
 import { GroundMaterialsService } from "./ground-materials-service.js";
@@ -19,9 +20,9 @@ import { WeatherService } from "./weather.js";
 import { consoleLogger } from "./logger.js";
 import { AreaTimeoutError, } from "./client-types.js";
 import { AnalysisService } from "./analysis-service.js";
+import { previewAreaWithPricing as previewAreaWithPricingImpl } from "./legacy-pricing.js";
 import { DEFAULT_BASE_URL, envValue, jobsServiceOptions } from "./client-setup.js";
 export { AnalysisService, AreaTimeoutError };
-const DEFAULT_AREA_TIMEOUT_S = 3_600;
 /**
  * The entry point of the SDK: runs analyses on one site or over a polygon
  * area (split into tiles), and exposes the weather, buildings, vegetation,
@@ -147,35 +148,14 @@ export class InfraredClient {
     }
     /** The parts, sensors and tokens a `runAndWait` of `input` would bill; sends nothing. */
     previewParts(input, options = {}) {
-        return previewPartsImpl(this.jobs, this.logger, input, options);
+        return previewPartsImpl(this.jobs, this.billing, this.logger, input, options);
     }
-    /**
-     * Plans an area run over `polygon`, submits one job per non-empty tile and
-     * returns the saved `AreaSchedule` without waiting; finish it with
-     * `checkAreaState` and `mergeAreaJobs`.
-     *
-     * A tile that fails does not stop the run. The tiles that went out before it
-     * may be billed. List the failed tiles in `schedule.failedSubmissions` and
-     * pass the schedule as `retryFrom` to send only those.
-     *
-     * @param input - the analysis request, as for `runAndWait`, plus the area settings.
-     * @param polygon - the area to analyse.
-     * @param options - `maxWorkers` (requests in flight at once), `maxTilesOverride`,
-     * `retryFrom`, `onAccepted`, `signal` and `logger`.
-     * @returns the saved `AreaSchedule` with one entry for each submitted tile.
-     * @throws {Error} when the polygon needs more non-empty tiles than the
-     * limit; the message gives the `maxTilesOverride` to pass.
-     * @throws {ReadMarginError} when an acquired layer was read with a narrower
-     * margin than the analysis needs.
-     *
-     * @example
-     * ```ts
-     * const schedule = await client.runArea(input, polygon, { maxTilesOverride: 400 });
-     * ```
-     */
     async runArea(input, polygon, options = {}) {
         // The client's logger, never `console` (D48); an explicit one still wins.
-        return submitArea(this.jobs, input, polygon, { logger: this.logger, ...options });
+        const how = { logger: this.logger, ...options };
+        if (Array.isArray(input))
+            return runAreaMany(this.jobs, input, polygon, how);
+        return submitArea(this.jobs, input, polygon, how);
     }
     /** Reads the status of the schedule's jobs once, updates it and returns the run's counts. */
     checkAreaState(schedule, options = {}) {
@@ -194,75 +174,66 @@ export class InfraredClient {
     mergeSurfaceAreaJobs(schedule, options = {}) {
         return mergeSurfaceJobs(this.jobs, schedule, { logger: this.logger, ...options }); // D48
     }
+    async runAreaAndWait(input, polygon, options = {}) {
+        const list = Array.isArray(input);
+        if (options.retryFrom !== undefined) { // as in 1.0.0: `runArea`, then wait and merge
+            if (list)
+                throw new TypeError("retryFrom is not supported with a list of analyses: retry each analysis alone");
+            return waitAndMerge(this.jobs, await this.runArea(input, polygon, options), { logger: this.logger, ...options });
+        }
+        const inputs = list ? input : [input];
+        const results = await allResults(this.runAreaStream(inputs, polygon, options), inputs.length);
+        return list ? results : results[0];
+    }
     /**
-     * Runs an analysis over a polygon area and returns the merged result: it
-     * submits the tiles, waits, retries what failed (`retries`) and merges. A
-     * surface run returns `SurfaceColumns`, any other run an `AreaResult`.
-     * `areaTimeout` is in seconds, default 3600.
+     * Runs analyses over one polygon area as `runAreaAndWait` does, and yields each
+     * result the moment its last tile is merged, in the order they finish. Read the
+     * items one by one: the SDK keeps no reference to a yielded result. A failed
+     * analysis yields an item with `error`; the others continue. `break` or
+     * `options.signal` cancels the analyses not yet yielded. `options` apply to every
+     * analysis; `onProgress` reports each analysis until it is finished (then its bodies are freed).
      *
-     * @throws {AreaTimeoutError} when the run does not finish within `areaTimeout`.
-     * @throws {TypeError} when `areaTimeout` is not a positive finite number.
-     *
+     * @throws {TypeError} on the first `next()` when `areaTimeout` is not a positive finite number.
+     * @category Run an analysis
      * @example
      * ```ts
-     * const result = await client.runAreaAndWait(input, polygon, { areaTimeout: 1800 });
+     * for await (const item of client.runAreaStream([solar, wind], polygon)) draw(item);
      * ```
      */
-    async runAreaAndWait(input, polygon, options = {}) {
-        const areaTimeout = options.areaTimeout ?? DEFAULT_AREA_TIMEOUT_S;
-        if (typeof areaTimeout !== "number" || !Number.isFinite(areaTimeout) || areaTimeout <= 0) {
-            throw new TypeError("areaTimeout must be a positive finite number");
-        }
-        const schedule0 = await this.runArea(input, polygon, options);
-        // D224: waits for completion, then up to `retries` more rounds (default
-        // 1) when something is left to resend; see `area/run-and-wait-retry.ts`.
-        const schedule = await runAreaAndWaitRounds(this.jobs, (i, p, o) => this.runArea(i, p, o), (s, o) => this.checkAreaState(s, o), input, polygon, {
-            ...options, areaTimeout,
-            onTimeout: (last) => new AreaTimeoutError(`Area analysis timed out after ${areaTimeout}s: ` +
-                `${last.completedCount}/${last.totalCount} completed, ${last.failedCount} failed, ` +
-                `${last.runningCount} running`, last),
-        }, schedule0);
-        if (schedule.surfaceFields === true) {
-            const merge = { ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
-                ...(options.signal === undefined ? {} : { signal: options.signal }) };
-            try {
-                return await this.mergeSurfaceAreaJobs(schedule, merge);
-            }
-            finally {
-                this.jobs.captures.forgetSchedule(schedule);
-            } // no schedule reaches the caller
-        }
-        return this.mergeAreaJobs(schedule, {
-            ...(options.strategy === undefined ? {} : { strategy: options.strategy }),
-            ...(options.windDirectionDeg === undefined ? {} : { windDirectionDeg: options.windDirectionDeg }),
-            ...(options.block === undefined ? {} : { block: options.block }),
-            ...(options.maxWorkers === undefined ? {} : { maxWorkers: options.maxWorkers }),
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-        });
+    runAreaStream(inputs, polygon, options = {}) {
+        const list = Array.isArray(inputs) ? inputs : [inputs];
+        return streamArea(this.jobs, list, polygon, { ...options, logger: options.logger ?? this.logger });
     }
     /** Builds the tile grid covering a polygon, south to north; sends no request. */
     generateTiles(polygon, options = {}) {
         return generateTilesForPolygon(polygon, options);
     }
     /**
-     * Estimates an area run from its tile count; submits nothing. The cost uses
-     * a default price per job (`previewAreaWithPricing` uses the live price);
-     * for a facade run use `previewAreaBatches`. Throws when the polygon needs
-     * more non-empty tiles than the limit.
+     * Estimates an area run from its tile count; submits nothing. The cost is
+     * the jobs times the API's price for the analysis (`pricingSource` says if
+     * the price is `"live"`, `"cached"` or `"stale"`). For a facade run use
+     * `previewAreaBatches`. Throws when the polygon needs more non-empty tiles
+     * than the limit.
+     *
+     * @throws {PricingUnavailableError} when the price list cannot be fetched and the client has none.
      *
      * @example
      * ```ts
-     * const preview = client.previewArea(polygon, { analysisType: "wind-speed" });
+     * const preview = await client.previewArea(polygon, { analysisType: "wind-speed" });
      * ```
      */
-    previewArea(polygon, options = {}) {
+    async previewArea(polygon, options) {
         const tiles = this.generateTiles(polygon, options);
         const tileCount = tiles.flat().filter((tile) => !tile.empty).length;
+        const { tokensPerJob, pricingVersion, pricingSource, estimatedCostTokens, estimatedTimeS } = estimateRun(tileCount, await this.billing.quote(options.analysisType));
         return {
-            tileCount,
-            estimatedTimeS: tileCount * ESTIMATED_SECONDS_PER_TILE,
-            estimatedCostTokens: tileCount * DEFAULT_TOKENS_PER_JOB,
+            tileCount, estimatedTimeS, estimatedCostTokens, tokensPerJob, pricingSource,
+            ...(pricingVersion === undefined ? {} : { pricingVersion }),
         };
+    }
+    /** @deprecated Use `previewArea`: it is priced with the same price list. Removed in 2.0. */
+    previewAreaWithPricing(polygon, options) {
+        return previewAreaWithPricingImpl(this, polygon, options);
     }
     /**
      * Previews a facade run: builds the plan `runArea` would and reports its job
@@ -271,38 +242,7 @@ export class InfraredClient {
      */
     // Maintainer note (not published): added by WP-6; see area/preview.ts.
     previewAreaBatches(input, polygon, options = {}) {
-        return previewAreaBatchesImpl(this.jobs, input, polygon, { logger: this.logger, ...options }); // D48
-    }
-    /**
-     * Like `previewArea`, but priced with the API's current price for the
-     * analysis. When the price list cannot be fetched a warning is logged and
-     * the default price is used (`pricingSource` is `"fallback"`).
-     */
-    async previewAreaWithPricing(polygon, options) {
-        const preview = this.previewArea(polygon, options);
-        try {
-            const pricing = await this.billing.getPublicPricing();
-            const tokensPerJob = resolveTokensPerJob(pricing, options.analysisType);
-            return {
-                ...preview,
-                estimatedCostTokens: preview.tileCount * tokensPerJob,
-                tokensPerJob,
-                pricingSource: "remote",
-                ...(pricing.version === undefined ? {} : { pricingVersion: String(pricing.version) }),
-            };
-        }
-        catch (error) {
-            this.logger.warn({
-                event: "pricing_fetch_failed",
-                message: `Failed to fetch gateway pricing; using ${DEFAULT_TOKENS_PER_JOB} tokens per job`,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return {
-                ...preview,
-                tokensPerJob: DEFAULT_TOKENS_PER_JOB,
-                pricingSource: "fallback",
-            };
-        }
+        return previewAreaBatchesImpl(this.jobs, this.billing, input, polygon, { logger: this.logger, ...options }); // D48
     }
     /** Decodes an already downloaded result archive; prefer `jobs.decompress`, which returns a typed result. */
     // Maintainer note (not published): explicit legacy adapter; `jobs.decompress`

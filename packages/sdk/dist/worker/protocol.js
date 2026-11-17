@@ -7,7 +7,10 @@
 //   The SDK client lives for the life of the worker, so a token request is
 //   not bound to one call.
 // - Each call has its own `MessageChannel`. The worker sends `progress`,
-//   `accepted`, then `done` or `failed` on it; the page sends `abort`.
+//   `accepted`, `item` (a `runAreaStream` analysis, its buffers transferred),
+//   then `done` or `failed` on it; the page sends `abort`, and `taken` when the caller
+//   took an `item` (the worker sends the next item only then: at most one result waits
+//   on the page).
 //   One port keeps these in order, so every `accepted` arrives before the
 //   result of its call.
 import { areaScheduleFromJSON, areaScheduleToJSON } from "../area/schedule.js";

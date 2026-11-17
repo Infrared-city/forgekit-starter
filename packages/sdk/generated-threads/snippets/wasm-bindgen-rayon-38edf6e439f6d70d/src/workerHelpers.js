@@ -79,13 +79,11 @@ export async function startWorkers(module, memory, builder) {
     // same way, and the cleanup below ends the workers spawned before it.
     let worker;
     try {
-      // A worker inherits the parent's `execArgv`. `--input-type` (a
-      // `node -e` parent) is refused for a worker's module entry, and the
-      // whole pool would fail to start: drop it.
-      // Both spellings: `--input-type=module` and `--input-type module`.
-      const execArgv = process.execArgv.filter((flag, at, all) =>
-        !flag.startsWith("--input-type") && all[at - 1] !== "--input-type");
-      worker = new Worker(new URL(import.meta.url), { workerData: { [TAG]: true }, execArgv });
+      // No `execArgv`: a worker would inherit the parent's, and Node refuses
+      // V8 flags such as `--max-old-space-size` or `--expose-gc` there
+      // ("invalid execArgv flags"), as it refuses `--input-type`. The pool
+      // threads run wasm and need none of them.
+      worker = new Worker(new URL(import.meta.url), { workerData: { [TAG]: true }, execArgv: [] });
     } catch (error) {
       fail(error);
       return;

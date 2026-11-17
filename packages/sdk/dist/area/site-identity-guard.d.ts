@@ -1,4 +1,9 @@
+import { type Logger } from "../logger.js";
 import type { AreaSchedule } from "./schedule-types.js";
+/** The prefix of a site identity from the kernel site key (D297). */
+export declare const SITE_IDENTITY_PREFIX = "site2:";
+/** Refuse by name a recorded identity from before the kernel site key. */
+export declare function refuseOldSiteIdentity(...identities: (string | undefined)[]): void;
 /** The event name of the one-time legacy-schedule warning (as Python). */
 export declare const LEGACY_SCHEDULE_EVENT = "area.resume.site_identity_missing";
 /**
@@ -9,4 +14,4 @@ export declare const LEGACY_SCHEDULE_EVENT = "area.resume.site_identity_missing"
  * Python's `check_site_resume`: a recorded identity must match the current
  * one, and a schedule without a recorded identity is not checked.
  */
-export declare function checkPaidRetrySiteIdentity(prior: AreaSchedule | undefined, current: string | undefined, willSubmit: boolean): void;
+export declare function checkPaidRetrySiteIdentity(prior: AreaSchedule | undefined, current: string | undefined, willSubmit: boolean, logger?: Logger): void;

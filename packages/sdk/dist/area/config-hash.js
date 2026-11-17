@@ -10,8 +10,9 @@
  *   keys, before tiling rewrites the location and slices the groups) without
  *   the geometry groups, `null` and `undefined`;
  * - the GROUP hashes: one per non-empty geometry group the payload holds.
- *   Terrain uses the kernel handle's hash; every other group goes through the
- *   kernel `configGroupHash`, which owns the rule.
+ *   Terrain uses the kernel handle's hash; a mesh group goes to the kernel as
+ *   buffers (`configGroupHashBuffers`); every other group goes through the
+ *   kernel `configGroupHash` as JSON text.
  *
  * A key the registry does not list for the model is the kernel's call: it
  * drops the inert host keys (fields the host class carries for every model
@@ -25,7 +26,9 @@
  * a v1 hash.
  */
 import { requireCore } from "../internal/core.js";
+import { typedAsArray } from "../internal/wire-json.js";
 import { registryModel } from "./field-registry.js";
+import { packMeshGroup } from "./mesh-buffers.js";
 /** The kernel's canonical sha256 of `fields` (used for composed identities). */
 export function kernelConfigHash(fields) {
     return requireCore().configHash(JSON.stringify(fields));
@@ -40,8 +43,30 @@ export function kernelConfigHash(fields) {
  * markers) that cannot equal a v2 hash of the same inputs.
  */
 export const CONFIG_HASH_V2_CONTRACT_VERSION = 10;
+/**
+ * The kernel hash of one group: a mesh group over its buffers (typed arrays
+ * are read in place, no JSON), anything else over its JSON text. With a
+ * `memo` (one per call), an object is hashed once: the site key reads the
+ * same hash (`prepared-site.ts`).
+ */
+export function kernelGroupHashOnce(model, key, value, memo) {
+    const object = value !== null && typeof value === "object" ? value : undefined;
+    const known = object === undefined ? undefined : memo?.get(object);
+    if (known !== undefined)
+        return known;
+    const hashed = meshOrDocumentHash(model, key, value);
+    if (object !== undefined)
+        memo?.set(object, hashed);
+    return hashed;
+}
+function meshOrDocumentHash(model, key, value) {
+    const core = requireCore();
+    const buffers = packMeshGroup(value);
+    const hashed = buffers === undefined ? undefined : core.configGroupHashBuffers(model, key, buffers.ids, buffers.coordinates, buffers.coordinateOffsets, buffers.indices, buffers.indexOffsets);
+    return hashed ?? core.configGroupHash(model, key, JSON.stringify(value, typedAsArray));
+}
 /** The control body and the group hashes of one payload (see the module docs). */
-export function hashInputs(model, payload, terrain) {
+export function hashInputs(model, payload, terrain, memo) {
     const row = registryModel(model);
     if (row === undefined) {
         throw new Error(`the kernel field registry has no model ${JSON.stringify(model)}: its config hash cannot be built`);
@@ -72,7 +97,7 @@ export function hashInputs(model, payload, terrain) {
         // The handle hashes by the outdoor mesh rule; the interior models hash
         // their terrain as a document, so they go through `configGroupHash`.
         const known = key === "ground-geometry" && core.terrainHandleHashApplies(model) ? terrain?.groupHash : undefined;
-        groups[key] = typeof known === "string" ? known : core.configGroupHash(model, key, JSON.stringify(value));
+        groups[key] = typeof known === "string" ? known : kernelGroupHashOnce(model, key, value, memo);
     }
     return { control, groups };
 }
@@ -87,8 +112,8 @@ function resolvedBalanceYear(control, now) {
     return requireCore().energyBalanceYear(undefined, now.getUTCFullYear(), rows);
 }
 /** The kernel `configHashV2` of one prepared payload. */
-export function scheduleConfigHash(model, payload, terrain, now = new Date()) {
-    const { control, groups } = hashInputs(model, payload, terrain);
+export function scheduleConfigHash(model, payload, terrain, now = new Date(), memo) {
+    const { control, groups } = hashInputs(model, payload, terrain, memo);
     if (model === "energy-balance" && control.year === undefined)
         control.year = resolvedBalanceYear(control, now);
     return requireCore().configHashV2(model, JSON.stringify(control), JSON.stringify(groups));

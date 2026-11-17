@@ -13,59 +13,6 @@ import { weatherWindowJson } from "./internal/weather-window.js";
 import { parseEpw, WeatherDocument } from "./weather-epw.js";
 import { StaticWeatherReader } from "./weather-static.js";
 export { CATALOG_TTL_MS, clearWeatherCatalogCache, DEFAULT_STATIC_BASE_URL, MAX_STATIC_BYTES, StaticWeatherReader, WeatherServiceError, } from "./weather-static.js";
-const NUMERIC_WEATHER_FIELDS = new Set([
-    "dryBulbTemperature", "dewPointTemperature", "relativeHumidity",
-    "atmosphericStationPressure", "extraterrestrialHorizontalRadiation",
-    "extraterrestrialDirectNormalRadiation", "horizontalInfraredRadiationIntensity",
-    "globalHorizontalRadiation", "directNormalRadiation", "diffuseHorizontalRadiation",
-    "globalHorizontalIlluminance", "directNormalIlluminance", "diffuseHorizontalIlluminance",
-    "zenithLuminance", "windDirection", "windSpeed", "totalSkyCover", "opaqueSkyCover",
-    "visibility", "ceilingHeight", "presentWeatherObservation", "presentWeatherCodes",
-    "precipitableWater", "aerosolOpticalDepth", "snowDepth", "daysSinceLastSnowfall",
-    "albedo", "liquidPrecipitationDepth", "liquidPrecipitationQuantity",
-]);
-function weatherNumber(value, field) {
-    if (value === null || value === undefined || typeof value === "number")
-        return value ?? null;
-    if (typeof value !== "string")
-        throw new TypeError(`${field} must be numeric`);
-    const trimmed = value.trim();
-    if (trimmed === "" || /^(null|none|na|n\/a|nan)$/i.test(trimmed))
-        return null;
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isNaN(parsed))
-        throw new TypeError(`${field} must be numeric`);
-    return parsed;
-}
-function normalizeWeatherPoint(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        throw new TypeError("weather data point must be an object");
-    }
-    const output = { ...value };
-    for (const field of NUMERIC_WEATHER_FIELDS) {
-        if (Object.hasOwn(output, field))
-            output[field] = weatherNumber(output[field], field);
-    }
-    return output;
-}
-/**
- * The kernel's filtered `weatherData` — one array per field — as one record
- * per hour. Pure shaping; the filtering itself was the kernel's job. Twin of
- * the Python `records_from_weather_data`.
- */
-function rowsFromWeatherData(weatherData) {
-    const columns = Object.entries(weatherData).filter((entry) => Array.isArray(entry[1]));
-    const rowCount = columns.reduce((most, [, values]) => Math.max(most, values.length), 0);
-    const rows = [];
-    for (let index = 0; index < rowCount; index += 1) {
-        const record = {};
-        for (const [field, values] of columns) {
-            record[field] = index < values.length ? values[index] : null;
-        }
-        rows.push(normalizeWeatherPoint(record));
-    }
-    return rows;
-}
 /**
  * Look up public weather stations, read their data and filter it to a period, or
  * validate your own `.epw` file.
@@ -160,11 +107,6 @@ export class WeatherService {
             "filter the returned records yourself");
         if (source instanceof WeatherDocument)
             return source.filterHours(filters);
-        const filtered = await this.reader.filterHours(source, weatherWindowJson(filters));
-        const weatherData = filtered["weatherData"];
-        if (weatherData === null || typeof weatherData !== "object" || Array.isArray(weatherData)) {
-            return [];
-        }
-        return rowsFromWeatherData(weatherData);
+        return this.reader.filterHours(source, weatherWindowJson(filters));
     }
 }

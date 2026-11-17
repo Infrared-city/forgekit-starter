@@ -64,7 +64,7 @@ export interface PreparedSubmission {
      * Builds the tile's binary upload, for a body that an area plan produced. A direct
      * submission has none.
      */
-    readonly artifact?: (limits: ArtifactLimits) => TileArtifact;
+    readonly artifact?: (limits: ArtifactLimits) => TileArtifact | Promise<TileArtifact>;
     /**
      * The exact JSON bytes of `body`, when they were already written once. The JSON
      * route sends these bytes instead of serializing `body` again. A direct submission

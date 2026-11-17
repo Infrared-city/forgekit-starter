@@ -136,17 +136,6 @@ function validateSensors(input) {
     if (cleaning != null && surfaces == null) {
         throw new TypeError("mesh-cleaning only applies to analysis-surfaces requests");
     }
-    // #674: which roof-gate layout the worker ran, named by this SDK's own
-    // bundled kernel rather than guessed from an absent field.
-    const surfgridVersion = input["surfgrid-version"];
-    if (surfgridVersion != null && surfaces == null) {
-        throw new TypeError("surfgrid-version only applies to analysis-surfaces requests");
-    }
-    // Counting, batching and the layout hash run on the bundled kernel's
-    // version, so a request for another version is refused (#674).
-    if (surfgridVersion != null && surfgridVersion !== requireCore().surfgridVersion()) {
-        throw new TypeError(`surfgrid-version must be the bundled kernel's (${requireCore().surfgridVersion()}); leave it unset`);
-    }
 }
 function validateCanonicalBase64(blob, key) {
     if (blob.length % 4 !== 0)

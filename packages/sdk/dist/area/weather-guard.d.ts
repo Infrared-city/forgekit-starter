@@ -9,7 +9,7 @@ import type { AreaSchedule } from "./schedule-types.js";
  *
  * @category Run an analysis
  */
-export declare const SCHEDULE_CONTRACT_VERSION = 11;
+export declare const SCHEDULE_CONTRACT_VERSION = 13;
 /**
  * The schedule record version from which `AreaSchedule.weatherIdentity` names the weather a run
  * submitted. A weather-bearing schedule written under a lower version is refused on retry.

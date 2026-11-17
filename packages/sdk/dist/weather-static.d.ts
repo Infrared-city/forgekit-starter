@@ -50,10 +50,10 @@ export declare class StaticWeatherReader {
     constructor(options?: StaticWeatherOptions);
     /** The generation folder the pointer names, re-read on the TTL. */
     private folderUrl;
-    /** The catalog for the current generation, parsed at most once per ETag. */
+    /** The catalog handle for the current generation, read at most once per generation. */
     private catalog;
-    /** uuid or fileName to a catalog row, or the typed 404 (D40). */
-    private resolveStation;
+    /** uuid or fileName to the catalog's uuid, or the typed 404 (D40). The rule and its text are the kernel's. */
+    private stationUuid;
     /** One station's data object as TEXT, gzip handled either way. */
     private stationText;
     /**
@@ -70,11 +70,11 @@ export declare class StaticWeatherReader {
      */
     stationByIdentifier(identifier: string): Promise<Record<string, unknown>>;
     /**
-     * A station's hourly arrays (under `weatherData`), filtered to a period given as JSON
-     * text built from `TimeFilters`.
+     * A station's hours inside a period given as JSON text built from `TimeFilters`, one
+     * record per hour.
      *
      * @throws {WeatherServiceError} when the station is unknown, the catalog is unreadable or the
      * period is rejected.
      */
-    filterHours(identifier: string, timePeriodJson: string): Promise<Record<string, unknown>>;
+    filterHours(identifier: string, timePeriodJson: string): Promise<Array<Record<string, unknown>>>;
 }

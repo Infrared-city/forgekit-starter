@@ -19,3 +19,10 @@ export declare function parseJobStatus(value: string): JobStatus;
  * @category Requests
  */
 export declare function jobFromResponse(input: unknown): Job;
+/**
+ * A status answer (2xx) for a different job than the one asked. Still a plain `Error` to a
+ * caller; the run engine takes it as an unusable answer and asks again later (as 1.0.0 did).
+ */
+export declare class JobResponseMismatchError extends Error {
+    constructor();
+}

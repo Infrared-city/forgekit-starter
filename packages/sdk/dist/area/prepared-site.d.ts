@@ -1,4 +1,4 @@
-import type { KernelTerrain } from "./site-terrain.js";
+import { type KernelTerrain } from "./site-terrain.js";
 import type { Slice } from "./cooperative.js";
 import type { RunAreaOptions } from "./run-options.js";
 import type { SiteAnswer } from "./site-assign.js";
@@ -55,25 +55,40 @@ export interface SiteInputs {
  */
 export type SiteTexts = Map<object, string>;
 /**
- * Computes the content key of a site: the digest of every geometry source, plus the tiling
- * family.
+ * Computes the content key of a site: the kernel `siteKey` (SHA-256) over the sources as the
+ * site reads them, plus the tiling family.
  *
- * Each source (a payload group, or an acquired `buildings`, `vegetation` or `groundMaterials`
- * object) is hashed from its JSON text as it will be read. Two runs given the same content share
- * a site; a new input map with different content does not, and neither does a map changed in
- * place. An acquisition result contributes its site content only, so a second fetch of the same
- * site gives the same key and the same `siteIdentity`. The tiling family is the polygon, the
- * preset's three metre sizes, the terrain margin, the tile cap and the wind datum.
+ * The buildings and the context geometry cross as the packed buffers the site is built from,
+ * never as JSON text. The terrain crosses as its kernel content key. The vegetation and ground
+ * materials cross as JSON text. Two runs given the same content share a site; a new input map
+ * with different content does not, and neither does a map changed in place. An acquisition
+ * result contributes its site content only, so a second fetch of the same site gives the same
+ * key and the same `siteIdentity`. The tiling family is the polygon, the preset's three metre
+ * sizes, the terrain margin, the tile cap, the wind datum and the context key.
  *
  * @param inputs - What the site stage reads.
  * @param texts - Collects the JSON text of each group written for the key, to reuse it when
  *   the site is built.
- * @param legacy - Computes the key of earlier SDK versions (see the note below).
- * @returns The key, or `undefined` when the runtime has no SHA-256, in which case the site is
- *   built uncached.
+ * @param ground - The terrain's content key ({@link terrainKey}); read from the payload when
+ *   omitted.
+ * @param memo - Per-call digests of the mesh groups ({@link SiteKeyMemo}).
+ * @returns The key.
  * @category Run an analysis
  */
-export declare function preparedSiteKey(inputs: SiteInputs, texts?: SiteTexts, legacy?: boolean): Promise<string | undefined>;
+export declare function preparedSiteKey(inputs: SiteInputs, texts?: SiteTexts, ground?: string | undefined, memo?: SiteKeyMemo): string;
+/**
+ * Per-call hashes, by object: the analyses of one `runAreaStream` call share
+ * their buildings, so they are packed and hashed once (`meshes`), and the
+ * context group hash is the one the schedule hash takes (`groups`,
+ * `config-hash.ts` `kernelGroupHashOnce`). A new call hashes again (a map changed in
+ * place is new content).
+ */
+export interface SiteKeyMemo {
+    readonly meshes: WeakMap<object, string>;
+    readonly groups: WeakMap<object, string>;
+}
+/** A new, empty {@link SiteKeyMemo}. */
+export declare function siteKeyMemo(): SiteKeyMemo;
 /**
  * Builds the prepared site: assembles the geometry layers, composes every tile and checks that
  * no analysis target is dropped entirely.

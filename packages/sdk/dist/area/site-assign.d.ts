@@ -1,5 +1,8 @@
 import type { KernelTerrain } from "./site-terrain.js";
+import { type KernelSite } from "./site-kernel.js";
 import type { FacadeArtifact } from "../internal/facade-artifact-guard.js";
+import { type WasmCore } from "../internal/core.js";
+import type { CaptureHold } from "./facade-captures.js";
 import { type FacadeSceneAnswer } from "./site-facade-scene.js";
 import type { ArtifactLimits, TileArtifact } from "../internal/binary-artifact.js";
 import type { AreaGeometryGroups, IndexedTile, Polygon, SupportedAreaGroup } from "./types.js";
@@ -37,26 +40,29 @@ export interface TileAnswer {
     /** `context-geometry` ids this tile receives (D67), in site order. */
     readonly context: readonly string[];
 }
+type KernelCaptureStore = InstanceType<WasmCore["CaptureStore"]>;
 /** What the plan reads: ordinary JavaScript. */
 export interface SiteAnswer {
     /** Membership, ownership and the shrink band, per tile, in tile order. */
     readonly tiles: readonly TileAnswer[];
-    /** Ids the shrink band gave up that NO tile's core took (D63). */
-    readonly unowned: readonly string[];
+    /** Point trees without z when the site has terrain, else 0. */
+    readonly treesWithoutZ?: number;
     /**
      * One tile's binary artifact from the site (D101), when the answer holds
      * the site: each tile is encoded on its own first ask and kept.
      */
-    tileArtifact?(index: number, limits: ArtifactLimits): TileArtifact;
+    tileArtifact?(index: number, limits: ArtifactLimits): Promise<TileArtifact>;
     /**
      * The parts of every facade BATCH of one tile, from one kernel call that
      * builds the tile once (`Site.facadeFrames`, WP3): each batch's targets in
      * `geometries`, every other member of the tile in `context-geometry` (D156).
      */
-    facadeFrames?(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): FacadeFrame[];
+    facadeFrames?(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): Promise<FacadeFrame[]>;
+    /** The batches' bodies only, at once (a JSON body is read synchronously). */
+    facadeBodies?(index: number, batches: readonly (readonly string[])[]): FacadeFrame[];
     /** One tile's facade SCENE (#602): a shared frame for `batches` plus each
      * batch's job as a range into it, or its own frame (WP3, per-tile). */
-    facadeScenes?(index: number, batches: readonly (readonly string[])[], limits: ArtifactLimits): FacadeSceneAnswer;
+    facadeScenes?(index: number, batches: readonly (readonly string[])[], limits: ArtifactLimits): Promise<FacadeSceneAnswer>;
     /** One tile's group as the kernel wrote it, when the answer holds the arena. */
     group?(tile: number, name: SupportedAreaGroup): TileGroup | undefined;
     /**
@@ -67,6 +73,8 @@ export interface SiteAnswer {
     keepKernel?(): boolean;
     /** Run `use` on the kernel site: the kept one, or a fresh read freed after. */
     withKernel?<T>(use: (site: KernelSite) => T): T;
+    /** Share the facade parts between the `analyses` facade analyses of one run; `0` at its end. */
+    shareFacadeParts?(analyses: number): void;
     /** Every tile's presence and mesh group hashes, with no body written. */
     identity?(): TileIdentity;
     /** The groups the run carries, in the caller's order. */
@@ -76,9 +84,10 @@ export interface SiteAnswer {
 export interface FacadeFrameParts {
     /** The canonical five-group body. */
     readonly body?: boolean;
-    /** The pretty capture with the request's `terrain-alignment` (`null`: unsent). */
+    /** The pretty capture with the request's `terrain-alignment` (`null`: unsent), held in `store`. */
     readonly capture?: {
         readonly alignment: string | null;
+        readonly store: KernelCaptureStore;
     };
     /** The binary artifact under the capability answer. */
     readonly artifact?: {
@@ -89,7 +98,7 @@ export interface FacadeFrameParts {
 export interface FacadeFrame {
     readonly error?: string;
     readonly body?: FacadeBodyArena;
-    readonly capture?: Uint8Array;
+    readonly capture?: CaptureHold;
     readonly artifact?: FacadeArtifact;
 }
 /** A batch's five-group body: the arena of `bodies(tile, tile + 1)`. */
@@ -115,25 +124,10 @@ export interface TileGroup {
      */
     readonly hash: string | undefined;
 }
-/** The kernel's `Site` handle (WS2): the site read once, answered per range. */
-export interface KernelSite {
-    allTileIds(): string;
-    unowned(): string[];
-    bodies(start: number, end: number): unknown;
-    artifacts(start: number, end: number, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
-    facadeBatches(start: number, end: number, requestJson: string): string;
-    facadeFrames(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], body: boolean, identity: boolean, capture: boolean, alignment: string | undefined, artifact: boolean, maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown[];
-    /** One scene frame per tile and a target range per job (#602). */
-    facadeScenes(tiles: Uint32Array, idCounts: Uint32Array, ids: string[], maxTotalBytes: bigint, maxMetadataBytes: number, maxMeshes: bigint, maxInstances: bigint): unknown;
-    checkTerrain(start: number, end: number): void;
-    identity(start: number, end: number): unknown;
-    free(): void;
-}
 /** The site, answered for every tile, held as plain JavaScript. */
 export declare class SiteAssignment implements SiteAnswer {
     #private;
     readonly tiles: readonly TileAnswer[];
-    readonly unowned: readonly string[];
     /** Every tile's bodies; read on the first ask when the kernel site is kept. */
     private arena;
     private readonly present;
@@ -144,6 +138,8 @@ export declare class SiteAssignment implements SiteAnswer {
     /** What to read the site from again, only when no kernel site is kept. */
     private inputs;
     private readonly artifacts;
+    /** The kernel's warning for the context hole (D293). */ contextWarning: string | undefined;
+    /** Point trees without z when the site has terrain, else 0. */ treesWithoutZ: number;
     private constructor();
     /**
      * Keep the kernel site from now on, reading it once more when a JSON run
@@ -151,26 +147,25 @@ export declare class SiteAssignment implements SiteAnswer {
      * batches and its selected bodies (`area/site-facade.ts`).
      */
     keepKernel(): boolean;
+    shareFacadeParts(analyses: number): void;
     /** Run `use` on the kept kernel site, or on a fresh read that is freed after. */
     withKernel<T>(use: (site: KernelSite) => T): T;
     /**
      * Read the site once: the kernel prepares every layer in one crossing and
      * answers the membership and the bodies from them.
      *
-     * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it
-     * will encode at submit time, and a FACADE run for its batches and bodies
-     * (`area/site-facade.ts`), freed with this object. A grid JSON run frees it
-     * before this returns — a run that never encodes holds no wasm memory. A
-     * realm without `FinalizationRegistry` always frees it here.
+     * `keepKernelSite`: a BINARY run keeps the kernel site for the artifacts it will encode at
+     * submit time, and a FACADE run for its batches and bodies (`area/site-facade.ts`), freed
+     * with this object. A grid JSON run frees it before this returns — a run that never encodes
+     * holds no wasm memory. A realm without `FinalizationRegistry` always frees it here.
      */
-    static read(groups: AreaGeometryGroups, tiles: readonly IndexedTile[], polygon: Polygon, analysisType: string | undefined, terrainContextMarginM: number | undefined, keepKernelSite?: boolean, texts?: ReadonlyMap<object, string>, terrain?: KernelTerrain): SiteAssignment;
+    static read(groups: AreaGeometryGroups, tiles: readonly IndexedTile[], polygon: Polygon, analysisType: string | undefined, terrainContextMarginM: number | undefined, keepKernelSite?: boolean, texts?: ReadonlyMap<object, string>, terrain?: KernelTerrain, contextReachM?: number | null, contextBufferM?: number): SiteAssignment;
     /** One tile's group, or `undefined` when the run does not carry it. */
     group(tile: number, name: SupportedAreaGroup): TileGroup | undefined;
     /**
-     * Every tile's presence mask (bit `i` for `ARENA_GROUPS[i]`, set when the
-     * tile carries the group AND it holds something) and its `geometries` /
-     * `context-geometry` group hashes, two per tile, `""` for none — without
-     * writing a body. Read once and kept.
+     * Every tile's presence mask (bit `i` for `ARENA_GROUPS[i]`: carried AND not
+     * empty) and its `geometries` / `context-geometry` group hashes, two per
+     * tile, `""` for none, without writing a body. Read once and kept.
      */
     identity(): TileIdentity;
     /**
@@ -179,19 +174,22 @@ export declare class SiteAssignment implements SiteAnswer {
      * after its own encode, not after the encode of every tile. Never a facade
      * batch's (D156).
      */
-    tileArtifact(index: number, limits: ArtifactLimits): TileArtifact;
+    tileArtifact(index: number, limits: ArtifactLimits): Promise<TileArtifact>;
     /**
      * The parts of every facade batch of tile `index`, from ONE kernel call
      * that builds the tile once (`Site.facadeFrames`, WP3): the batch's targets
      * in `geometries`, the rest of the tile in `context-geometry` (D156).
      * Nothing is kept here — `area/site-facade.ts` hands each part out once.
      */
-    facadeFrames(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): FacadeFrame[];
+    facadeFrames(index: number, batches: readonly (readonly string[])[], parts: FacadeFrameParts): Promise<FacadeFrame[]>;
+    /** The bodies of `batches`, now: a JSON body is read synchronously (blocks in the threaded core). */
+    facadeBodies(index: number, batches: readonly (readonly string[])[]): FacadeFrame[];
     /**
      * One tile's facade scenes (#602): one shared frame for every batch of
      * `batches`, and each batch's job as a range into it, or its own frame.
      * `site-facade-scene.ts` shapes the kernel's raw answer.
      */
-    facadeScenes(index: number, batches: readonly (readonly string[])[], limits: ArtifactLimits): FacadeSceneAnswer;
+    facadeScenes(index: number, batches: readonly (readonly string[])[], limits: ArtifactLimits): Promise<FacadeSceneAnswer>;
     private encode;
 }
+export {};

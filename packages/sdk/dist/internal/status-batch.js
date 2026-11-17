@@ -6,9 +6,9 @@
  * lets the poll interval drop from D52's 15 s ladder to a flat 2 s
  * (`docs/DEVIATIONS.md` D121).
  *
- * THE FALLBACK IS THE POINT. Production does not have this route and will
- * not for a while, so a released SDK must behave exactly as it did before
- * against a gateway that lacks it. There are two ways a gateway can lack it
+ * THE FALLBACK IS THE POINT. Production serves this route (max 50 ids) since
+ * 2026-09-30, but an older gateway may not, so the SDK must behave exactly as
+ * it did before against a gateway that lacks it. There are two ways a gateway can lack it
  * and this module distinguishes them:
  *
  *   * It REJECTS the form (400/404/405/501). Nothing was learned; the caller
@@ -29,7 +29,16 @@
  */
 import { jobFromResponse } from "./job-response.js";
 import { TransportError } from "./transport.js";
-import { isTransientStatusError } from "./poll-engine.js";
+/** A status request failure that is no verdict: HTTP 429, a 5xx, or a
+ * network failure or request timeout. Anything else is the caller's error. */
+export function isTransientStatusError(error) {
+    if (!(error instanceof TransportError))
+        return false;
+    if (error.reason === "network" || error.reason === "timeout")
+        return true;
+    return error.reason === "http" && error.status !== undefined &&
+        (error.status === 429 || error.status >= 500);
+}
 /**
  * Ids per request. It is the cap the endpoint documents and enforces, so it
  * is not ours to raise: `MaxBatchJobIDs` in
@@ -110,6 +119,7 @@ export async function fetchStatusBatch(gateway, jobIds, options = {}) {
     let lacking = false;
     const failedIds = [];
     let retryAfterS;
+    let refusedStatus;
     if (jobIds.length === 0)
         return { statuses, unanswered, batched: false, lacking: false };
     const chunks = chunk(jobIds);
@@ -127,17 +137,17 @@ export async function fetchStatusBatch(gateway, jobIds, options = {}) {
             catch (error) {
                 if (options.signal?.aborted === true)
                     throw error;
-                // Deferred to the next sweep (the engine backs off) when the SERVER
-                // said 429/5xx, or the route is proven. A network-level failure on a
-                // route not yet proven falls through to the per-job GET as always:
-                // in a browser a proxy or CORS refusal of `?ids=` looks exactly like
-                // a network error, and must not strand the run (D213).
-                if (isTransientStatusError(error) &&
-                    (error.reason === "http" || options.routeProven === true)) {
+                // Deferred to the next sweep when the SERVER said 429/5xx. A
+                // network-level failure is left unanswered; the run engine decides
+                // (an unproven route goes per job, D121).
+                if (isTransientStatusError(error) && error.reason === "http") {
                     failedIds.push(...ids);
                     if (error.retryAfterS !== undefined)
                         retryAfterS = Math.max(retryAfterS ?? 0, error.retryAfterS);
                     continue;
+                }
+                if (error instanceof TransportError && error.reason === "http" && error.status !== undefined) {
+                    refusedStatus ??= error.status;
                 }
                 unanswered.push(...ids);
                 continue;
@@ -168,6 +178,7 @@ export async function fetchStatusBatch(gateway, jobIds, options = {}) {
     return {
         statuses, unanswered, batched: answered > 0, lacking,
         ...(failedIds.length === 0 ? {} : { failedIds }),
+        ...(refusedStatus === undefined ? {} : { refusedStatus }),
         ...(retryAfterS === undefined ? {} : { retryAfterS }),
     };
 }

@@ -1,5 +1,8 @@
-import { type GatewayTransport } from "./transport.js";
+import { TransportError, type GatewayTransport } from "./transport.js";
 import type { Job } from "../job-model.js";
+/** A status request failure that is no verdict: HTTP 429, a 5xx, or a
+ * network failure or request timeout. Anything else is the caller's error. */
+export declare function isTransientStatusError(error: unknown): error is TransportError;
 /**
  * Ids per request. It is the cap the endpoint documents and enforces, so it
  * is not ours to raise: `MaxBatchJobIDs` in
@@ -24,6 +27,8 @@ export interface StatusSweep {
     readonly lacking: boolean;
     /** Ids deferred to the next sweep because the service answered 429 or a 5xx. */
     readonly failedIds?: readonly string[];
+    /** The HTTP status of a chunk the service refused for good (401, 403, other 4xx but 404/429). */
+    readonly refusedStatus?: number;
     /** The longest `Retry-After` those failures carried, in seconds. */
     readonly retryAfterS?: number;
 }
@@ -37,5 +42,4 @@ export interface StatusSweep {
 export declare function fetchStatusBatch(gateway: GatewayTransport, jobIds: readonly string[], options?: {
     readonly signal?: AbortSignal;
     readonly maxWorkers?: number;
-    readonly routeProven?: boolean;
 }): Promise<StatusSweep>;

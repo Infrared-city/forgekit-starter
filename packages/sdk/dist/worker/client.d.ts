@@ -7,6 +7,10 @@ import type { AreaGroundMaterials, GroundMaterialsService } from "../ground-mate
 import type { SurfaceColumns } from "../results/surface-columns.js";
 import type { AreaVegetation, VegetationService } from "../vegetation.js";
 import { type WorkerClientConfig } from "./protocol.js";
+import { type NodeWorkerLike } from "./node-port.js";
+import type { AreaStreamItem } from "../area/stream.js";
+import { WorkerLostError } from "./lost-error.js";
+export { WorkerLostError };
 /**
  * A `Worker`, or any object with the same three members.
  *
@@ -26,45 +30,28 @@ export interface WorkerLike {
  * @category Worker
  */
 export interface CreateWorkerClientOptions {
-    /** A module worker whose file calls `serveSdkWorker()`. */
-    readonly worker: WorkerLike;
-    /** The SDK core, compiled once on the page and shared by every worker. */
-    readonly module: WebAssembly.Module;
+    /**
+     * A module worker whose file calls `serveSdkWorker()`: a browser `Worker`, or in Node a
+     * `node:worker_threads` `Worker`.
+     */
+    readonly worker: WorkerLike | NodeWorkerLike;
+    /**
+     * The SDK core, compiled once on the page and shared by every worker. Required in a
+     * browser. In Node, leave it out: the worker loads the packaged core (the threaded one
+     * with `threads`).
+     */
+    readonly module?: WebAssembly.Module;
     /** The cloneable part of `InfraredClientConfig` (no functions). */
     readonly config?: WorkerClientConfig;
     /** Runs on the page; the worker asks for a token over its port. */
     readonly getToken?: () => string | Promise<string>;
-}
-/**
- * Thrown by every open call when the worker ends.
- *
- * - `load`: the worker failed before it was ready. No call started work,
- *   so nothing was sent.
- * - `lost`: every other case, including `dispose()` during a call. The jobs
- *   in `acceptedJobIds` were accepted (the ids that `onAccepted` reported
- *   for this call and the page received before the loss; an id still in
- *   flight can be missing). Every other tile of a `runArea` call is
- *   uncertain: its request may have reached the server. Do not send them again
- *   automatically.
- *
- * @category Worker
- */
-export declare class WorkerLostError extends Error {
-    /** Why the worker ended: `"load"` or `"lost"`. */
-    readonly reason: "load" | "lost";
-    /** Ids of the jobs accepted before the worker ended. */
-    readonly acceptedJobIds: readonly string[];
-    readonly name = "WorkerLostError";
     /**
-     * @param reason - `"load"` or `"lost"`, as described above.
-     * @param acceptedJobIds - Ids of the jobs the server accepted before the worker ended.
-     * @param message - The error message; a default is given for each reason.
+     * Node only: the worker loads the packaged threaded core with this many threads in
+     * place of `module`, so one worker run uses several cores. The worker file must import
+     * `@infrared-city/infrared-sdk/worker` in Node. A browser worker has no threaded core:
+     * leave it unset there.
      */
-    constructor(
-    /** Why the worker ended: `"load"` or `"lost"`. */
-    reason: "load" | "lost", 
-    /** Ids of the jobs accepted before the worker ended. */
-    acceptedJobIds: readonly string[], message?: string);
+    readonly threads?: number;
 }
 /**
  * Options for `WorkerClient.runArea`: the same as `RunAreaOptions`. Callbacks run on the
@@ -118,6 +105,15 @@ export interface WorkerClient {
      * @throws {WorkerLostError} When the worker ends during the call.
      */
     runArea(input: RunAreaInput, polygon: Polygon, options?: WorkerRunAreaOptions): Promise<AreaSchedule>;
+    /** Plans and submits several analyses over one polygon in the worker; one schedule per input. */
+    runArea(inputs: readonly RunAreaInput[], polygon: Polygon, options?: WorkerRunAreaOptions): Promise<AreaSchedule[]>;
+    /**
+     * Runs analyses in the worker and yields each one as it finishes, as `InfraredClient.runAreaStream`
+     * does. A result's buffers are transferred, not copied. `break` or `options.signal` cancels
+     * the run in the worker. A failed analysis is an item with `error`.
+     * @throws {WorkerLostError} When the worker ends during the run.
+     */
+    runAreaStream(inputs: RunAreaInput | readonly RunAreaInput[], polygon: Polygon, options?: WorkerRunAreaOptions): AsyncGenerator<AreaStreamItem, void, undefined>;
     /**
      * Waits for the jobs of an area schedule and merges their results in the worker.
      *
@@ -162,6 +158,9 @@ export interface WorkerClient {
  * worker boundary as plain `Error` objects: check `error.name`, not `instanceof`.
  * `getToken` is called per request with no session binding, so use one worker per signed-in
  * session and dispose the client on sign-out.
+ *
+ * In Node, pass a `node:worker_threads` `Worker` (no adapter, no `module`) and `threads` for
+ * the threaded core; the worker file calls `serveSdkWorker()`, which listens on `parentPort`.
  *
  * @example
  * ```ts
